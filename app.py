@@ -7,7 +7,7 @@ import spacy
 nlp = spacy.load("en_core_web_sm")
 
 import os
-from PIL import Image
+#from PIL import Image
 
 path = os.getcwd()
 # Print the current working directory
@@ -16,8 +16,8 @@ path = os.getcwd()
 
 def main():
     """A Simple NLP app with Spacy-Streamlit"""
-    nweh_logo = Image.open(os.path.join('nweh_logo_sm.jpg')) 
-    st.image(nweh_logo)
+    #nweh_logo = Image.open(os.path.join('nweh_logo_sm.jpg')) 
+    #st.image(nweh_logo)
     st.title("PII QUEST **with** _spaCy_ **NLP**")
     st.markdown('**_(_ _pre-trained_ _CNN_ _model_ _with_ _English_ _language_ _)_**')
     menu = ["Named Entity Recognision","Tokenization"]
