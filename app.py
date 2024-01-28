@@ -19,7 +19,7 @@ def main():
     #nweh_logo = Image.open(os.path.join('nweh_logo_sm.jpg')) 
     #st.image(nweh_logo)
     st.title("PII QUEST **with** _spaCy_ **NLP**")
-    st.markdown('**_(_ _pre-trained_ _CNN_ _model_ _with_ _English_ _language_ _)_**')
+    st.markdown('**_(_ _spaCy is an open-source natural language processing (NLP) library designed for a variety of NLP tasks. It is developed by Explosion AI and is written in Python._ _)_**')
     menu = ["Named Entity Recognision","Tokenization"]
     choice = st.sidebar.selectbox("Menu",menu)
     if choice == "Named Entity Recognision":
