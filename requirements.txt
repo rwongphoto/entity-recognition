@@ -2,4 +2,5 @@ spacy
 thinc
 streamlit
 spacy-streamlit
+numpy==1.21.6
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.1.0/en_core_web_sm-3.1.0.tar.gz#egg=en_core_web_sm
