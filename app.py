@@ -36,11 +36,11 @@ def main():
         if st.button("Analyse"):
             spacy_streamlit.visualize_ner(docx, labels=nlp.get_pipe('ner').labels)
 
-    elif choice == "Tokenization":
-        st.subheader("Tokenization")
-        docx = nlp(raw_text)
-        if st.button("Analyse"):
-            spacy_streamlit.visualize_tokens(docx, attrs=['text', 'pos_', 'dep_', 'ent_type_'])
+    #elif choice == "Tokenization":
+    #    st.subheader("Tokenization")
+    #    docx = nlp(raw_text)
+    #    if st.button("Analyse"):
+    #        spacy_streamlit.visualize_tokens(docx, attrs=['text', 'pos_', 'dep_', 'ent_type_'])
 
 
 
