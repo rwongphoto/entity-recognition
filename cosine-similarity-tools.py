@@ -407,7 +407,7 @@ def top_bottom_embeddings_page():
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="Put Your Content Here.", disabled=use_url)
 
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
-    top_n = st.slider("Number of results:", min_value=1, max_value=20, value=5, key="top_bottom_slider")
+    top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
 
     if st.button("Search", key="top_bottom_button"):
          # Prioritize URL if it's used
