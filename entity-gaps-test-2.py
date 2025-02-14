@@ -258,8 +258,8 @@ def entity_analysis_page():
 
 def displacy_visualization_page():
     """Displacy Entity Visualization Page."""
-    st.header("Entity Visualization with displaCy")
-    st.markdown("Visualize named entities in a single URL using displaCy.")
+    st.header("Entity Visualizer")
+    st.markdown("Visualize named entities within your content.")
 
     url = st.text_input("Enter a URL to visualize entities:")
     if st.button("Visualize Entities"):
@@ -284,7 +284,7 @@ def displacy_visualization_page():
 
 def main():
     st.set_page_config(
-        page_title="Entity & Topic Analysis | The SEO Consultant.ai",
+        page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
         page_icon=":bar_chart:",
         layout="wide"
     )
@@ -298,12 +298,12 @@ def main():
 
     # Navigation
     page = st.sidebar.selectbox("Choose a Page:",
-                                ("Entity Topic Gap Analysis", "DisplaCy Entity Visualization"))
+                                ("Entity Topic Gap Analysis", "Entity Visualizer"))
 
     # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
-    elif page == "DisplaCy Entity Visualization":
+    elif page == "Entity Visualizer":
         displacy_visualization_page()
 
     st.markdown("---")
