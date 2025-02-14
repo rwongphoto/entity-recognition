@@ -448,7 +448,7 @@ def main():
 
     create_navigation_menu(logo_url)
     st.sidebar.header("Content Analysis Tools")
-    page = st.sidebar.selectbox("Choose an analysis:", [
+    page = st.sidebar.selectbox("Switch Tool:", [
         "Cosine Similarity Competitor Analysis",
         "Cosine Similarity Score - Every Embedding",
         "Cosine Similarity Content Heatmap",
