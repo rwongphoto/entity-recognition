@@ -178,17 +178,11 @@ def entity_analysis_page():
     st.markdown("Analyze content from multiple URLs to identify common entities.")
 
     urls_input = st.text_area("Enter URLs (one per line):",
-                              """https://www.zachnicholz.com/landscape-prints
-https://aimeedanielson.com/
-https://www.lijahhanley.com/collections/pacific-northwest-fine-art-landscape-photography
-https://www.lucascometto.com/pnw-photography-guide
-https://www.peterjamesphotogallery.com/large-pacific-northwest-photography
-https://www.jessleephotos.com/gallery/pacific-northwest-photos/?srsltid=AfmBOorW3eqp8GyrNKpp9dK7maiwft1hOmeaMOJf1mJUiCQmfSj4zZC5
-https://www.artofgregmartin.com/viewsofthepnw""")
+                              """""")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
     exclude_url = st.text_input("Enter URL to exclude:",
-                                 "https://www.rwongphoto.com/gallery/pacific-northwest-pictures/")
+                                 "")
 
     if st.button("Analyze"):
         if not urls:
@@ -259,8 +253,8 @@ https://www.artofgregmartin.com/viewsofthepnw""")
 
 def displacy_visualization_page():
     """Displacy Entity Visualization Page."""
-    st.header("Entity Visualization with displaCy")
-    st.markdown("Visualize named entities in a single URL using displaCy.")
+    st.header("Named Entity Visualizer")
+    st.markdown("Visualize named entities within your content.")
 
     url = st.text_input("Enter a URL to visualize entities:")
     if st.button("Visualize Entities"):
