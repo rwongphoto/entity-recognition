@@ -310,6 +310,7 @@ def main():
         return
 
     # Navigation
+    st.sidebar.header("Named Entity Recognition")
     page = st.sidebar.selectbox("Switch Tool:",
                                 ("Entity Topic Gap Analysis", "Entity Visualizer"))
 
