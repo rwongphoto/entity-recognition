@@ -1,16 +1,27 @@
 import streamlit as st
-import spacy
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import spacy
+import requests
+from collections import Counter
+import numpy as np
+from typing import List, Tuple, Dict
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-from collections import Counter
-from typing import List, Tuple, Dict
-import os  # Import os module
+import io
+from spacy import displacy
+import os
+
+# Move set_page_config to the top
+st.set_page_config(
+    page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
+    page_icon=":bar_chart:",
+    layout="wide"
+)
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -223,7 +234,7 @@ def entity_analysis_page():
 
                     filtered_entities = [(entity, label) for entity, label in entities
                                          if entity.lower() not in exclude_entities_set]
-                    entity_counts_per_url[url] = count_entities(filtered_entities)
+                    entity_counts_per_url = count_entities(filtered_entities)
                     all_entities.extend(filtered_entities)
 
                     for entity, label in set(filtered_entities):
@@ -305,11 +316,14 @@ def named_entity_wordcloud_page():
     st.header("Named Entity Word Cloud")
     st.markdown("Generate a word cloud from the most frequent named entities.")
 
+    # Radio button to select the text source
     text_source = st.radio(
         "Select text source:",
         ('Enter Text', 'Enter URLs'),
         key="wordcloud_text_source"
     )
+
+    text = None  # Initialize text variable
 
     if text_source == 'Enter Text':
         text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.")
@@ -317,8 +331,11 @@ def named_entity_wordcloud_page():
     else:
         urls_input = st.text_area("Enter URLs (one per line):", key="wordcloud_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-        text = None #Set to none so it will not pull from URLs
-       
+        if not urls:
+            st.warning("Please enter at least one URL to generate the word cloud.")
+        
+        text = None  # Set to None so it won't pull from URLs
+
 
     if st.button("Generate Word Cloud", key="wordcloud_button"):
         all_text = ""
@@ -332,7 +349,7 @@ def named_entity_wordcloud_page():
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
-
+            all_text = ""
             with st.spinner("Extracting text from URLs..."):
                 for url in urls:
                     extracted_text = extract_text_from_url(url)
@@ -340,7 +357,7 @@ def named_entity_wordcloud_page():
                         all_text += extracted_text + "\n"
                     else:
                         st.warning(f"Could not extract text from {url}.")
-
+            text = all_text
 
         with st.spinner("Analyzing entities and generating word cloud..."):
             nlp_model = load_spacy_model()
@@ -348,7 +365,7 @@ def named_entity_wordcloud_page():
                 return
 
             # Identify entities
-            entities = identify_entities(all_text, nlp_model)
+            entities = identify_entities(text, nlp_model)
 
             # Extract only entity texts (not labels) for word cloud
             entity_texts = [entity[0] for entity in entities]
