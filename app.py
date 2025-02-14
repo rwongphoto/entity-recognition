@@ -297,7 +297,7 @@ def main():
         return
 
     # Navigation
-    page = st.sidebar.selectbox("Choose a Page:",
+    page = st.sidebar.selectbox("Switch Tool:",
                                 ("Entity Topic Gap Analysis", "Entity Visualizer"))
 
     # Page routing
