@@ -1,39 +1,22 @@
 import streamlit as st
+import spacy
+import networkx as nx
+import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-import spacy
-import requests
-from collections import Counter
-import numpy as np
 from typing import List, Tuple, Dict
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-import io
-from spacy import displacy
-import os
+from collections import Counter
+import os  # Import os module
 
-# Move set_page_config to the top
-st.set_page_config(
-    page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
-    page_icon=":bar_chart:",
-    layout="wide"
-)
 
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
 
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
-FONT_PATH = "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
 
-# Ensure the font is accessible
-if not os.path.exists(FONT_PATH):
-    st.warning(f"Font not found at {FONT_PATH}. WordCloud will use a default font.")
-
+# Global spacy model variable
 nlp = None
 
 
@@ -116,26 +99,6 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
             entity_counts[(entity, label)] += 1
 
     return entity_counts
-
-
-def plot_entity_counts(entity_counts, top_n=50, title_suffix="", min_urls=2):
-    """Plots the top N entity counts as a bar chart."""
-    filtered_entity_counts = Counter({k: v for k, v in entity_counts.items() if v >= min_urls})
-
-    most_common_entities = filtered_entity_counts.most_common(top_n)
-    entity_labels = [f"{entity} ({label})" for (entity, label), count in most_common_entities]
-    counts = [count for (entity, label), count in most_common_entities]
-
-    fig, ax = plt.subplots(figsize=(16, 12))
-    ax.bar(entity_labels, counts, color=plt.cm.viridis(np.linspace(0, 1, len(entity_labels))))
-    ax.set_xlabel("Entities (with Labels)", fontsize=12)
-    ax.set_ylabel("Counts (Number of URLs)", fontsize=12)
-    ax.set_title(f"Entity Topic Gap Analysis", fontsize=14)
-    ax.tick_params(axis='x', rotation=45, labelsize=10)
-    plt.tight_layout()
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-    return fig
 
 
 def create_navigation_menu(logo_url):
@@ -243,8 +206,9 @@ def entity_analysis_page():
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
 
             if url_entity_counts:
-                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
-                st.pyplot(fig)
+                # st.write(filtered_url_entity_counts)
+                # fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
+                # st.pyplot(fig)
 
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
@@ -313,41 +277,22 @@ def displacy_visualization_page():
 
 def named_entity_wordcloud_page():
     """Page to generate a word cloud from named entities."""
-    st.header("Named Entity Word Cloud")
-    st.markdown("Generate a word cloud from the most frequent named entities.")
+    st.header("Named Entity Network Graph")
+    st.markdown("Generate a network graph of named entities.")
 
-    # Radio button to select the text source
-    text_source = st.radio(
-        "Select text source:",
-        ('Enter Text', 'Enter URLs'),
-        key="wordcloud_text_source"
-    )
+    # URL Input
+    use_text = st.checkbox("Use Text Input", key="wordcloud_use_text", value=True)
+    urls_input = st.text_area("Enter URLs (one per line, Optional):", key="wordcloud_url", value="", disabled=use_text)
+    text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.", disabled=not use_text)
 
-    text = None  # Initialize text variable
-
-    if text_source == 'Enter Text':
-        text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.")
-        urls = None  # Ensure URLs is None when using text
-    else:
-        urls_input = st.text_area("Enter URLs (one per line):", key="wordcloud_url", value="")
-        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-        if not urls:
-            st.warning("Please enter at least one URL to generate the word cloud.")
-        
-        text = None  # Set to None so it won't pull from URLs
-
-
-    if st.button("Generate Word Cloud", key="wordcloud_button"):
-        all_text = ""
-        # Validation and text retrieval
-        if text_source == 'Enter Text':
-            if not text:
-                st.warning("Please enter the text to proceed.")
-                return
+    if st.button("Generate Network Graph", key="wordcloud_button"):
+        # Retrieve text from URLs, if used
+        if use_text and text:
             all_text = text
-        else:  # Using URLs
+        else:
+            urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
             if not urls:
-                st.warning("Please enter at least one URL.")
+                st.warning("Please enter either text or a URL.")
                 return
             all_text = ""
             with st.spinner("Extracting text from URLs..."):
@@ -356,35 +301,62 @@ def named_entity_wordcloud_page():
                     if extracted_text:
                         all_text += extracted_text + "\n"
                     else:
-                        st.warning(f"Could not extract text from {url}.")
-            text = all_text
+                        st.warning(f"Could not extract from {url}...")
+                        
 
-        with st.spinner("Analyzing entities and generating word cloud..."):
+        with st.spinner("Analyzing entities and generating network graph..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
+                st.error("Could not load spaCy model.  Aborting.")
                 return
 
             # Identify entities
-            entities = identify_entities(text, nlp_model)
+            entities = identify_entities(all_text, nlp_model)
 
-            # Extract only entity texts (not labels) for word cloud
+            # Create graph
+            G = nx.Graph()
+
+            # Add nodes for each entity
             entity_texts = [entity[0] for entity in entities]
-
-            # Count entities and create a word cloud
             entity_counts = Counter(entity_texts)
-            wordcloud = WordCloud(width=800, height=400, background_color='white', font_path=FONT_PATH).generate_from_frequencies(entity_counts)
+            for entity, count in entity_counts.items():
+                G.add_node(entity, size=count)
 
-            # Display the word cloud
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.imshow(wordcloud, interpolation='bilinear')
-            ax.axis("off")
-            st.pyplot(fig)
+            # Create edges based on co-occurrence within a sliding window
+            window_size = 5  # Adjust as needed
+            for i in range(len(entity_texts) - 1):
+                for j in range(i + 1, min(i + window_size, len(entity_texts))):
+                    entity1 = entity_texts[i]
+                    entity2 = entity_texts[j]
+                    if G.has_edge(entity1, entity2):
+                        G[entity1][entity2]['weight'] += 1
+                    else:
+                        G.add_edge(entity1, entity2, weight=1)
 
+            # Plot graph
+            fig, ax = plt.subplots(figsize=(12, 12))
+            pos = nx.spring_layout(G, k=0.30, iterations=20)  # positions for all nodes
+
+            # Node sizes based on entity frequency
+            node_sizes = [G.nodes[node]['size'] * 50 for node in G.nodes()]  # Scale for better visualization
+
+            # Draw nodes
+            nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='skyblue', alpha=0.8)
+
+            # Draw edges
+            nx.draw_networkx_edges(G, pos, alpha=0.5)
+
+            # Draw labels with adjusted font size
+            nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif") # font_size increased
+
+            ax.set_title("Named Entity Network Graph")
+            plt.axis("off")
+            st.pyplot(fig) # Now pass the Matplotlib figure
 
 def main():
     st.set_page_config(
-        page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
-        page_icon=":bar_chart:",
+        page_title="Named Entity Analysis | The SEO Consultant.ai",
+        page_icon="✏️",  # Use a pencil emoji here
         layout="wide"
     )
     logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
@@ -398,20 +370,21 @@ def main():
     # Navigation
     st.sidebar.header("Named Entity Recognition")
     page = st.sidebar.selectbox("Switch Tool:",
-                                ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Word Cloud"))
+                                ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Network Graph"))
 
     # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
     elif page == "Entity Visualizer":
         displacy_visualization_page()
-    elif page == "Entity Word Cloud":
+    elif page == "Entity Network Graph":
         named_entity_wordcloud_page()
 
     st.markdown("---")
-    st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
-                unsafe_allow_html=True)
-
+    st.markdown(
+        "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
