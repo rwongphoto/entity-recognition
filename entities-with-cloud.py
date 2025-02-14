@@ -187,7 +187,7 @@ def display_entity_barchart(entity_counts, top_n=50):
 def entity_analysis_page():
     """Original Entity Analysis Page with a bar chart."""
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze content from multiple URLs to identify common entities. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
+    st.markdown("Analyze content from multiple URLs to identify common entities not found on your site. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
 
     urls_input = st.text_area("Enter URLs (one per line):", "")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
