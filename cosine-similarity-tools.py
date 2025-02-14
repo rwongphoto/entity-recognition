@@ -358,7 +358,7 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 
 def top_bottom_embeddings_page():
     """Top 10 and Bottom 10 Embeddings based on Cosine Similarity."""
-    st.header("Top 10 and Bottom 10 Embeddings based on Cosine Similarity")
+    st.header("Top 10 & Bottom 10 Embeddings")
     text = st.text_area("Enter your text:", height=300, key="top_bottom_text", value="Put Your Content Here.")
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
     top_n = st.slider("Number of results:", min_value=1, max_value=20, value=5, key="top_bottom_slider")
