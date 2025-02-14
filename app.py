@@ -14,6 +14,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 import io
 
+# Move set_page_config to the top
+st.set_page_config(
+    page_title="Entity Topic Gap Analysis | The SEO Consultant.ai",
+    page_icon=":bar_chart:"
+)
 
 # Load the spaCy model
 @st.cache_resource
@@ -21,7 +26,6 @@ def load_spacy_model():
     return spacy.load("en_core_web_sm")
 
 nlp = load_spacy_model()
-
 
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium and BeautifulSoup, rendering JavaScript."""
@@ -166,10 +170,6 @@ def create_navigation_menu(logo_url):
 
 
 def main():
-    st.set_page_config(
-        page_title="Entity Topic Gap Analysis | The SEO Consultant.ai",
-        page_icon=":bar_chart:"
-    )
 
     logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
     create_navigation_menu(logo_url)
@@ -246,8 +246,6 @@ https://www.artofgregmartin.com/viewsofthepnw""")
         "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
         unsafe_allow_html=True
     )
-
-
 
 if __name__ == "__main__":
     main()
