@@ -1,16 +1,13 @@
 import streamlit as st
 import spacy
-import networkx as nx
-import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from typing import List, Tuple, Dict
 from collections import Counter
 import os  # Import os module
-from selenium.webdriver.support.ui import WebDriverWait # ADDED THESE HERE
-from selenium.webdriver.support import expected_conditions as EC # ADDED THESE HERE
-from selenium.webdriver.common.by import By # ADDED THESE HERE
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -159,6 +156,26 @@ def create_navigation_menu(logo_url):
     st.markdown(menu_html, unsafe_allow_html=True)
 
 
+def plot_entity_counts(entity_counts, top_n=50, title_suffix="", min_urls=2):
+    """Plots the top N entity counts as a bar chart."""
+    filtered_entity_counts = Counter({k: v for k, v in entity_counts.items() if v >= min_urls})
+
+    most_common_entities = filtered_entity_counts.most_common(top_n)
+    entity_labels = [f"{entity} ({label})" for (entity, label), count in most_common_entities]
+    counts = [count for (entity, label), count in most_common_entities]
+
+    fig, ax = plt.subplots(figsize=(16, 12))
+    ax.bar(entity_labels, counts, color=plt.cm.viridis(np.linspace(0, 1, len(entity_labels))))
+    ax.set_xlabel("Entities (with Labels)", fontsize=12)
+    ax.set_ylabel("Counts (Number of URLs)", fontsize=12)
+    ax.set_title(f"Entity Topic Gap Analysis", fontsize=14)
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    plt.tight_layout()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+    return fig
+
+
 def entity_analysis_page():
     """Original Entity Analysis Page."""
     st.header("Entity Topic Gap Analysis")
@@ -208,9 +225,8 @@ def entity_analysis_page():
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
 
             if url_entity_counts:
-                # st.write(filtered_url_entity_counts)
-                # fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
-                # st.pyplot(fig)
+                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
+                st.pyplot(fig)
 
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
@@ -277,23 +293,87 @@ def displacy_visualization_page():
             html = displacy.render(doc, style="ent", page=True)
             st.components.v1.html(html, height=600, scrolling=True) # Render HTML
 
-def named_entity_wordcloud_page():
-    """Page to generate a word cloud from named entities."""
-    st.header("Named Entity Network Graph")
-    st.markdown("Generate a network graph of named entities.")
+def display_entity_barchart(entity_counts, top_n=20):
+    """Displays a bar chart of the top N most frequent entities."""
+    most_common_entities = entity_counts.most_common(top_n)
+    entity_names = [entity for entity, count in most_common_entities]
+    counts = [count for entity, count in most_common_entities]
 
-    # URL Input
-    use_text = st.checkbox("Use Text Input", key="wordcloud_use_text", value=True)
-    urls_input = st.text_area("Enter URLs (one per line, Optional):", key="wordcloud_url", value="", disabled=use_text)
-    text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.", disabled=not use_text)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.bar(entity_names, counts)
+    ax.set_xlabel("Entities")
+    ax.set_ylabel("Frequency")
+    ax.set_title("Top {} Named Entities".format(top_n))
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()  # Adjust layout to prevent labels from overlapping
+    st.pyplot(fig)
 
-    if st.button("Generate Network Graph", key="wordcloud_button"):
-        st.warning("This feature will crash, please select a different tool. It is still under maintenance")
+
+def named_entity_barchart_page():
+    """Page to generate a bar chart of named entities."""
+    st.header("Named Entity Frequency Bar Chart")
+    st.markdown("Generate a bar chart from the most frequent named entities.")
+
+    text_source = st.radio(
+        "Select text source:",
+        ('Enter Text', 'Enter URLs'),
+        key="barchart_text_source"
+    )
+
+    text = None
+    urls = None
+
+    if text_source == 'Enter Text':
+        text = st.text_area("Enter Text:", key="barchart_text", height=300, value="Paste your text here.")
+    else:  # Using URLs:
+        urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
+        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
+    if st.button("Generate Bar Chart", key="barchart_button"):
+        all_text = ""
+        # Validation and text retrieval
+        if text_source == 'Enter Text':
+            if not text:
+                st.warning("Please enter the text to proceed.")
+                return
+            all_text = text
+        else:  # Using URLs
+            if not urls:
+                st.warning("Please enter at least one URL.")
+                return
+            
+            with st.spinner("Extracting text from URLs..."):
+                for url in urls:
+                    extracted_text = extract_text_from_url(url)
+                    if extracted_text:
+                        all_text += extracted_text + "\n"
+                    else:
+                        st.warning(f"Could not extract from {url}...")
+
+        with st.spinner("Analyzing entities and generating bar chart..."):
+            nlp_model = load_spacy_model()
+            if not nlp_model:
+                st.error("Could not load spaCy model.  Aborting.")
+                return
+
+            # Identify entities
+            entities = identify_entities(all_text, nlp_model)
+
+            # Extract only entity texts for bar chart
+            entity_texts = [entity[0] for entity in entities]
+
+            # Count entities
+            entity_counts = Counter(entity_texts)
+            
+            if len(entity_counts) > 0:
+               display_entity_barchart(entity_counts) #Now display the data with this
+            else:
+                st.warning("No relevant entities found in your links. Please select a different tool or update URL input") #If no entities were found display the warning
 
 def main():
     st.set_page_config(
         page_title="Named Entity Analysis | The SEO Consultant.ai",
-        page_icon=":pencil:",  # Use a pencil emoji here
+        page_icon=":bar_chart:",
         layout="wide"
     )
     logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
@@ -307,15 +387,15 @@ def main():
     # Navigation
     st.sidebar.header("Named Entity Recognition")
     page = st.sidebar.selectbox("Switch Tool:",
-                                ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Network Graph"))
+                                ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Frequency Bar Chart"))
 
     # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
     elif page == "Entity Visualizer":
         displacy_visualization_page()
-    elif page == "Entity Network Graph":
-        st.error("This feature is no longer available. Please select a different tool. This function will crash") # Notifies the user that the tool no longer works.
+    elif page == "Entity Frequency Bar Chart":
+        named_entity_barchart_page()
 
     st.markdown("---")
     st.markdown(
