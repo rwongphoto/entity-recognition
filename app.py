@@ -261,25 +261,38 @@ def displacy_visualization_page():
     st.header("Entity Visualizer")
     st.markdown("Visualize named entities within your content.")
 
-    url = st.text_input("Enter a URL to visualize entities:")
-    if st.button("Visualize Entities"):
-        if not url:
-            st.warning("Please enter a URL.")
-            return
+    # URL Input
+    url = st.text_input("Enter a URL (Optional):", key="displacy_url", value="")
+    use_url = st.checkbox("Use URL for Text Input", key="displacy_use_url")
 
-        with st.spinner("Extracting text and visualizing entities..."):
+    # Text Area - Disable if URL is used
+    text = st.text_area("Enter Text:", key="displacy_text", height=300, value="Paste your text here.", disabled=use_url)
+
+    if st.button("Visualize Entities", key="displacy_button"):
+        # Check if using URL or Text
+        if use_url:
+            if url:
+                with st.spinner(f"Extracting text from {url}..."):
+                    text = extract_text_from_url(url)
+                    if not text:
+                        st.error(f"Could not extract text from {url}. Please check the URL and make sure it is reachable.")
+                        return  # Stop execution
+            else:
+                st.warning("Please enter a URL to extract the text or uncheck `Use URL for Text Input` to paste text directly.")
+                return  # Stop execution
+
+        elif not text:
+            st.warning("Please enter either text or a URL.")
+            return  # Stop execution
+
+        with st.spinner("Visualizing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
 
-            text = extract_text_from_url(url)
-            if text:
-                doc = nlp_model(text)
-                html = displacy.render(doc, style="ent", page=True)
-                st.components.v1.html(html, height=600, scrolling=True) # Render HTML
-
-            else:
-                st.error("Could not extract text from the URL.")
+            doc = nlp_model(text)
+            html = displacy.render(doc, style="ent", page=True)
+            st.components.v1.html(html, height=600, scrolling=True) # Render HTML
 
 
 def main():
@@ -293,7 +306,7 @@ def main():
 
     nlp = load_spacy_model()
     if nlp is None:
-        st.error("Failed to load spaCy model.  Check the logs for details.")
+        st.error("Failed to load spaCy model. Check the logs for details.")
         return
 
     # Navigation
