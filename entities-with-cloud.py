@@ -187,7 +187,7 @@ def display_entity_barchart(entity_counts, top_n=20):
 def entity_analysis_page():
     """Original Entity Analysis Page with a bar chart."""
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze content from multiple URLs to identify common entities.")
+    st.markdown("Analyze content from multiple URLs to identify common entities. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
 
     urls_input = st.text_area("Enter URLs (one per line):", "")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
@@ -306,8 +306,8 @@ def displacy_visualization_page():
 
 def named_entity_barchart_page():
     """Page to generate a bar chart of named entities and list them by URL."""
-    st.header("Named Entity Frequency Bar Chart")
-    st.markdown("Generate a bar chart from the most frequent named entities and list them by URL.")
+    st.header("Entity Frequency Bar Chart")
+    st.markdown("Generate a bar chart from the most frequent named entities across multiple sites.")
 
     # Select between Text and URL
     text_source = st.radio(
