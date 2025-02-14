@@ -236,6 +236,33 @@ https://www.artofgregmartin.com/viewsofthepnw""")
 
                 fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)  # Generate and display the overall bar chart - set top_n to 50
                 st.pyplot(fig)
+
+                # Output Exclude URL Entities to Streamlit
+                st.markdown("### Entities from Exclude URL")
+                if exclude_text:
+                    exclude_doc = nlp(exclude_text)
+                    exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
+                    exclude_entity_counts = count_entities(exclude_entities_list)
+                    for (entity, label), count in exclude_entity_counts.most_common(50):
+                        st.write(f"- {entity} ({label}): {count}")
+                else:
+                    st.write("No entities found in the exclude URL.")
+
+                # Output Entities Per URL to Streamlit
+                st.markdown("### Entities Per URL")
+                for url, entity_counts in entity_counts_per_url.items():
+                    st.markdown(f"#### URL: {url}")
+                    if entity_counts:
+                        for (entity, label), count in entity_counts.most_common(50):
+                            st.write(f"- {entity} ({label}): {count}")
+                    else:
+                        st.write("No relevant entities found.")
+
+                # Output Overall Entity Counts to Streamlit
+                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
+                for (entity, label), count in filtered_url_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
+
             else:
                 st.warning("No relevant entities found.")
 
