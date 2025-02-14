@@ -279,7 +279,7 @@ def displacy_visualization_page():
 
 def main():
     st.set_page_config(
-        page_title="Entity & Topic Analysis | The SEO Consultant.ai",
+        page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
         page_icon=":bar_chart:",
         layout="wide"
     )
