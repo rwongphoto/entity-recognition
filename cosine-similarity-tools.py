@@ -244,13 +244,28 @@ def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
     st.markdown("Calculates the cosine similarity score for each sentence in your input.")
 
-    # Input text area
-    text = st.text_area("Enter Text:", key="every_embed_text", value="Put Your Content Here.")
+    # URL Input
+    url = st.text_input("Enter URL (Optional):", key="every_embed_url", value="")
+    use_url = st.checkbox("Use URL for Text Input", key="every_embed_use_url")
+
+    # Text Area - Disable if URL is used
+    text = st.text_area("Enter Text:", key="every_embed_text", value="Put Your Content Here.", disabled=use_url)
 
     # Search term input
     search_term = st.text_input("Enter Search Term:", key="every_embed_search", value="Enter Your SEO Keyword Here")
 
     if st.button("Calculate Similarity", key="every_embed_button"):
+        # Prioritize URL if it's used
+        if use_url and url:
+            with st.spinner(f"Extracting and analyzing text from {url}..."):
+                text = extract_text_from_url(url)
+                if not text:
+                    st.error(f"Could not extract text from {url}. Please check the URL.")
+                    return  # Stop execution
+        elif not text:
+            st.warning("Please enter either text or a URL.")
+            return  # Stop execution
+
         tokenizer, model = initialize_bert_model()
         with st.spinner("Calculating Similarities..."):
             # Calculate similarities
@@ -310,17 +325,32 @@ def cosine_similarity_content_heatmap_page():
     st.header("Cosine Similarity Content Heatmap")
     st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
 
-    input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="Paste your text here.")
+     # URL Input
+    url = st.text_input("Enter URL (Optional):", key="heatmap_url", value="")
+    use_url = st.checkbox("Use URL for Text Input", key="heatmap_use_url")
+
+    # Input text area, disable if URL is used
+    input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="Paste your text here.", disabled=use_url)
+
     search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
 
     if st.button("Highlight", key="heatmap_button"):
-        if not input_text or not search_term:
-            st.error("Please enter both text and a search term.")
-        else:
-            with st.spinner("Generating highlighted text..."):
-                highlighted_text = highlight_text(input_text, search_term)
+         # Prioritize URL if it's used
+        if use_url and url:
+            with st.spinner(f"Extracting and analyzing text from {url}..."):
+                text = extract_text_from_url(url)
+                if not text:
+                    st.error(f"Could not extract text from {url}. Please check the URL.")
+                    return  # Stop execution
+        elif not input_text:
+            st.error("Please enter either text or a URL.")
+            return  # Stop execution
 
-            st.markdown(highlighted_text, unsafe_allow_html=True)  # Display highlighted text
+        # Now `input_text` (or extracted `text`) is valid
+        with st.spinner("Generating highlighted text..."):
+            highlighted_text = highlight_text(input_text, search_term)
+
+        st.markdown(highlighted_text, unsafe_allow_html=True)  # Display highlighted text
 
 # ------------------------------------
 # App 6: Top 10 and Bottom 10 Embeddings based on Cosine Similarity
@@ -359,11 +389,29 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 def top_bottom_embeddings_page():
     """Top 10 and Bottom 10 Embeddings based on Cosine Similarity."""
     st.header("Top 10 & Bottom 10 Embeddings")
-    text = st.text_area("Enter your text:", height=300, key="top_bottom_text", value="Put Your Content Here.")
+
+     # URL Input
+    url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
+    use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
+
+    # Text Area - Disable if URL is used
+    text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="Put Your Content Here.", disabled=use_url)
+
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
     top_n = st.slider("Number of results:", min_value=1, max_value=20, value=5, key="top_bottom_slider")
 
     if st.button("Search", key="top_bottom_button"):
+         # Prioritize URL if it's used
+        if use_url and url:
+            with st.spinner(f"Extracting and analyzing text from {url}..."):
+                text = extract_text_from_url(url)
+                if not text:
+                    st.error(f"Could not extract text from {url}. Please check the URL.")
+                    return  # Stop execution
+        elif not text:
+            st.error("Please enter either text or a URL.")
+            return  # Stop execution
+
         tokenizer, model = initialize_bert_model()
         with st.spinner("Searching..."):
             top_sections, bottom_sections = rank_sections_by_similarity_bert(text, search_term, top_n)
