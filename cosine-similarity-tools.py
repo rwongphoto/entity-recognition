@@ -378,7 +378,7 @@ def top_bottom_embeddings_page():
 
 def main():
     st.set_page_config(
-        page_title="SEO Consultant.ai - Content Analysis Tools",
+        page_title="Cosine Similarity SEO Tools | The SEO Consultant.ai",
         page_icon=":mag:",
         layout="wide"
     )
