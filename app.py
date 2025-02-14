@@ -40,7 +40,10 @@ def load_spacy_model():
 
 
 def extract_text_from_url(url):
-    """Extracts text from a URL using Selenium, handling JavaScript rendering."""
+    """Extracts text from a URL using Selenium, handling JavaScript rendering,
+    excluding header and footer content.  Returns all text content from the
+    <body> except for the header and footer.
+    """
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -54,22 +57,24 @@ def extract_text_from_url(url):
         driver.get(url)
 
         wait = WebDriverWait(driver, 10)
-        wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "p, h1, h2, h3, li"))
-        )
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, "html.parser")
 
-        for tag in soup.find_all(['header', 'footer', 'nav']):
+        # Find the body
+        body = soup.find('body')
+        if not body:
+            return None
+
+        # Remove header and footer tags
+        for tag in body.find_all(['header', 'footer']):
             tag.decompose()
 
-        all_relevant_tags = soup.find_all(
-            ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p'])
-        text = ""
-        for tag in all_relevant_tags:
-            text += tag.get_text(separator=" ", strip=True) + "\n"
+        # Extract all text from the remaining elements in the body
+        text = body.get_text(separator='\n', strip=True)
+
         return text
 
     except Exception as e:
@@ -253,7 +258,7 @@ def entity_analysis_page():
 
 def displacy_visualization_page():
     """Displacy Entity Visualization Page."""
-    st.header("Named Entity Visualizer")
+    st.header("Entity Visualizer")
     st.markdown("Visualize named entities within your content.")
 
     url = st.text_input("Enter a URL to visualize entities:")
@@ -293,12 +298,12 @@ def main():
 
     # Navigation
     page = st.sidebar.selectbox("Choose a Page:",
-                                ("Entity Topic Gap Analysis", "Entity Visualization"))
+                                ("Entity Topic Gap Analysis", "Entity Visualizer"))
 
     # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
-    elif page == "Entity Visualization":
+    elif page == "Entity Visualizer":
         displacy_visualization_page()
 
     st.markdown("---")
