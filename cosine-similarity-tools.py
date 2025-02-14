@@ -109,7 +109,7 @@ def create_navigation_menu(logo_url):
     menu_options = {
         "Home": "https://theseoconsultant.ai/",
         "About": "https://theseoconsultant.ai/about/",
-        "Services": "https://theseoconsultant.ai/seo-consulting/",
+        "Services": "https://theseoconsultant.ai/seo-services/",
         "Blog": "https://theseoconsultant.ai/blog/",
         "Contact": "https://theseoconsultant.ai/contact/"
     }
