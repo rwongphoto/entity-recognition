@@ -256,12 +256,16 @@ def cosine_similarity_every_embedding_page():
 
     if st.button("Calculate Similarity", key="every_embed_button"):
         # Prioritize URL if it's used
-        if use_url and url:
-            with st.spinner(f"Extracting and analyzing text from {url}..."):
-                text = extract_text_from_url(url)
-                if not text:
-                    st.error(f"Could not extract text from {url}. Please check the URL.")
-                    return  # Stop execution
+        if use_url:
+            if url:
+                with st.spinner(f"Extracting and analyzing text from {url}..."):
+                    text = extract_text_from_url(url)
+                    if not text:
+                        st.error(f"Could not extract text from {url}. Please check the URL.")
+                        return  # Stop execution
+            else:
+                st.warning("Please enter a URL to extract the text.")
+                return
         elif not text:
             st.warning("Please enter either text or a URL.")
             return  # Stop execution
@@ -325,7 +329,7 @@ def cosine_similarity_content_heatmap_page():
     st.header("Cosine Similarity Content Heatmap")
     st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
 
-     # URL Input
+    # URL Input
     url = st.text_input("Enter URL (Optional):", key="heatmap_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="heatmap_use_url")
 
@@ -336,12 +340,17 @@ def cosine_similarity_content_heatmap_page():
 
     if st.button("Highlight", key="heatmap_button"):
          # Prioritize URL if it's used
-        if use_url and url:
-            with st.spinner(f"Extracting and analyzing text from {url}..."):
-                text = extract_text_from_url(url)
-                if not text:
-                    st.error(f"Could not extract text from {url}. Please check the URL.")
-                    return  # Stop execution
+        if use_url:
+            if url:
+                with st.spinner(f"Extracting and analyzing text from {url}..."):
+                    text = extract_text_from_url(url)
+                    if not text:
+                        st.error(f"Could not extract text from {url}. Please check the URL.")
+                        return  # Stop execution
+                input_text = text  # Set the input_text to extracted text
+            else:
+                st.warning("Please enter a URL to extract the text.")
+                return
         elif not input_text:
             st.error("Please enter either text or a URL.")
             return  # Stop execution
@@ -398,16 +407,21 @@ def top_bottom_embeddings_page():
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="Put Your Content Here.", disabled=use_url)
 
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
-    top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
+    top_n = st.slider("Number of results:", min_value=1, max_value=20, value=5, key="top_bottom_slider")
 
     if st.button("Search", key="top_bottom_button"):
          # Prioritize URL if it's used
-        if use_url and url:
-            with st.spinner(f"Extracting and analyzing text from {url}..."):
-                text = extract_text_from_url(url)
-                if not text:
-                    st.error(f"Could not extract text from {url}. Please check the URL.")
-                    return  # Stop execution
+        if use_url:
+            if url:
+                with st.spinner(f"Extracting and analyzing text from {url}..."):
+                    text = extract_text_from_url(url)
+                    if not text:
+                        st.error(f"Could not extract text from {url}. Please check the URL.")
+                        return  # Stop execution
+                input_text = text #Set the input_text to extracted text
+            else:
+                st.error("Please enter either text or a URL.")
+                return  # Stop execution
         elif not text:
             st.error("Please enter either text or a URL.")
             return  # Stop execution
