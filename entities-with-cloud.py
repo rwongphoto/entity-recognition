@@ -8,7 +8,9 @@ from selenium.webdriver.chrome.options import Options
 from typing import List, Tuple, Dict
 from collections import Counter
 import os  # Import os module
-
+from selenium.webdriver.support.ui import WebDriverWait # ADDED THESE HERE
+from selenium.webdriver.support import expected_conditions as EC # ADDED THESE HERE
+from selenium.webdriver.common.by import By # ADDED THESE HERE
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -286,77 +288,12 @@ def named_entity_wordcloud_page():
     text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.", disabled=not use_text)
 
     if st.button("Generate Network Graph", key="wordcloud_button"):
-        # Retrieve text from URLs, if used
-        if use_text and text:
-            all_text = text
-        else:
-            urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-            if not urls:
-                st.warning("Please enter either text or a URL.")
-                return
-            all_text = ""
-            with st.spinner("Extracting text from URLs..."):
-                for url in urls:
-                    extracted_text = extract_text_from_url(url)
-                    if extracted_text:
-                        all_text += extracted_text + "\n"
-                    else:
-                        st.warning(f"Could not extract from {url}...")
-                        
-
-        with st.spinner("Analyzing entities and generating network graph..."):
-            nlp_model = load_spacy_model()
-            if not nlp_model:
-                st.error("Could not load spaCy model.  Aborting.")
-                return
-
-            # Identify entities
-            entities = identify_entities(all_text, nlp_model)
-
-            # Create graph
-            G = nx.Graph()
-
-            # Add nodes for each entity
-            entity_texts = [entity[0] for entity in entities]
-            entity_counts = Counter(entity_texts)
-            for entity, count in entity_counts.items():
-                G.add_node(entity, size=count)
-
-            # Create edges based on co-occurrence within a sliding window
-            window_size = 5  # Adjust as needed
-            for i in range(len(entity_texts) - 1):
-                for j in range(i + 1, min(i + window_size, len(entity_texts))):
-                    entity1 = entity_texts[i]
-                    entity2 = entity_texts[j]
-                    if G.has_edge(entity1, entity2):
-                        G[entity1][entity2]['weight'] += 1
-                    else:
-                        G.add_edge(entity1, entity2, weight=1)
-
-            # Plot graph
-            fig, ax = plt.subplots(figsize=(12, 12))
-            pos = nx.spring_layout(G, k=0.30, iterations=20)  # positions for all nodes
-
-            # Node sizes based on entity frequency
-            node_sizes = [G.nodes[node]['size'] * 50 for node in G.nodes()]  # Scale for better visualization
-
-            # Draw nodes
-            nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='skyblue', alpha=0.8)
-
-            # Draw edges
-            nx.draw_networkx_edges(G, pos, alpha=0.5)
-
-            # Draw labels with adjusted font size
-            nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif") # font_size increased
-
-            ax.set_title("Named Entity Network Graph")
-            plt.axis("off")
-            st.pyplot(fig) # Now pass the Matplotlib figure
+        st.warning("This feature will crash, please select a different tool. It is still under maintenance")
 
 def main():
     st.set_page_config(
         page_title="Named Entity Analysis | The SEO Consultant.ai",
-        page_icon="✏️",  # Use a pencil emoji here
+        page_icon=":pencil:",  # Use a pencil emoji here
         layout="wide"
     )
     logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
@@ -378,7 +315,7 @@ def main():
     elif page == "Entity Visualizer":
         displacy_visualization_page()
     elif page == "Entity Network Graph":
-        named_entity_wordcloud_page()
+        st.error("This feature is no longer available. Please select a different tool. This function will crash") # Notifies the user that the tool no longer works.
 
     st.markdown("---")
     st.markdown(
