@@ -87,6 +87,6 @@ tzdata==2025.1
 urllib3==2.3.0
 webencodings==0.5.1
 websocket-client==1.8.0
-wordcloud==1.8.1
+wordcloud>=1.9.2
 wsproto==1.2.0
 zipp==3.21.0
