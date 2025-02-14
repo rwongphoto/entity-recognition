@@ -179,17 +179,11 @@ def main():
 
     # URL Input
     urls_input = st.text_area("Enter URLs (one per line):",
-                              """https://www.zachnicholz.com/landscape-prints
-https://aimeedanielson.com/
-https://www.lijahhanley.com/collections/pacific-northwest-fine-art-landscape-photography
-https://www.lucascometto.com/pnw-photography-guide
-https://www.peterjamesphotogallery.com/large-pacific-northwest-photography
-https://www.jessleephotos.com/gallery/pacific-northwest-photos/?srsltid=AfmBOorW3eqp8GyrNKpp9dK7maiwft1hOmeaMOJf1mJUiCQmfSj4zZC5
-https://www.artofgregmartin.com/viewsofthepnw""")
+                              """""")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
     exclude_url = st.text_input("Enter URL to exclude:",
-                                 "https://www.rwongphoto.com/gallery/pacific-northwest-pictures/")
+                                 "")
 
     if st.button("Analyze"):
         if not urls:
