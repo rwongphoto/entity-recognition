@@ -13,6 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC #Added the impo
 from selenium.webdriver.common.by import By #Added the import to use webDriverWait
 import matplotlib.pyplot as plt # matplotlib needed for barcharts
 import pandas as pd # pandas needed for tables
+from spacy import displacy  # Import displacy
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -156,16 +157,30 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
 
 def display_entity_barchart(entity_counts, top_n=20):
     """Displays a bar chart of the top N most frequent entities."""
-    most_common_entities = entity_counts.most_common(top_n)
-    entity_names = [entity for entity, count in most_common_entities]
-    counts = [count for entity, count in most_common_entities]
+    # Convert entity counts to a pandas DataFrame for easier plotting
+    entity_data = pd.DataFrame.from_dict(entity_counts, orient='index', columns=['count'])
+    entity_data.index.names = ['entity']
+    entity_data = entity_data.sort_values('count', ascending=False).head(top_n)
+    entity_data = entity_data.reset_index()  # Make 'entity' a regular column
 
+    # Separate entities and labels for plotting
+    entity_names = [e[0] for e in entity_data['entity']]
+    labels = [e[1] for e in entity_data['entity']]
+    counts = entity_data['count']
+
+    # Create the bar chart
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(entity_names, counts)
+    bars = ax.bar(entity_names, counts)
     ax.set_xlabel("Entities")
     ax.set_ylabel("Frequency")
-    ax.set_title("Top {} Named Entities".format(top_n))
+    ax.set_title(f"Top {top_n} Named Entities")
     plt.xticks(rotation=45, ha="right")
+
+    # Annotate bars with counts
+    for bar, count in zip(bars, counts):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval, int(count), ha='center', va='bottom')
+
     plt.tight_layout()  # Adjust layout to prevent labels from overlapping
     st.pyplot(fig)
 
@@ -218,8 +233,8 @@ def entity_analysis_page():
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
 
             if url_entity_counts:
-                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
-                st.pyplot(fig)
+                #fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
+                #st.pyplot(fig)
 
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
@@ -311,7 +326,7 @@ def named_entity_barchart_page():
 
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
-        entity_texts_by_url: Dict[str, List[str]] = {} #This is where entities extracted from the URLs will show up for each URL
+        entity_texts_by_url: Dict[str, str] = {} #This is where entities extracted from the URLs will show up for each URL
         entity_counts_per_url: Dict[str, Counter] = {}# counts will now show as Counter
 
 
@@ -332,8 +347,8 @@ def named_entity_barchart_page():
                     extracted_text = extract_text_from_url(url)  # Extract and store text extracted from URL
                     if extracted_text:
                         all_text += extracted_text + "\n" #Appends the extracted text
-                        #all_entities.append((url, extracted_text))
-                
+                        entity_texts_by_url[url] = extracted_text
+
 
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
@@ -349,11 +364,9 @@ def named_entity_barchart_page():
             # Identify entities for the combined text
             entities = identify_entities(all_text, nlp_model) #Identify on combined.
 
-            # Extract only entity texts for bar chart
-            entity_texts = [entity[0] for entity in entities]
+            # Count the entities
+            entity_counts = Counter((entity[0], entity[1]) for entity in entities)
 
-            #Count the entities
-            entity_counts = Counter(entity_texts)
 
             # Display
             if len(entity_counts) > 0:
@@ -361,13 +374,17 @@ def named_entity_barchart_page():
 
                 # Now  display a table with URLs and text
                 st.subheader("List of Entities from each URLs:")
+
                 for url in urls: #Loop for every URL that was inputted.
-                   entity_texts_by_url[url] = extract_text_from_url(url)
-                   text = entity_texts_by_url[url]
-                   if text:
-                    st.write(f"Text from {url}:" )#Print for the URL
-                    for entity, label in set(entities):#Loop per URL
-                        st.write(f"- {entity} ({label}): {count}")
+                    text = entity_texts_by_url.get(url)
+                    if text:
+                        st.write(f"Text from {url}:" )#Print for the URL
+                        url_entities = identify_entities(text, nlp_model)
+                        for entity, label in url_entities:
+                            st.write(f"- {entity} ({label})")
+                    else:
+                        st.write(f"No Text for the {url}")
+
 
         
 
