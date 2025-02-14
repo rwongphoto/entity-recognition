@@ -307,6 +307,7 @@ def highlight_text(text, search_term):
     return highlighted_text
 
 def cosine_similarity_content_heatmap_page():
+    st.header("Cosine Similarity Content Heatmap")
     st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
 
     input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="Paste your text here.")
