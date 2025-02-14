@@ -209,7 +209,7 @@ def entity_analysis_page():
 
                     filtered_entities = [(entity, label) for entity, label in entities
                                          if entity.lower() not in exclude_entities_set]
-                    entity_counts_per_url = count_entities(filtered_entities)
+                    entity_counts_per_url[url] = count_entities(filtered_entities)
                     all_entities.extend(filtered_entities)
 
                     for entity, label in set(filtered_entities):
@@ -218,9 +218,8 @@ def entity_analysis_page():
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
 
             if url_entity_counts:
-                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
-                for (entity, label), count in filtered_url_entity_counts.most_common(50):
-                    st.write(f"- {entity} ({label}): {count}")
+                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
+                st.pyplot(fig)
 
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
@@ -233,16 +232,17 @@ def entity_analysis_page():
                     st.write("No entities found in the exclude URL.")
 
                 st.markdown("### Entities Per URL")
-                for url, entity_counts in entity_counts_per_url.items():
+                for url, entity_counts_local in entity_counts_per_url.items():# changed name
                     st.markdown(f"#### URL: {url}")
-                    if entity_counts:
-                        for (entity, label), count in entity_counts.most_common(50):
+                    if entity_counts_local:
+                        for (entity, label), count in entity_counts_local.most_common(50):
                             st.write(f"- {entity} ({label}): {count}")
                     else:
                         st.write("No relevant entities found.")
 
-                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
-                st.pyplot(fig)
+                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
+                for (entity, label), count in filtered_url_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
 
             else:
                 st.warning("No relevant entities found.")
@@ -286,7 +286,6 @@ def displacy_visualization_page():
             html = displacy.render(doc, style="ent", page=True)
             st.components.v1.html(html, height=600, scrolling=True) # Render HTML
 
-
 def named_entity_barchart_page():
     """Page to generate a bar chart of named entities and list them by URL."""
     st.header("Named Entity Frequency Bar Chart")
@@ -304,102 +303,80 @@ def named_entity_barchart_page():
 
     if text_source == 'Enter Text':
         text = st.text_area("Enter Text:", key="barchart_text", height=300, value="Paste your text here.")
+        #all_entities = identify_entities(text)
+
     else:  # Using URLs:
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
-        entity_texts_by_url = {}  # To store entities for each URL
+        entity_texts_by_url: Dict[str, List[str]] = {} #This is where entities extracted from the URLs will show up for each URL
+        entity_counts_per_url: Dict[str, Counter] = {}# counts will now show as Counter
+
+
         # Validation and text retrieval
         if text_source == 'Enter Text':
             if not text:
                 st.warning("Please enter the text to proceed.")
                 return
             all_text = text
-           # entity_texts_by_url["Input Text"] = text #No need to set URL in code block
+
         else:  # Using URLs
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
+            all_text = ""  #reset all_text and have all URLs use it as the content
+            with st.spinner("Extracting text from URLs..."):
+                for url in urls:
+                    extracted_text = extract_text_from_url(url)  # Extract and store text extracted from URL
+                    if extracted_text:
+                        all_text += extracted_text + "\n" #Appends the extracted text
+                        #all_entities.append((url, extracted_text))
+                
 
-            for url in urls:
-                extracted_text = extract_text_from_url(url)
-                if not extracted_text:
-                    st.warning(f"Couldn't grab the text from {url}...")
-                    return
+                    else:
+                        st.warning(f"Couldn't grab the text from {url}...")
+                        return #Break, instead of doing partially loaded data.
 
-               
-                entity_texts_by_url[url] = extracted_text #stores URL, extracted texts for that url and prints to screen when generated
 
         with st.spinner("Analyzing entities and generating bar chart..."):
-            nlp_model = load_spacy_model() #Load the Spacy model
-
+            nlp_model = load_spacy_model()
             if not nlp_model:
-                st.error("Failed to load spaCy model. Aborting.")
+                st.error("Could not load spaCy model. Aborting.")
                 return
 
-            all_entities = []
-            entity_texts_list= [] #Create a list that will hold all texts
-            if text_source == 'Enter Text':
-                entities = identify_entities(all_text, nlp_model)
-                entity_texts = [entity[0] for entity in entities]
+            # Identify entities for the combined text
+            entities = identify_entities(all_text, nlp_model) #Identify on combined.
 
-                # Update entity_texts_by_url with just what the user put in the text, and count for overall graph
-                entity_texts_by_url["Input Text"] = entity_texts
-                entity_counts= Counter([item for item in entity_texts])
-                # print(entity_texts_by_url["Input Text"])
+            # Extract only entity texts for bar chart
+            entity_texts = [entity[0] for entity in entities]
 
-                fig, ax = plt.subplots(figsize=(10, 6))  # Create a figure and an axes.
+            #Count the entities
+            entity_counts = Counter(entity_texts)
 
-                ax.bar(entity_counts.keys(), entity_counts.values())
-                ax.set_xlabel("Entities")
-                ax.set_ylabel("Frequency")
-                ax.set_title("Frequency of Entities (from Inputted Text) ")
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                st.pyplot(fig)
+            # Display
+            if len(entity_counts) > 0:
+                display_entity_barchart(entity_counts)  # Now display the data with this
 
-            else: #If source are URLs
-                
-                entity_counts_per_url: Dict[str, Counter] = {}  # Per-URL entity counts
-                #All entities for URL
-                for url in urls:
-                    text = extract_text_from_url(url)
-                    entities = identify_entities(text, nlp_model)
-                    entity_texts_temp = [entity[0] for entity in entities]
-                    entity_counts_per_url[url] = Counter(entity_texts_temp)
-                    entity_texts_list.extend(entity_texts_temp)
+                # Now  display a table with URLs and text
+                st.subheader("List of Entities from each URLs:")
+                for url in urls: #Loop for every URL that was inputted.
+                   entity_texts_by_url[url] = extract_text_from_url(url)
+                   text = entity_texts_by_url[url]
+                   if text:
+                    st.write(f"Text from {url}:" )#Print for the URL
+                    for entity, label in set(entities):#Loop per URL
+                        st.write(f"- {entity} ({label}): {count}")
 
-                #Combined totals:
-                entity_counts = Counter(entity_texts_list)
-                #Now create the graph and store the data:
+        
 
-                 # Plot the graph - combined
-                fig, ax = plt.subplots(figsize=(10, 6))
-                entity_labels = list(entity_counts.keys())
-                entity_values = list(entity_counts.values())
-                ax.bar(entity_labels, entity_values)
-                ax.set_xlabel("Entities")
-                ax.set_ylabel("Frequency")
-                ax.set_title("Frequency of Entities (from Multiple URLs)")
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                st.pyplot(fig)
-
-                # Display entities with counts for each URL
-                st.subheader("Entities per URL")
-                for url, counts in entity_counts_per_url.items(): #Loop
-                  if not counts: #If there wasn't a relevant entity to be found, notificate
-                    st.write(f"No entities to load")
-                    return
-                  st.write(f"The entities for {url}:") #Print URL header
-                  for entity, count in counts.most_common(): #Get 50 most common
-                    st.write(f"  - {entity}: {count}") #Print to screen
+            else:
+                st.warning("No relevant entities found. Please check your text or URL(s).")
 
 def main():
     st.set_page_config(
-        page_title="Named Entity Analysis | The SEO Consultant.ai",
+        page_title="Named Entity Recognition | The SEO Consultant.ai",
         page_icon=":pencil:",
         layout="wide"
     )
