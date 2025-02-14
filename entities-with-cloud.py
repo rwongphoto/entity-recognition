@@ -389,7 +389,7 @@ def named_entity_barchart_page():
 def main():
     st.set_page_config(
         page_title="Named Entity Recognition | The SEO Consultant.ai",
-        page_icon=":label:",
+        page_icon=":globe_with_meridians:",
         layout="wide"
     )
 
