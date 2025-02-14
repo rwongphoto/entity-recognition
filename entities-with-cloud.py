@@ -1,31 +1,30 @@
 import streamlit as st
-import torch
-import re
-from transformers import BertTokenizer, BertModel
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-import matplotlib.pyplot as plt
-import pandas as pd
 import spacy
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
 from collections import Counter
 from typing import List, Tuple, Dict
-
-from bs4 import BeautifulSoup #Deprecated and might cause compatibility issues
-from selenium import webdriver #Deprecated and might cause compatibility issues
-from selenium.webdriver.chrome.options import Options #Deprecated and might cause compatibility issues
-from selenium.webdriver.support.ui import WebDriverWait #Deprecated and might cause compatibility issues
-from selenium.webdriver.support import expected_conditions as EC #Deprecated and might cause compatibility issues
-from selenium.webdriver.common.by import By #Deprecated and might cause compatibility issues
+import os  # Import os module
 
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
 
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
+FONT_PATH = "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
 
-# Global spacy model variable
+# Ensure the font is accessible
+if not os.path.exists(FONT_PATH):
+    st.warning(f"Font not found at {FONT_PATH}. WordCloud will use a default font.")
+
 nlp = None
+
 
 @st.cache_resource
 def load_spacy_model():
@@ -45,13 +44,6 @@ def load_spacy_model():
             return None  # or raise the exception
     return nlp
 
-@st.cache_resource
-def initialize_bert_model():
-    """Initializes the BERT tokenizer and model."""
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    model = BertModel.from_pretrained('bert-base-uncased')
-    model.eval()
-    return tokenizer, model
 
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
@@ -96,12 +88,44 @@ def extract_text_from_url(url):
         return None
 
 
-def get_embedding(text, model, tokenizer):
-    """Generates a BERT embedding for the given text."""
-    tokenizer.pad_token = tokenizer.unk_token
-    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
-    outputs = model(**inputs)
-    return outputs.last_hidden_state.mean(dim=1).detach().numpy()
+def identify_entities(text, nlp_model):
+    """Identifies named entities in the text."""
+    doc = nlp_model(text)
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    return entities
+
+
+def count_entities(entities: List[Tuple[str, str]]) -> Counter:
+    """Counts named entities."""
+    entity_counts = Counter()
+
+    for entity, label in entities:
+        entity = entity.replace('\n', ' ').replace('\r', '')
+        if len(entity) > 2 and label != "CARDINAL":
+            entity_counts[(entity, label)] += 1
+
+    return entity_counts
+
+
+def plot_entity_counts(entity_counts, top_n=50, title_suffix="", min_urls=2):
+    """Plots the top N entity counts as a bar chart."""
+    filtered_entity_counts = Counter({k: v for k, v in entity_counts.items() if v >= min_urls})
+
+    most_common_entities = filtered_entity_counts.most_common(top_n)
+    entity_labels = [f"{entity} ({label})" for (entity, label), count in most_common_entities]
+    counts = [count for (entity, label), count in most_common_entities]
+
+    fig, ax = plt.subplots(figsize=(16, 12))
+    ax.bar(entity_labels, counts, color=plt.cm.viridis(np.linspace(0, 1, len(entity_labels))))
+    ax.set_xlabel("Entities (with Labels)", fontsize=12)
+    ax.set_ylabel("Counts (Number of URLs)", fontsize=12)
+    ax.set_title(f"Entity Topic Gap Analysis", fontsize=14)
+    ax.tick_params(axis='x', rotation=45, labelsize=10)
+    plt.tight_layout()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+    return fig
+
 
 def create_navigation_menu(logo_url):
     """Creates a top navigation menu."""
@@ -159,316 +183,218 @@ def create_navigation_menu(logo_url):
     st.markdown(menu_html, unsafe_allow_html=True)
 
 
-# ------------------------------------
-# App 3: Cosine Similarity Competitor Analysis Functions
-# ------------------------------------
+def entity_analysis_page():
+    """Original Entity Analysis Page."""
+    st.header("Entity Topic Gap Analysis")
+    st.markdown("Analyze content from multiple URLs to identify common entities.")
 
-def calculate_overall_similarity(urls, search_term, model, tokenizer):
-    """Calculates the overall cosine similarity score for a list of URLs against a search term."""
-    search_term_embedding = get_embedding(search_term, model, tokenizer)
-    results = []
-    for url in urls:
-        text = extract_text_from_url(url)
-        if text:
-            text_embedding = get_embedding(text, model, tokenizer)
-            similarity = cosine_similarity(text_embedding, search_term_embedding)[0][0]
-            results.append((url, similarity))
-            st.write(f"Cosine similarity for {url}: {similarity}")  # Keep the output within the function
-        else:
-            st.write(f"Could not extract text from {url}")
-            results.append((url, None))  # Corrected the URL output here
-
-    return results
-
-def cosine_similarity_competitor_analysis_page():
-    """Cosine Similarity Competitor Analysis Page."""
-    st.header("Cosine Similarity Competitor Analysis")
-    st.markdown("Calculate the cosine similarity between URLs and a search term to analyze competitors.")
-
-    search_term = st.text_input("Enter Search Term:", key="comp_search_term", value="Enter Your SEO Keyword Here")
     urls_input = st.text_area("Enter URLs (one per line):",
-                              key="comp_urls", value="")
+                              """""")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
-    if st.button("Calculate Similarity", key="comp_button"):
+    exclude_url = st.text_input("Enter URL to exclude:",
+                                 "")
+
+    if st.button("Analyze"):
         if not urls:
             st.warning("Please enter at least one URL.")
-        else:
-            # Initialize model (only once)
-            tokenizer, model = initialize_bert_model()
+            return
 
-            with st.spinner("Calculating similarities..."):
-                similarity_scores = calculate_overall_similarity(urls, search_term, model, tokenizer)
+        with st.spinner("Extracting content and analyzing entities..."):
+            nlp_model = load_spacy_model()
+            if not nlp_model:
+                return  # Stop if model loading failed
 
-            # Prepare data for plotting
-            urls_plot = [url for url, score in similarity_scores]
-            scores_plot = [score if score is not None else 0 for url, score in similarity_scores]  # Replace None with 0 for plotting
+            exclude_text = extract_text_from_url(exclude_url)
+            exclude_entities_set = set()
+            if exclude_text:
+                exclude_doc = nlp_model(exclude_text)
+                exclude_entities_set = {ent.text.lower() for ent in exclude_doc.ents}
 
-            # Create the bar chart
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(urls_plot, scores_plot)
-            ax.set_xlabel("URLs")
-            ax.set_ylabel("Similarity Score")
-            ax.set_title("Cosine Similarity of URLs to Search Term")
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            st.pyplot(fig)
+            all_entities = []
+            entity_counts_per_url: Dict[str, Counter] = {}
+            url_entity_counts: Counter = Counter()
 
-            # Display results in a table
-            data = {'URL': urls_plot, 'Similarity Score': scores_plot}
-            df = pd.DataFrame(data)
-            st.dataframe(df)
+            for url in urls:
+                text = extract_text_from_url(url)
+                if text:
+                    entities = identify_entities(text, nlp_model)
+                    entities = [(entity, label) for entity, label in entities if label != "CARDINAL"]
 
-# ------------------------------------
-# App 4: Cosine Similarity Score - Every Embedding Functions
-# ------------------------------------
+                    filtered_entities = [(entity, label) for entity, label in entities
+                                         if entity.lower() not in exclude_entities_set]
+                    entity_counts_per_url[url] = count_entities(filtered_entities)
+                    all_entities.extend(filtered_entities)
 
-def calculate_similarity(text, search_term, tokenizer, model):
-    """Calculates similarity scores for each sentence in the text against the search term."""
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
+                    for entity, label in set(filtered_entities):
+                        url_entity_counts[(entity, label)] += 1
 
-    sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
-    search_term_embedding = get_embedding(search_term, model, tokenizer)
+            filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
 
-    similarities = []
-    for sentence_embedding in sentence_embeddings:
-        similarity = cosine_similarity(sentence_embedding, search_term_embedding)[0][0]
-        similarities.append(similarity)
+            if url_entity_counts:
+                fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
+                st.pyplot(fig)
 
-    return sentences, similarities
+                st.markdown("### Entities from Exclude URL")
+                if exclude_text:
+                    exclude_doc = nlp_model(exclude_text)
+                    exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
+                    exclude_entity_counts = count_entities(exclude_entities_list)
+                    for (entity, label), count in exclude_entity_counts.most_common(50):
+                        st.write(f"- {entity} ({label}): {count}")
+                else:
+                    st.write("No entities found in the exclude URL.")
 
-def cosine_similarity_every_embedding_page():
-    """Cosine Similarity Score - Every Embedding Page."""
-    st.header("Cosine Similarity Score - Every Embedding")
-    st.markdown("Calculates the cosine similarity score for each sentence in your input.")
+                st.markdown("### Entities Per URL")
+                for url, entity_counts in entity_counts_per_url.items():
+                    st.markdown(f"#### URL: {url}")
+                    if entity_counts:
+                        for (entity, label), count in entity_counts.most_common(50):
+                            st.write(f"- {entity} ({label}): {count}")
+                    else:
+                        st.write("No relevant entities found.")
+
+                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
+                for (entity, label), count in filtered_url_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
+
+            else:
+                st.warning("No relevant entities found.")
+
+
+def displacy_visualization_page():
+    """Displacy Entity Visualization Page."""
+    st.header("Entity Visualizer")
+    st.markdown("Visualize named entities within your content.")
 
     # URL Input
-    url = st.text_input("Enter URL (Optional):", key="every_embed_url", value="")
-    use_url = st.checkbox("Use URL for Text Input", key="every_embed_use_url")
+    url = st.text_input("Enter a URL (Optional):", key="displacy_url", value="")
+    use_url = st.checkbox("Use URL for Text Input", key="displacy_use_url")
 
     # Text Area - Disable if URL is used
-    text = st.text_area("Enter Text:", key="every_embed_text", value="Put Your Content Here.", disabled=use_url)
+    text = st.text_area("Enter Text:", key="displacy_text", height=300, value="Paste your text here.", disabled=use_url)
 
-    # Search term input
-    search_term = st.text_input("Enter Search Term:", key="every_embed_search", value="Enter Your SEO Keyword Here")
-
-    if st.button("Calculate Similarity", key="every_embed_button"):
-        # Prioritize URL if it's used
+    if st.button("Visualize Entities", key="displacy_button"):
+        # Check if using URL or Text
         if use_url:
             if url:
-                with st.spinner(f"Extracting and analyzing text from {url}..."):
+                with st.spinner(f"Extracting text from {url}..."):
                     text = extract_text_from_url(url)
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL and make sure it is reachable.")
                         return  # Stop execution
             else:
-                st.warning("Please enter a URL to extract the text.")
-                return
+                st.warning("Please enter a URL to extract the text or uncheck `Use URL for Text Input` to paste text directly.")
+                return  # Stop execution
+
         elif not text:
             st.warning("Please enter either text or a URL.")
             return  # Stop execution
 
-        tokenizer, model = initialize_bert_model()
-        with st.spinner("Calculating Similarities..."):
-            # Calculate similarities
-            sentences, similarities = calculate_similarity(text, search_term, tokenizer, model)
-
-        st.subheader("Similarity Scores:")
-        for i, (sentence, score) in enumerate(zip(sentences, similarities), 1):
-            st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
-
-# ------------------------------------
-# App 5: Cosine Similarity Content Heatmap Functions
-# ------------------------------------
-
-def rank_sentences_by_similarity(text, search_term):
-    """Calculates cosine similarity between sentences and a search term using BERT."""
-    tokenizer, model = initialize_bert_model()
-
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
-    search_term_embedding = get_embedding(search_term, model, tokenizer)
-
-    similarities = [cosine_similarity(sentence_embedding, search_term_embedding)[0][0]
-                    for sentence_embedding in sentences]
-
-    # Normalize the similarity scores to be between 0 and 1
-    min_similarity = min(similarities)
-    max_similarity = max(similarities)
-    if max_similarity == min_similarity:
-        normalized_similarities = [0.0] * len(similarities)  # Avoid division by zero
-    else:
-        normalized_similarities = [(s - min_similarity) / (max_similarity - min_similarity) for s in similarities]
-
-    return list(zip(sentences, normalized_similarities))
-
-def highlight_text(text, search_term):
-    """Highlights text based on similarity to the search term using HTML/CSS, adding paragraph breaks."""
-    sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
-
-    highlighted_text = ""
-    for sentence, similarity in sentences_with_similarity:
-        print(f"Sentence: {sentence}, Similarity: {similarity}")  # Debugging print
-
-        if similarity < 0.35:
-            color = "red"
-        elif similarity < 0.65:
-            color = "black"
-        else:
-            color = "green"
-
-        # Enclose each sentence in a <p> tag for paragraph breaks
-        highlighted_text += f'<p style="color:{color};">{sentence}</p>'
-    return highlighted_text
-
-def cosine_similarity_content_heatmap_page():
-    st.header("Cosine Similarity Content Heatmap")
-    st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
-
-    # URL Input
-    url = st.text_input("Enter URL (Optional):", key="heatmap_url", value="")
-    use_url = st.checkbox("Use URL for Text Input", key="heatmap_use_url")
-
-    # Input text area, disable if URL is used
-    input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="Paste your text here.", disabled=use_url)
-
-    search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
-
-    if st.button("Highlight", key="heatmap_button"):
-         # Prioritize URL if it's used
-        if use_url:
-            if url:
-                with st.spinner(f"Extracting and analyzing text from {url}..."):
-                    text = extract_text_from_url(url)
-                    if not text:
-                        st.error(f"Could not extract text from {url}. Please check the URL and make sure it is reachable.")
-                        return  # Stop execution
-                input_text = text  # Set the input_text to extracted text
-            else:
-                st.warning("Please enter a URL to extract the text.")
+        with st.spinner("Visualizing entities..."):
+            nlp_model = load_spacy_model()
+            if not nlp_model:
                 return
-        elif not input_text:
-            st.error("Please enter either text or a URL.")
-            return  # Stop execution
 
-        # Now `input_text` (or extracted `text`) is valid
-        with st.spinner("Generating highlighted text..."):
-            highlighted_text = highlight_text(input_text, search_term)
+            doc = nlp_model(text)
+            html = displacy.render(doc, style="ent", page=True)
+            st.components.v1.html(html, height=600, scrolling=True) # Render HTML
 
-        st.markdown(highlighted_text, unsafe_allow_html=True)  # Display highlighted text
+def named_entity_wordcloud_page():
+    """Page to generate a word cloud from named entities."""
+    st.header("Named Entity Word Cloud")
+    st.markdown("Generate a word cloud from the most frequent named entities.")
 
-# ------------------------------------
-# App 6: Top 10 and Bottom 10 Embeddings based on Cosine Similarity
-# ------------------------------------
+    text_source = st.radio(
+        "Select text source:",
+        ('Enter Text', 'Enter URLs'),
+        key="wordcloud_text_source"
+    )
 
-def rank_sections_by_similarity_bert(text, search_term, top_n=10):
-    """Ranks content sections by cosine similarity to a search term using BERT embeddings."""
-    tokenizer, model = initialize_bert_model()
+    if text_source == 'Enter Text':
+        text = st.text_area("Enter Text:", key="wordcloud_text", height=300, value="Paste your text here.")
+        urls = None  # Ensure URLs is None when using text
+    else:
+        urls_input = st.text_area("Enter URLs (one per line):", key="wordcloud_url", value="")
+        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+        text = None #Set to none so it will not pull from URLs
+       
 
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    sentences = [s.strip() for s in sentences if s.strip()]  # Remove empty strings
+    if st.button("Generate Word Cloud", key="wordcloud_button"):
+        all_text = ""
+        # Validation and text retrieval
+        if text_source == 'Enter Text':
+            if not text:
+                st.warning("Please enter the text to proceed.")
+                return
+            all_text = text
+        else:  # Using URLs
+            if not urls:
+                st.warning("Please enter at least one URL.")
+                return
 
-    sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
+            with st.spinner("Extracting text from URLs..."):
+                for url in urls:
+                    extracted_text = extract_text_from_url(url)
+                    if extracted_text:
+                        all_text += extracted_text + "\n"
+                    else:
+                        st.warning(f"Could not extract text from {url}.")
 
-    # Generate embedding for the search term
-    search_term_embedding = get_embedding(search_term, model, tokenizer)
 
-    # Calculate cosine similarity between each sentence and the search term
-    similarities = []
-    for sentence_embedding in sentence_embeddings:
-        similarity = cosine_similarity(sentence_embedding, search_term_embedding)[0][0] # Access scalar similarity value
-        similarities.append(similarity)
+        with st.spinner("Analyzing entities and generating word cloud..."):
+            nlp_model = load_spacy_model()
+            if not nlp_model:
+                return
 
-    # Create a list of (sentence, similarity score) tuples
-    section_scores = list(zip(sentences, similarities))
+            # Identify entities
+            entities = identify_entities(all_text, nlp_model)
 
-    # Sort by similarity score
-    sorted_sections = sorted(section_scores, key=lambda item: item[1], reverse=True)
+            # Extract only entity texts (not labels) for word cloud
+            entity_texts = [entity[0] for entity in entities]
 
-    # Get top and bottom sections
-    top_sections = sorted_sections[:top_n]
-    bottom_sections = sorted_sections[-top_n:]
+            # Count entities and create a word cloud
+            entity_counts = Counter(entity_texts)
+            wordcloud = WordCloud(width=800, height=400, background_color='white', font_path=FONT_PATH).generate_from_frequencies(entity_counts)
 
-    return top_sections, bottom_sections
-
-def top_bottom_embeddings_page():
-    """Top 10 and Bottom 10 Embeddings based on Cosine Similarity."""
-    st.header("Top 10 & Bottom 10 Embeddings")
-
-     # URL Input
-    url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
-    use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
-
-    # Text Area - Disable if URL is used
-    text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="Put Your Content Here.", disabled=use_url)
-
-    search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
-    top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
-
-    if st.button("Search", key="top_bottom_button"):
-         # Prioritize URL if it's used
-        if use_url:
-            if url:
-                with st.spinner(f"Extracting and analyzing text from {url}..."):
-                    text = extract_text_from_url(url)
-                    if not text:
-                        st.error(f"Could not extract text from {url}. Please check the URL.")
-                        return  # Stop execution
-                input_text = text #Set the input_text to extracted text
-            else:
-                st.error("Please enter either text or a URL.")
-                return  # Stop execution
-        elif not text:
-            st.error("Please enter either text or a URL.")
-            return  # Stop execution
-
-        tokenizer, model = initialize_bert_model()
-        with st.spinner("Searching..."):
-            top_sections, bottom_sections = rank_sections_by_similarity_bert(text, search_term, top_n)
-
-        st.subheader("Top Sections (Highest Cosine Similarity):")
-        for i, (sentence, score) in enumerate(top_sections, 1):
-            st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
-
-        st.subheader("Bottom Sections (Lowest Cosine Similarity):")
-        for i, (sentence, score) in enumerate(reversed(bottom_sections), 1):
-            st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
+            # Display the word cloud
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis("off")
+            st.pyplot(fig)
 
 
 def main():
     st.set_page_config(
-        page_title="Cosine Similarity SEO Tools | The SEO Consultant.ai",
-        page_icon="✏️",
+        page_title="Named Entity Topic Analysis | The SEO Consultant.ai",
+        page_icon=":bar_chart:",
         layout="wide"
     )
-
+    logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
     create_navigation_menu(logo_url)
-    st.sidebar.header("Content Analysis Tools")
-    page = st.sidebar.selectbox("Choose an analysis:", [
-        "Cosine Similarity Competitor Analysis",
-        "Cosine Similarity Score - Every Embedding",
-        "Cosine Similarity Content Heatmap",
-        "Top/Bottom 10 Embeddings",
-    ])
 
-    # Call the relevant function based on the selected page
-    if page == "Cosine Similarity Competitor Analysis":
-        cosine_similarity_competitor_analysis_page()
-    elif page == "Cosine Similarity Score - Every Embedding":
-        cosine_similarity_every_embedding_page()
-    elif page == "Cosine Similarity Content Heatmap":
-        cosine_similarity_content_heatmap_page()
-    elif page == "Top/Bottom 10 Embeddings":
-        top_bottom_embeddings_page()
+    nlp = load_spacy_model()
+    if nlp is None:
+        st.error("Failed to load spaCy model. Check the logs for details.")
+        return
+
+    # Navigation
+    st.sidebar.header("Named Entity Recognition")
+    page = st.sidebar.selectbox("Switch Tool:",
+                                ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Word Cloud"))
+
+    # Page routing
+    if page == "Entity Topic Gap Analysis":
+        entity_analysis_page()
+    elif page == "Entity Visualizer":
+        displacy_visualization_page()
+    elif page == "Entity Word Cloud":
+        named_entity_wordcloud_page()
 
     st.markdown("---")
-    st.markdown(
-        "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
-        unsafe_allow_html=True
-    )
+    st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
+                unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()
