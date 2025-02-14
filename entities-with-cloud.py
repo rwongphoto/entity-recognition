@@ -1,16 +1,13 @@
 import streamlit as st
 import spacy
-import networkx as nx
-import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from typing import List, Tuple, Dict
 from collections import Counter
 import os  # Import os module
-from selenium.webdriver.support.ui import WebDriverWait #New imports
-from selenium.webdriver.support import expected_conditions as EC #New imports
-from selenium.webdriver.common.by import By #New imports
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -20,7 +17,6 @@ logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-these
 
 # Global spacy model variable
 nlp = None
-
 
 @st.cache_resource
 def load_spacy_model():
@@ -190,9 +186,10 @@ def entity_analysis_page():
     if st.button("Analyze"):
         if not urls:
             st.warning("Please enter at least one URL.")
-        else:
-            with st.spinner("Extracting content and analyzing entities..."):
-                nlp_model = load_spacy_model()
+            return
+
+        with st.spinner("Extracting content and analyzing entities..."):
+            nlp_model = load_spacy_model()
             if not nlp_model:
                 return  # Stop if model loading failed
 
@@ -291,11 +288,10 @@ def displacy_visualization_page():
             html = displacy.render(doc, style="ent", page=True)
             st.components.v1.html(html, height=600, scrolling=True) # Render HTML
 
-
 def named_entity_barchart_page():
     """Page to generate a bar chart of named entities."""
     st.header("Named Entity Frequency Bar Chart")
-    st.markdown("Generate a bar chart from the most frequent named entities.")
+    st.markdown("Generate a bar chart from the most frequent named entities and list them by URL.")
 
     # Select between Text and URL
     text_source = st.radio(
@@ -315,31 +311,31 @@ def named_entity_barchart_page():
 
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
+        entity_texts_by_url = {}  # To store entities for each URL
         # Validation and text retrieval
         if text_source == 'Enter Text':
             if not text:
                 st.warning("Please enter the text to proceed.")
                 return
             all_text = text
+            #entity_texts_by_url["Input Text"] = text
         else:  # Using URLs
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
 
-            with st.spinner("Extracting text from URLs..."):
-                for url in urls:
-                    extracted_text = extract_text_from_url(url)
-                    if extracted_text:
-                        all_text += extracted_text + "\n"
-                    else:
-                        st.warning(f"Could not extract from {url}...")
-
+            for url in urls:
+                all_text = extract_text_from_url(url)  # Use extract_text_from_url here
+                if not all_text:
+                    st.warning(f"Couldn't grab the text from {url}")
+                    return
+                #     entity_texts_by_url[url] = all_text  #Store the URLs
+                #     print (entity_texts_by_url)
         with st.spinner("Analyzing entities and generating bar chart..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
-                st.error("Could not load spaCy model. Aborting.")
+                st.error("Could not load spaCy model.  Aborting.")
                 return
-
             # Identify entities
             entities = identify_entities(all_text, nlp_model)
 
@@ -348,39 +344,47 @@ def named_entity_barchart_page():
 
             # Count entities
             entity_counts = Counter(entity_texts)
-
             if len(entity_counts) > 0:
-                display_entity_barchart(entity_counts)  # Now display the data with this
-            else:
-                st.warning("No relevant entities found in your links. Please select a different tool or update URL input")  # If no entities were found display the warning
 
+                # Create the bar chart
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.bar(entity_counts.keys(), entity_counts.values())
+                ax.set_xlabel("Entities")
+                ax.set_ylabel("Frequency")
+                ax.set_title("Frequency of Entities")
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
+                st.pyplot(fig)
+
+                # Display results in a table
+                data = {'Entity': list(entity_counts.keys()), 'Frequency': list(entity_counts.values())}
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+
+    
+
+            # Now the `text` variable (or extracted `text`) has been extracted in each individual tool.
+            #Remember to reboot
 def main():
     st.set_page_config(
         page_title="Named Entity Recognition | The SEO Consultant.ai",
-        page_icon=":bar_chart:",
+        page_icon=":pencil:",
         layout="wide"
     )
+
     logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
     create_navigation_menu(logo_url)
-
-    nlp = load_spacy_model()
-    if nlp is None:
-        st.error("Failed to load spaCy model. Check the logs for details.")
-        return
-
-    # Navigation
+    # Navitation
     st.sidebar.header("Named Entity Recognition")
     page = st.sidebar.selectbox("Switch Tool:",
                                 ("Entity Topic Gap Analysis", "Entity Visualizer", "Entity Frequency Bar Chart"))
 
-    # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
     elif page == "Entity Visualizer":
         displacy_visualization_page()
     elif page == "Entity Frequency Bar Chart":
         named_entity_barchart_page()
-
     st.markdown("---")
     st.markdown(
         "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
