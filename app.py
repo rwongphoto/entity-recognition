@@ -293,12 +293,12 @@ def main():
 
     # Navigation
     page = st.sidebar.selectbox("Choose a Page:",
-                                ("Entity Topic Gap Analysis", "DisplaCy Entity Visualization"))
+                                ("Entity Topic Gap Analysis", "Entity Visualization"))
 
     # Page routing
     if page == "Entity Topic Gap Analysis":
         entity_analysis_page()
-    elif page == "DisplaCy Entity Visualization":
+    elif page == "Entity Visualization":
         displacy_visualization_page()
 
     st.markdown("---")
