@@ -155,7 +155,7 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
 
     return entity_counts
 
-def display_entity_barchart(entity_counts, top_n=30):
+def display_entity_barchart(entity_counts, top_n=50):
     """Displays a bar chart of the top N most frequent entities."""
     # Convert entity counts to a pandas DataFrame for easier plotting
     entity_data = pd.DataFrame.from_dict(entity_counts, orient='index', columns=['count'])
@@ -173,7 +173,7 @@ def display_entity_barchart(entity_counts, top_n=30):
     bars = ax.bar(entity_names, counts)
     ax.set_xlabel("Entities")
     ax.set_ylabel("Frequency")
-    ax.set_title(f"Top {top_n} Named Entities")
+    ax.set_title(f"Entity Topic Gap Analysis")
     plt.xticks(rotation=45, ha="right")
 
     # Annotate bars with counts
@@ -389,7 +389,7 @@ def named_entity_barchart_page():
 def main():
     st.set_page_config(
         page_title="Named Entity Recognition | The SEO Consultant.ai",
-        page_icon=":pencil:",
+        page_icon=":label:",
         layout="wide"
     )
 
