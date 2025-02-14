@@ -329,9 +329,8 @@ def named_entity_barchart_page():
 
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
-        entity_texts_by_url: Dict[str, str] = {} #This is where entities extracted from the URLs will show up for each URL
-        entity_counts_per_url: Dict[str, Counter] = {}# counts will now show as Counter
-
+        entity_texts_by_url: Dict[str, str] = {}
+        entity_counts_per_url: Dict[str, Counter] = {}
 
         # Validation and text retrieval
         if text_source == 'Enter Text':
@@ -344,19 +343,16 @@ def named_entity_barchart_page():
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
-            all_text = ""  #reset all_text and have all URLs use it as the content
+            all_text = ""
             with st.spinner("Extracting text from URLs..."):
                 for url in urls:
-                    extracted_text = extract_text_from_url(url)  # Extract and store text extracted from URL
+                    extracted_text = extract_text_from_url(url)
                     if extracted_text:
-                        all_text += extracted_text + "\n" #Appends the extracted text
+                        all_text += extracted_text + "\n"
                         entity_texts_by_url[url] = extracted_text
-
-
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
-                        return #Break, instead of doing partially loaded data.
-
+                        return
 
         with st.spinner("Analyzing entities and generating bar chart..."):
             nlp_model = load_spacy_model()
@@ -365,31 +361,27 @@ def named_entity_barchart_page():
                 return
 
             # Identify entities for the combined text
-            entities = identify_entities(all_text, nlp_model) #Identify on combined.
+            entities = identify_entities(all_text, nlp_model)
 
             # Count the entities
             entity_counts = Counter((entity[0], entity[1]) for entity in entities)
 
-
             # Display
             if len(entity_counts) > 0:
-                display_entity_barchart(entity_counts)  # Now display the data with this
+                display_entity_barchart(entity_counts)
 
-                # Now  display a table with URLs and text
-                st.subheader("List of Entities from each URLs:")
-
-                for url in urls: #Loop for every URL that was inputted.
-                    text = entity_texts_by_url.get(url)
-                    if text:
-                        st.write(f"Text from {url}:" )#Print for the URL
-                        url_entities = identify_entities(text, nlp_model)
-                        for entity, label in url_entities:
-                            st.write(f"- {entity} ({label})")
-                    else:
-                        st.write(f"No Text for the {url}")
-
-
-        
+                # Display URLs and entities only if the URLs option was chosen
+                if text_source == 'Enter URLs':
+                    st.subheader("List of Entities from each URLs:")
+                    for url in urls:
+                        text = entity_texts_by_url.get(url)
+                        if text:
+                            st.write(f"Text from {url}:")
+                            url_entities = identify_entities(text, nlp_model)
+                            for entity, label in url_entities:
+                                st.write(f"- {entity} ({label})")
+                        else:
+                            st.write(f"No Text for the {url}")
 
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
