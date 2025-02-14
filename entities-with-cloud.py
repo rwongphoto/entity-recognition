@@ -185,16 +185,14 @@ def display_entity_barchart(entity_counts, top_n=20):
     st.pyplot(fig)
 
 def entity_analysis_page():
-    """Original Entity Analysis Page."""
+    """Original Entity Analysis Page with a bar chart."""
     st.header("Entity Topic Gap Analysis")
     st.markdown("Analyze content from multiple URLs to identify common entities.")
 
-    urls_input = st.text_area("Enter URLs (one per line):",
-                              """""")
+    urls_input = st.text_area("Enter URLs (one per line):", "")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
-    exclude_url = st.text_input("Enter URL to exclude:",
-                                 "")
+    exclude_url = st.text_input("Enter URL to exclude:", "")
 
     if st.button("Analyze"):
         if not urls:
@@ -204,7 +202,7 @@ def entity_analysis_page():
         with st.spinner("Extracting content and analyzing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
-                return  # Stop if model loading failed
+                return
 
             exclude_text = extract_text_from_url(exclude_url)
             exclude_entities_set = set()
@@ -212,29 +210,36 @@ def entity_analysis_page():
                 exclude_doc = nlp_model(exclude_text)
                 exclude_entities_set = {ent.text.lower() for ent in exclude_doc.ents}
 
-            all_entities = []
-            entity_counts_per_url: Dict[str, Counter] = {}
-            url_entity_counts: Counter = Counter()
+            all_entities = []  # Collect all entities across URLs
+            entity_counts_per_url: Dict[str, Counter] = {}  # Counts per URL
+            url_entity_counts: Counter = Counter()  # Overall counts
 
             for url in urls:
                 text = extract_text_from_url(url)
                 if text:
                     entities = identify_entities(text, nlp_model)
-                    entities = [(entity, label) for entity, label in entities if label != "CARDINAL"]
+                    entities = [(entity, label) for entity, label in entities if label != "CARDINAL"]  # Exclude CARDINAL
 
                     filtered_entities = [(entity, label) for entity, label in entities
-                                         if entity.lower() not in exclude_entities_set]
+                                         if entity.lower() not in exclude_entities_set]  # Exclude entities from exclude_url
+
                     entity_counts_per_url[url] = count_entities(filtered_entities)
-                    all_entities.extend(filtered_entities)
+                    all_entities.extend(filtered_entities)  # Add to the overall list
 
                     for entity, label in set(filtered_entities):
                         url_entity_counts[(entity, label)] += 1
 
-            filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
+            # Overall entity counts after filtering
+            filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})  # Found in > 1 URL
 
             if url_entity_counts:
-                #fig = plot_entity_counts(url_entity_counts, top_n=50, title_suffix=" - Overall", min_urls=2)
-                #st.pyplot(fig)
+                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
+                for (entity, label), count in filtered_url_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
+
+                # *ADD THE BAR CHART HERE*
+                display_entity_barchart(filtered_url_entity_counts)
+
 
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
@@ -247,7 +252,7 @@ def entity_analysis_page():
                     st.write("No entities found in the exclude URL.")
 
                 st.markdown("### Entities Per URL")
-                for url, entity_counts_local in entity_counts_per_url.items():# changed name
+                for url, entity_counts_local in entity_counts_per_url.items():
                     st.markdown(f"#### URL: {url}")
                     if entity_counts_local:
                         for (entity, label), count in entity_counts_local.most_common(50):
@@ -255,9 +260,7 @@ def entity_analysis_page():
                     else:
                         st.write("No relevant entities found.")
 
-                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
-                for (entity, label), count in filtered_url_entity_counts.most_common(50):
-                    st.write(f"- {entity} ({label}): {count}")
+
 
             else:
                 st.warning("No relevant entities found.")
