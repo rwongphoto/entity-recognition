@@ -76,10 +76,6 @@ def extract_text_from_url(url):
         wait = WebDriverWait(driver, 20)  # Increased to 20 seconds
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
-        # Scroll down to force content loading
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(5)  # Give extra time for JS to load
-
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, "html.parser")
