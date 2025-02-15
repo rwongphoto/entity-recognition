@@ -267,7 +267,7 @@ def rank_sentences_by_similarity(text, search_term):
 
     return list(zip(sentences, normalized_similarities))
 
-def highlight_text(text, search_term):
+def highlight_text(text, search_term, red_threshold, black_threshold):
     """Highlights text based on similarity to the search term using HTML/CSS, adding paragraph breaks."""
     sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
 
@@ -275,9 +275,9 @@ def highlight_text(text, search_term):
     for sentence, similarity in sentences_with_similarity:
         print(f"Sentence: {sentence}, Similarity: {similarity}")  # Debugging print
 
-        if similarity < 0.35:
+        if similarity < red_threshold:
             color = "red"
-        elif similarity < 0.65:
+        elif similarity < black_threshold:
             color = "black"
         else:
             color = "green"
@@ -478,6 +478,9 @@ def cosine_similarity_content_heatmap_page():
 
     search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
 
+    red_threshold = st.slider("Red Threshold", 0.0, 1.0, 0.35, key="red_threshold")
+    black_threshold = st.slider("Black Threshold", 0.0, 1.0, 0.65, key="black_threshold")
+
     if st.button("Highlight", key="heatmap_button"):
          # Prioritize URL if it's used
         if use_url:
@@ -497,10 +500,10 @@ def cosine_similarity_content_heatmap_page():
 
         # Now input_text (or extracted text) is valid
         with st.spinner("Generating highlighted text..."):
-            highlighted_text = highlight_text(input_text, search_term)
+            highlighted_text = highlight_text(input_text, search_term, red_threshold, black_threshold)
 
         st.markdown(highlighted_text, unsafe_allow_html=True)
-
+        
 def top_bottom_embeddings_page():
     """Top 10 and Bottom 10 Embeddings based on Cosine Similarity."""
     st.header("Top 10 & Bottom 10 Embeddings")
