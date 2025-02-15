@@ -740,7 +740,7 @@ def ngram_tfidf_analysis_page():
 
 def main():
     st.set_page_config(
-        page_title="Semantic Search SEO Analysis Tools | The SEO Consultant.ai",
+        page_title="Semantic Search SEO Analysis Tools | The SEO Consultant",
         page_icon="✏️",
         layout="wide"
     )
