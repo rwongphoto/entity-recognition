@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -93,8 +94,11 @@ def extract_text_from_url(url):
 
         return text
 
+    except (TimeoutException, WebDriverException) as e:
+        st.error(f"Selenium error fetching {url}: {e}")
+        return None
     except Exception as e:
-        st.error(f"Error fetching or processing URL {url}: {e}")
+        st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
 
@@ -220,9 +224,7 @@ def calculate_overall_similarity(urls, search_term, model, tokenizer):
             text_embedding = get_embedding(text, model, tokenizer)
             similarity = cosine_similarity(text_embedding, search_term_embedding)[0][0]
             results.append((url, similarity))
-            #st.write(f"Cosine similarity for {url}: {similarity}") #removed from here to dashboard
         else:
-            #st.write(f"Could not extract text from {url}") #removed from here to dashboard
             results.append((url, None))
 
     return results
@@ -502,16 +504,16 @@ def top_bottom_embeddings_page():
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
 def entity_analysis_page():
-    """Original Entity Analysis Page with a bar chart."""
+    """Entity Analysis Page with a bar chart."""
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze content from multiple URLs to identify common entities not found on your site. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
+    st.markdown("Analyze content from multiple URLs to identify common entities not found on your site.  Consider adding these named entities to your content to improve search relevancy & topic coverage.")
 
-    urls_input = st.text_area("Enter URLs (one per line):", "")
+    urls_input = st.text_area("Enter URLs (one per line):", key="entity_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
-    exclude_url = st.text_input("Enter URL to exclude:", "")
+    exclude_url = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
 
-    if st.button("Analyze"):
+    if st.button("Analyze", key="entity_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
@@ -611,9 +613,11 @@ def displacy_visualization_page():
             return
 
         doc = nlp_model(text)
-        html = spacy.displacy.render(doc, style="ent", page=True)
-        st.components.v1.html(html, height=600, scrolling=True)
-
+        try:
+            html = spacy.displacy.render(doc, style="ent", page=True)
+            st.components.v1.html(html, height=600, scrolling=True)
+        except Exception as e:
+            st.error(f"Error rendering visualization: {e}")
 
 # ------------------------------------
 # App 9: Entity Frequency Bar Chart Page
@@ -743,14 +747,4 @@ def url_analysis_dashboard_page():
                     unique_entity_count = len(entities)
 
                     # 4. Overall Cosine Similarity Score
-                    similarity_score = similarity_results[i][1] if similarity_results[i][1] is not None else "N/A"
-                    if(similarity_score != "N/A"):
-                        st.write(f"Cosine similarity for {url}: {similarity_score}")  # Keep the output within the function
-                    else:
-                        st.write(f"Could not extract text from {url}")
-
-                    data.append([url, meta_title, word_count, unique_entity_count, similarity_score])
-
-                except Exception as e:
-                    st.error(f"Error processing URL {url}: {e}")
-                    data.append([url
+                    similarity_score = similarity_results[i][1] if similarity_results[i][1] is not None else "
