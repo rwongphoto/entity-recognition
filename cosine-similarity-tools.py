@@ -744,13 +744,13 @@ def named_entity_barchart_page():
 
 def main():
     st.set_page_config(
-        page_title="SEO Analysis Tools | The SEO Consultant.ai",
+        page_title="Semantic Search SEO Analysis Tools | The SEO Consultant.ai",
         page_icon="✏️",
         layout="wide"
     )
 
     create_navigation_menu(logo_url)
-    st.sidebar.header("SEO Analysis Tools")
+    st.sidebar.header("Machine Learning SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
         "URL Analysis Dashboard",
         "Cosine Similarity - Competitor Analysis",
