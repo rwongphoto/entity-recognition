@@ -56,21 +56,6 @@ def initialize_bert_model():
     model.eval()
     return tokenizer, model
 
-# --------------------------------------------------------
-# Centralized utility functions (sentence splitting, etc.)
-# --------------------------------------------------------
-
-def split_into_sentences(text):
-    """Splits the text into sentences."""
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-    return sentences
-
-def preprocess_text(text):
-    """Normalizes whitespace in the text."""
-    text = re.sub(r'\s+', ' ', text).strip()  # Replace multiple spaces with single, strip leading/trailing
-    return text
-
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
     excluding header and footer content.  Returns all text content from the
@@ -106,7 +91,7 @@ def extract_text_from_url(url):
 
         # Extract all text from the remaining elements in the body
         text = body.get_text(separator='\n', strip=True)
-        text = preprocess_text(text)  # Normalize whitespace
+
         return text
 
     except (TimeoutException, WebDriverException) as e:
@@ -246,8 +231,9 @@ def calculate_overall_similarity(urls, search_term, model, tokenizer):
 
 def calculate_similarity(text, search_term, tokenizer, model):
     """Calculates similarity scores for each sentence in the text against the search term."""
-    text = preprocess_text(text) #  Normalize whitespace
-    sentences = split_into_sentences(text) # Use the common function
+    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
     search_term_embedding = get_embedding(search_term, model, tokenizer)
 
@@ -262,8 +248,8 @@ def rank_sentences_by_similarity(text, search_term):
     """Calculates cosine similarity between sentences and a search term using BERT."""
     tokenizer, model = initialize_bert_model()
 
-    text = preprocess_text(text) #  Normalize whitespace
-    sentences = split_into_sentences(text) # Use the common function
+    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
 
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
     search_term_embedding = get_embedding(search_term, model, tokenizer)
@@ -281,7 +267,7 @@ def rank_sentences_by_similarity(text, search_term):
 
     return list(zip(sentences, normalized_similarities))
 
-def highlight_text(text, search_term, red_threshold, black_threshold):
+def highlight_text(text, search_term):
     """Highlights text based on similarity to the search term using HTML/CSS, adding paragraph breaks."""
     sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
 
@@ -289,9 +275,9 @@ def highlight_text(text, search_term, red_threshold, black_threshold):
     for sentence, similarity in sentences_with_similarity:
         print(f"Sentence: {sentence}, Similarity: {similarity}")  # Debugging print
 
-        if similarity < red_threshold:
+        if similarity < 0.35:
             color = "red"
-        elif similarity < black_threshold:
+        elif similarity < 0.65:
             color = "black"
         else:
             color = "green"
@@ -304,7 +290,6 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     """Ranks content sections by cosine similarity to a search term using BERT embeddings."""
     tokenizer, model = initialize_bert_model()
 
-    text = preprocess_text(text)  # Normalize whitespace
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]  # Remove empty strings
 
@@ -471,8 +456,6 @@ def cosine_similarity_every_embedding_page():
             st.warning("Please enter either text or a URL.")
             return  # Stop execution
 
-        text = preprocess_text(text)
-
         tokenizer, model = initialize_bert_model()
         with st.spinner("Calculating Similarities..."):
             # Calculate similarities
@@ -495,9 +478,6 @@ def cosine_similarity_content_heatmap_page():
 
     search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
 
-    red_threshold = st.slider("Red Threshold", 0.0, 1.0, 0.35, key="red_threshold")
-    black_threshold = st.slider("Black Threshold", 0.0, 1.0, 0.65, key="black_threshold")
-
     if st.button("Highlight", key="heatmap_button"):
          # Prioritize URL if it's used
         if use_url:
@@ -507,7 +487,7 @@ def cosine_similarity_content_heatmap_page():
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return  # Stop execution
-                    input_text = text  # Set the input_text to extracted text
+                input_text = text  # Set the input_text to extracted text
             else:
                 st.warning("Please enter a URL to extract the text.")
                 return
@@ -515,11 +495,9 @@ def cosine_similarity_content_heatmap_page():
             st.error("Please enter either text or a URL.")
             return  # Stop execution
 
-        input_text = preprocess_text(input_text)
-
         # Now input_text (or extracted text) is valid
         with st.spinner("Generating highlighted text..."):
-            highlighted_text = highlight_text(input_text, search_term, red_threshold, black_threshold)
+            highlighted_text = highlight_text(input_text, search_term)
 
         st.markdown(highlighted_text, unsafe_allow_html=True)
 
@@ -554,11 +532,9 @@ def top_bottom_embeddings_page():
             st.error("Please enter either text or a URL.")
             return  # Stop execution
 
-        input_text = preprocess_text(input_text)
-
         tokenizer, model = initialize_bert_model()
         with st.spinner("Searching..."):
-            top_sections, bottom_sections = rank_sections_by_similarity_bert(input_text, search_term, top_n)
+            top_sections, bottom_sections = rank_sections_by_similarity_bert(text, search_term, top_n)
 
         st.subheader("Top Sections (Highest Cosine Similarity):")
         for i, (sentence, score) in enumerate(top_sections, 1):
