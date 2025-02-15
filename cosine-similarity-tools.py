@@ -680,7 +680,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Analysis")
-    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The table below compares the top n‑grams across sites.")
+    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering how frequently it appears and how unique it is across multiple documents.")
 
     urls_input = st.text_area("Enter URLs (one per line):", key="tfidf_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
