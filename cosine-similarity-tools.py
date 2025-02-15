@@ -384,6 +384,47 @@ def url_analysis_dashboard_page():
             df = pd.DataFrame(data, columns=["URL", "Meta Title", "Content Word Count", "# of Unique Entities", "Overall Cosine Similarity Score"])
             st.dataframe(df)
 
+def cosine_similarity_competitor_analysis_page():
+    """Cosine Similarity Score - Competitor Analysis Page."""
+    st.title("URL Similarity App")
+    st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
+
+    # Input fields
+    search_term = st.text_input("Enter Search Term:", "")
+    urls_input = st.text_area("Enter URLs (one per line):",
+                            """""")
+    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
+
+    if st.button("Calculate Similarity"):
+        if not urls:
+            st.warning("Please enter at least one URL.")
+        else:
+            # Initialize model (only once)
+            tokenizer, model = initialize_bert_model()
+
+            with st.spinner("Calculating similarities..."):
+                similarity_scores = calculate_overall_similarity(urls, search_term, model, tokenizer)
+
+            # Prepare data for plotting
+            urls_plot = [url for url, score in similarity_scores]
+            scores_plot = [score if score is not None else 0 for url, score in similarity_scores]  # Replace None with 0 for plotting
+
+            # Create the bar chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.bar(urls_plot, scores_plot)
+            ax.set_xlabel("URLs")
+            ax.set_ylabel("Similarity Score")
+            ax.set_title("Cosine Similarity of URLs to Search Term")
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig)
+
+            # Display results in a table
+            data = {'URL': urls_plot, 'Similarity Score': scores_plot}
+            df = pd.DataFrame(data)
+            st.dataframe(df)
+
 def cosine_similarity_every_embedding_page():
     """Cosine Similarity Score - Every Embedding Page."""
     st.header("Cosine Similarity Score - Every Embedding")
