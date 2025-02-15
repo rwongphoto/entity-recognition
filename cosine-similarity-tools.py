@@ -750,7 +750,7 @@ def main():
     )
 
     create_navigation_menu(logo_url)
-    st.sidebar.header("Machine Learning SEO Analysis Tools")
+    st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
         "URL Analysis Dashboard",
         "Cosine Similarity - Competitor Analysis",
