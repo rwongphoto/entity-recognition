@@ -308,7 +308,7 @@ def url_analysis_dashboard_page():
 
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-    search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="Enter Your SEO Keyword Here")
+    search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
 
     if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
@@ -434,9 +434,9 @@ def cosine_similarity_content_heatmap_page():
     url = st.text_input("Enter URL (Optional):", key="heatmap_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="heatmap_use_url")
 
-    input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="Paste your text here.", disabled=use_url)
+    input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="", disabled=use_url)
 
-    search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
+    search_term = st.text_input("Enter your search term:", key="heatmap_search", value="")
 
     if st.button("Highlight", key="heatmap_button"):
         if use_url:
@@ -577,7 +577,7 @@ def displacy_visualization_page():
 
     url = st.text_input("Enter a URL (Optional):", key="displacy_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="displacy_use_url")
-    text = st.text_area("Enter Text:", key="displacy_text", value="Paste your text here.", disabled=use_url)
+    text = st.text_area("Enter Text:", key="displacy_text", value="", disabled=use_url)
 
     if st.button("Visualize Entities", key="displacy_button"):
         if use_url:
@@ -614,7 +614,7 @@ def named_entity_barchart_page():
     urls = None
 
     if text_source == 'Enter Text':
-        text = st.text_area("Enter Text:", key="barchart_text", height=300, value="Paste your text here.")
+        text = st.text_area("Enter Text:", key="barchart_text", height=300, value="")
     else:
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
