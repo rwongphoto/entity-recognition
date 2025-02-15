@@ -542,7 +542,7 @@ def entity_analysis_page():
                     filtered_entities = [(entity, label) for entity, label in entities
                                          if entity.lower() not in exclude_entities_set]  # Exclude entities from exclude_url
 
-                    entity_counts_per_url[url] = count_entities(filtered_entities)
+                    entity_counts_per_url = count_entities(filtered_entities)
                     all_entities.extend(filtered_entities)  # Add to the overall list
 
                     for entity, label in set(filtered_entities):
@@ -658,7 +658,7 @@ def named_entity_barchart_page():
                     extracted_text = extract_text_from_url(url)
                     if extracted_text:
                         all_text += extracted_text + "\n"
-                        entity_texts_by_url[url] = extracted_text
+                        entity_texts_by_url = extracted_text
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
                         return
