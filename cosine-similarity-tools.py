@@ -386,7 +386,7 @@ def url_analysis_dashboard_page():
 
 def cosine_similarity_competitor_analysis_page():
     """Cosine Similarity Score - Competitor Analysis Page."""
-    st.title("URL Similarity App")
+    st.title("Cosine Similarity Competitor Analysis")
     st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
 
     # Input fields
