@@ -315,51 +315,75 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     return top_sections, bottom_sections
 
 # ------------------------------------
-# App 3: Cosine Similarity Competitor Analysis Page
+# Streamlit UI Functions
 # ------------------------------------
 
-def cosine_similarity_competitor_analysis_page():
-    st.header("Cosine Similarity Competitor Analysis")
-    st.markdown("Calculate the cosine similarity between URLs and a search term to analyze competitors.")
+def url_analysis_dashboard_page():
+    st.header("URL Analysis Dashboard")
+    st.markdown("Analyze multiple URLs and gather key SEO metrics.")
 
-    search_term = st.text_input("Enter Search Term:", key="comp_search_term", value="Enter Your SEO Keyword Here")
-    urls_input = st.text_area("Enter URLs (one per line):", key="comp_urls", value="")
+    urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+    search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="Enter Your SEO Keyword Here")
 
-    if st.button("Calculate Similarity", key="comp_button"):
+    if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
-        else:
-            # Initialize model (only once)
+            return
+
+        with st.spinner("Analyzing URLs..."):
+            # Initialize models
+            nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
 
-            with st.spinner("Calculating similarities..."):
-                similarity_scores = calculate_overall_similarity(urls, search_term, model, tokenizer)
+            data = []
+            similarity_results = calculate_overall_similarity(urls, search_term, model, tokenizer)
 
-            # Prepare data for plotting
-            urls_plot = [url for url, score in similarity_scores]
-            scores_plot = [score if score is not None else 0 for url, score in similarity_scores]  # Replace None with 0 for plotting
+            for i, url in enumerate(urls):
+                try:
+                    # 1. Meta Title
+                    chrome_options = Options()
+                    chrome_options.add_argument("--headless")
+                    chrome_options.add_argument("--no-sandbox")
+                    chrome_options.add_argument("--disable-dev-shm-usage")
+                    user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1"
+                    chrome_options.add_argument(f"user-agent={user_agent}")
+                    driver = webdriver.Chrome(options=chrome_options)
+                    driver.get(url)
+                    meta_title = driver.title
+                    page_source = driver.page_source
+                    driver.quit()
 
-            # Create the bar chart
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(urls_plot, scores_plot)
-            ax.set_xlabel("URLs")
-            ax.set_ylabel("Similarity Score")
-            ax.set_title("Cosine Similarity of URLs to Search Term")
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            st.pyplot(fig)
+                    # 2. Content Word Count
+                    text = extract_text_from_url(url)
+                    word_count = len(text.split()) if text else 0
 
-            # Display results in a table
-            data = {'URL': urls_plot, 'Similarity Score': scores_plot}
-            df = pd.DataFrame(data)
+                    # 3. Unique Entities
+                    entities = set()
+                    if nlp_model and text:
+                        doc = nlp_model(text)
+                        for ent in doc.ents:
+                            entities.add(ent.text)
+                    unique_entity_count = len(entities)
+
+                    # 4. Overall Cosine Similarity Score
+                    similarity_score = similarity_results[i][1] if similarity_results[i][1] is not None else "N/A"
+                    if(similarity_score != "N/A"):
+                        st.write(f"Cosine similarity for {url}: {similarity_score}")  # Keep the output within the function
+                    else:
+                        st.write(f"Could not extract text from {url}")
+
+                    data.append([url, meta_title, word_count, unique_entity_count, similarity_score])
+
+                except Exception as e:
+                    st.error(f"Error processing URL {url}: {e}")
+                    data.append([url, "Error", "Error", "Error", "Error"])
+
+            df = pd.DataFrame(data, columns=["URL", "Meta Title", "Content Word Count", "# of Unique Entities", "Overall Cosine Similarity Score"])
             st.dataframe(df)
 
-# ------------------------------------
-# App 4: Cosine Similarity Score - Every Embedding Page
-# ------------------------------------
-
 def cosine_similarity_every_embedding_page():
+    """Cosine Similarity Score - Every Embedding Page."""
     st.header("Cosine Similarity Score - Every Embedding")
     st.markdown("Calculates the cosine similarity score for each sentence in your input.")
 
@@ -398,10 +422,6 @@ def cosine_similarity_every_embedding_page():
         for i, (sentence, score) in enumerate(zip(sentences, similarities), 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
-# ------------------------------------
-# App 5: Cosine Similarity Content Heatmap Page
-# ------------------------------------
-
 def cosine_similarity_content_heatmap_page():
     st.header("Cosine Similarity Content Heatmap")
     st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
@@ -416,7 +436,7 @@ def cosine_similarity_content_heatmap_page():
     search_term = st.text_input("Enter your search term:", key="heatmap_search", value="Enter Your SEO Keyword Here")
 
     if st.button("Highlight", key="heatmap_button"):
-        # Prioritize URL if it's used
+         # Prioritize URL if it's used
         if use_url:
             if url:
                 with st.spinner(f"Extracting and analyzing text from {url}..."):
@@ -438,14 +458,11 @@ def cosine_similarity_content_heatmap_page():
 
         st.markdown(highlighted_text, unsafe_allow_html=True)
 
-# ------------------------------------
-# App 6: Top 10 and Bottom 10 Embeddings Page
-# ------------------------------------
-
 def top_bottom_embeddings_page():
+    """Top 10 and Bottom 10 Embeddings based on Cosine Similarity."""
     st.header("Top 10 & Bottom 10 Embeddings")
 
-    # URL Input
+     # URL Input
     url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
 
@@ -456,7 +473,7 @@ def top_bottom_embeddings_page():
     top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
 
     if st.button("Search", key="top_bottom_button"):
-        # Prioritize URL if it's used
+         # Prioritize URL if it's used
         if use_url:
             if url:
                 with st.spinner(f"Extracting and analyzing text from {url}..."):
@@ -464,7 +481,7 @@ def top_bottom_embeddings_page():
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return  # Stop execution
-                input_text = text  # Set the input_text to extracted text
+                input_text = text #Set the input_text to extracted text
             else:
                 st.error("Please enter either text or a URL.")
                 return  # Stop execution
@@ -484,20 +501,17 @@ def top_bottom_embeddings_page():
         for i, (sentence, score) in enumerate(reversed(bottom_sections), 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
-# ------------------------------------
-# App 7: Entity Topic Gap Analysis Page
-# ------------------------------------
-
 def entity_analysis_page():
+    """Original Entity Analysis Page with a bar chart."""
     st.header("Entity Topic Gap Analysis")
     st.markdown("Analyze content from multiple URLs to identify common entities not found on your site. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
 
-    urls_input = st.text_area("Enter URLs (one per line):", key="entity_urls", value="")
+    urls_input = st.text_area("Enter URLs (one per line):", "")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
-    exclude_url = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
+    exclude_url = st.text_input("Enter URL to exclude:", "")
 
-    if st.button("Analyze", key="entity_button"):
+    if st.button("Analyze"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
@@ -561,6 +575,7 @@ def entity_analysis_page():
                             st.write(f"- {entity} ({label}): {count}")
                     else:
                         st.write("No relevant entities found.")
+
             else:
                 st.warning("No relevant entities found.")
 
@@ -738,34 +753,4 @@ def url_analysis_dashboard_page():
 
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url, "Error", "Error", "Error", "Error"])
-
-            df = pd.DataFrame(data, columns=["URL", "Meta Title", "Content Word Count", "# of Unique Entities", "Overall Cosine Similarity Score"])
-            st.dataframe(df)
-
-# ------------------------------------
-# Main Streamlit App
-# ------------------------------------
-
-def main():
-    st.set_page_config(
-        page_title="SEO Analysis Tools | The SEO Consultant.ai",
-        page_icon="✏️",
-        layout="wide"
-    )
-
-    create_navigation_menu(logo_url)
-    st.sidebar.header("SEO Analysis Tools")
-    tool = st.sidebar.selectbox("Select Tool:", [
-        "URL Analysis Dashboard",
-        "Cosine Similarity - Competitor Analysis",
-        "Cosine Similarity - Every Embedding",
-        "Cosine Similarity - Content Heatmap",
-        "Top/Bottom 10 Embeddings",
-        "Entity Topic Gap Analysis",
-        "Entity Visualizer",
-        "Entity Frequency Bar Chart"
-    ])
-
-    if tool == "URL Analysis Dashboard":
-        
+                    data.append([url
