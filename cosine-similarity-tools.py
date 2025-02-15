@@ -674,13 +674,13 @@ def named_entity_barchart_page():
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
 # ------------------------------------
-# New Tool: N-gram TF-IDF Analysis
+# New Tool: N-gram TF-IDF Analysis with Comparison Table
 # ------------------------------------
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Analysis")
-    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF.")
+    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The table below compares the top n‑grams across sites.")
 
     urls_input = st.text_area("Enter URLs (one per line):", key="tfidf_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
@@ -690,6 +690,8 @@ def ngram_tfidf_analysis_page():
 
     min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
     max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
+    
+    top_n = st.slider("Number of top n‑grams to display per site:", min_value=1, max_value=20, value=5)
 
     if st.button("Extract N‑grams and Calculate TF‑IDF", key="ngram_tfidf_button"):
         if not urls:
@@ -720,19 +722,27 @@ def ngram_tfidf_analysis_page():
             tfidf_matrix = vectorizer.fit_transform(texts)
             feature_names = vectorizer.get_feature_names_out()
 
-        st.markdown("### TF‑IDF Scores for Each URL")
-        for idx, url in enumerate(urls):
-            st.markdown(f"**URL:** {url}")
-            if url not in url_text_dict:
-                st.write("No text extracted.")
-                continue
-            tfidf_scores = tfidf_matrix[idx].toarray()[0]
-            df = pd.DataFrame({
-                'n‑gram': feature_names,
-                'TF‑IDF': tfidf_scores
-            })
-            df = df[df['TF‑IDF'] > 0].sort_values('TF‑IDF', ascending=False)
-            st.dataframe(df.reset_index(drop=True))
+        # Create a DataFrame from the TF-IDF matrix with URLs as rows and n-grams as columns
+        df_tfidf = pd.DataFrame(tfidf_matrix.toarray(), index=urls, columns=feature_names)
+
+        # For each URL, extract the top n-grams
+        top_ngrams_dict = {}
+        for url in urls:
+            row = df_tfidf.loc[url]
+            sorted_row = row.sort_values(ascending=False)
+            # Get the top n nonzero n-grams
+            top_ngrams = sorted_row[sorted_row > 0].head(top_n)
+            top_list = [f"{ng} ({score:.3f})" for ng, score in top_ngrams.items()]
+            # Pad with empty strings if needed
+            while len(top_list) < top_n:
+                top_list.append("")
+            top_ngrams_dict[url] = top_list
+
+        # Create a comparison DataFrame: rows as Rank, columns as URLs
+        comparison_df = pd.DataFrame(top_ngrams_dict, index=[f"Rank {i+1}" for i in range(top_n)])
+        
+        st.markdown("### Comparison of Top N-grams Across Sites")
+        st.dataframe(comparison_df)
 
 # ------------------------------------
 # Main Streamlit App
@@ -786,4 +796,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
