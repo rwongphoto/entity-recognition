@@ -400,9 +400,9 @@ def cosine_similarity_every_embedding_page():
     url = st.text_input("Enter URL (Optional):", key="every_embed_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="every_embed_use_url")
 
-    text = st.text_area("Enter Text:", key="every_embed_text", value="Put Your Content Here.", disabled=use_url)
+    text = st.text_area("Enter Text:", key="every_embed_text", value="", disabled=use_url)
 
-    search_term = st.text_input("Enter Search Term:", key="every_embed_search", value="Enter Your SEO Keyword Here")
+    search_term = st.text_input("Enter Search Term:", key="every_embed_search", value="")
 
     if st.button("Calculate Similarity", key="every_embed_button"):
         if use_url:
@@ -465,9 +465,9 @@ def top_bottom_embeddings_page():
     url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
 
-    text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="Put Your Content Here.", disabled=use_url)
+    text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="", disabled=use_url)
 
-    search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="Enter Your SEO Keyword Here")
+    search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="")
     top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
 
     if st.button("Search", key="top_bottom_button"):
