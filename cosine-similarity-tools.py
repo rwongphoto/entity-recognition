@@ -199,7 +199,7 @@ def display_entity_barchart(entity_counts, top_n=50):
     bars = ax.bar(entity_names, counts)
     ax.set_xlabel("Entities")
     ax.set_ylabel("Frequency")
-    ax.set_title(f"Entity Topic Gap Analysis")
+    ax.set_title(f"Entity Frequency Bar Chart")
     plt.xticks(rotation=45, ha="right")
 
     # Annotate bars with counts
