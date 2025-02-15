@@ -13,6 +13,10 @@ import os
 import requests  # Import requests
 from bs4 import BeautifulSoup #To be able to get content from the URL
 from selenium import webdriver #To be able to find javascript content
+from selenium.webdriver.chrome.options import Options #NEW
+from selenium.webdriver.support.ui import WebDriverWait #NEW
+from selenium.webdriver.support import expected_conditions as EC #NEW
+from selenium.webdriver.common.by import By #NEW
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -25,7 +29,7 @@ def create_navigation_menu(logo_url):
     menu_options = {
         "Home": "https://theseoconsultant.ai/",
         "About": "https://theseoconsultant.ai/about/",
-        "Services": "https://theseoconsultant.ai/seo-services/",
+        "Services": "https://theseoconsultant.ai/seo-consulting/",
         "Blog": "https://theseoconsultant.ai/blog/",
         "Contact": "https://theseoconsultant.ai/contact/"
     }
@@ -89,37 +93,59 @@ def extract_text_from_url(url):
     <body> except for the header and footer.
     """
     try:
-        response = requests.get(url, timeout=15)  # Timeout after 15 seconds
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1"
+        chrome_options.add_argument(f"user-agent={user_agent}")
 
-        # Check if the request was successful
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
+        driver = webdriver.Chrome(options=chrome_options)
 
-            # Find the body
-            body = soup.find('body')
-            if not body:
-                return None
+        driver.get(url)
 
-            # Remove header and footer tags
-            for tag in body.find_all(['header', 'footer']):
-                tag.decompose()
+        wait = WebDriverWait(driver, 10)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
-            # Extract all text from the remaining elements in the body
-            text = body.get_text(separator='\n', strip=True)
+        page_source = driver.page_source
+        driver.quit()
+        soup = BeautifulSoup(page_source, "html.parser")
 
-            return text
-
-        else:
-            st.error(f"Failed to retrieve content from {url}. Status code: {response.status_code}")
+        # Find the body
+        body = soup.find('body')
+        if not body:
             return None
 
-    except requests.Timeout:
-        st.error(f"Request timed out for URL {url}. The page took too long to respond.")
-        return None
-    except requests.RequestException as e:
-        st.error(f"Request failed for URL {url}: {e}")
+        # Remove header and footer tags
+        for tag in soup.find_all(['header', 'footer']):
+            tag.decompose()
+
+        # Extract all text from the remaining elements in the body
+        text = body.get_text(separator='\n', strip=True)
+
+        return text
+
+    except Exception as e:
+        st.error(f"Error fetching or processing URL {url}: {e}")
         return None
 
+def get_text_content(html):
+    """Parses HTML to extract the content (raw)."""
+    try:
+        soup = BeautifulSoup(html, "html.parser") #To read the file
+        for tag in soup.find_all(['header', 'footer', 'nav', 'aside']):
+            tag.decompose()
+
+        all_relevant_tags = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p', 'div', 'article', 'main'])
+        text = ""
+
+        for tag in all_relevant_tags:
+            text += tag.get_text(separator=" ", strip=True) + "\n"
+        return text
+
+    except Exception as e:
+        st.error(f"Failed to extract text content: {e}")
+        return ""
 def get_embedding(text, model, tokenizer):
     """Generates a BERT embedding for the given text."""
     tokenizer.pad_token = tokenizer.unk_token
@@ -131,18 +157,19 @@ def url_recommendation_page():
     st.header("URL Linking Recommendations")
     st.markdown("Generate URL linking recommendations based on vector embeddings and cosine similarity.")
 
-    # URL Input
     source_code = st.radio(
         "Select source:",
-        ('Enter URLs', 'Upload a Sitemap'),
+        ('Enter URLs', 'Upload a Sitemap (Future)'),
         key="urls_text_source"
     )
 
     urls = []
 
     if source_code == 'Enter URLs':
-         urls_input = st.text_area("Enter URLs (one per line):", key="heatmap_url", value="")
-         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]#Get URL
+        urls_input = st.text_area("Enter URLs (one per line):", key="heatmap_url", value="""https://www.nytimes.com/
+https://www.wsj.com/
+https://www.economist.com/""")
+        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     else: # SITEMAP
         st.info("Feature still under development. It can only use manual URLs.")
         st.stop() #Code still under construction.
@@ -151,23 +178,22 @@ def url_recommendation_page():
     if st.button("Generate Recommendations"):
         if not urls:
             st.warning("Please enter at least one URL.")
-            return
+        else:
+            st.info("Loading and processing URLs... Please note that the extraction of Javascript is under testing and debugging. You can download the extracted files as raw URLs.")
+            # Initialize model (only once)
+            tokenizer, model = initialize_bert_model()
 
-        st.info("REMINDER: Functionality is extremely outdated and not guaranteed to run")
-        # Initialize model (only once)
-        tokenizer, model = initialize_bert_model()
-
-        with st.spinner("Extracting content and calculating similarities..."):
-            url_embeddings = {}
-            url_texts= {}
-            for url in urls:
-                text = extract_text_from_url(url)
-                if text:
-                    url_embeddings[url] = get_embedding(text, model, tokenizer)
-                    url_texts[url]=text #Store for checking purposes.
-                else:
-                    st.write(f"Could not extract text from {url}")
-                    url_embeddings[url] = None
+            with st.spinner("Extracting content and calculating similarities..."):
+                url_embeddings = {}
+                url_texts= {}
+                for url in urls:
+                    text = extract_text_from_url(url)
+                    if text:
+                        url_embeddings[url] = get_embedding(text, model, tokenizer)
+                        url_texts[url]=text #Store for checking purposes.
+                    else:
+                        st.write(f"Could not extract text from {url}")
+                        url_embeddings[url] = None
 
             # Calculate cosine similarity matrix
             similarity_matrix = np.zeros((len(urls), len(urls)))
@@ -200,8 +226,15 @@ def url_recommendation_page():
                file_name='url_recommendations.csv',
                mime='text/csv',
            ) # Download to allow for easier export
-        st.info("REMINDER: Functionality is extremely outdated and not guaranteed to run. Selenium and BeautiulSoup4 no longer properly render JS requests or modern html types.")
-
+        st.info("Features no longer working due to function being depricated and selenium no longer supported. We could not extract text from several functions, please try again.")
+        for url in urls:
+             if url in url_texts:
+                st.download_button(
+                label=f"Download extracted text from {url}",
+                data=url_texts[url],
+                file_name=f"{url.replace('/', '_')}.txt", #Sanitize
+                mime="text/plain",
+)
 
 def main():
     st.set_page_config(
