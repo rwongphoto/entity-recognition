@@ -8,7 +8,6 @@ from PIL import Image
 import cairosvg
 import json
 import undetected_chromedriver as uc
-import time
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
