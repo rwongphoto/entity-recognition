@@ -274,22 +274,23 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
-    
+
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
-    
+
     if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
-        
+
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
+
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model, tokenizer)
-            
+
             for i, url in enumerate(urls):
                 try:
                     # Use Selenium to get full page source
@@ -306,46 +307,32 @@ def url_analysis_dashboard_page():
                     soup = BeautifulSoup(page_source, "html.parser")
                     meta_title = driver.title
                     driver.quit()
-                    
-                    # Create cleaned content by removing header and footer from <body>
-                    content_soup = BeautifulSoup(page_source, "html.parser")
-                    if content_soup.find("body"):
-                        body = content_soup.find("body")
+
+                    # Extract body content
+                    body = soup.find("body")
+                    if body:
                         for tag in body.find_all(["header", "footer"]):
                             tag.decompose()
                         total_text = body.get_text(separator="\n", strip=True)
                     else:
                         total_text = ""
+
                     total_word_count = len(total_text.split())
-                    
-                    # Custom (content) word count: from <p>, <li>, header tags, and tables (from cleaned body)
-                    custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
-                    custom_words = []
-                    for el in custom_elements:
-                        custom_words.extend(el.get_text().split())
 
-                    # Add words from tables
-                    for table in body.find_all("table"):
-                        for row in table.find_all("tr"):
-                            for cell in row.find_all(["td", "th"]):  # Include both td and th
-                                custom_words.extend(cell.get_text().split())
-
-                    custom_word_count = len(custom_words)
-                    
                     # Extract H1 tag
                     h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
-                    
+
                     # Count links in header & footer navigation
                     header = soup.find("header")
                     footer = soup.find("footer")
                     header_links = len(header.find_all("a")) if header else 0
                     footer_links = len(footer.find_all("a")) if footer else 0
                     total_nav_links = header_links + footer_links
-                    
-                    # Count total links on the page (all <a> tags)
+
+                    # Count total links on the page
                     total_links = len(soup.find_all("a"))
-                    
-                    # Schema Markup: Find JSON‑LD scripts and extract types
+
+                    # Schema Markup Extraction
                     schema_types = set()
                     ld_json_scripts = soup.find_all("script", type="application/ld+json")
                     for script in ld_json_scripts:
@@ -363,84 +350,44 @@ def url_analysis_dashboard_page():
                         except Exception:
                             continue
                     schema_markup = ", ".join(schema_types) if schema_types else "None"
-                    
-                    # Lists/Tables Present: Extract from the cleaned body only
+
+                    # Lists/Tables Present in Body
                     lists_tables = (
-                        f"OL: {'Yes' if body.find('ol') else 'No'} | "
-                        f"UL: {'Yes' if body.find('ul') else 'No'} | "
-                        f"Table: {'Yes' if body.find('table') else 'No'}"
+                        f"OL: {'Yes' if body and body.find('ol') else 'No'} | "
+                        f"UL: {'Yes' if body and body.find('ul') else 'No'} | "
+                        f"Table: {'Yes' if body and body.find('table') else 'No'}"
                     )
-                    
-                    # Count the number of images (from full soup)
+
+                    # Count images
                     num_images = len(soup.find_all("img"))
-                    
-                    # Cosine similarity score from earlier calculation
+
+                    # Cosine similarity score
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
-                    
-                    # Append data in order:
+
+                    # Extract named entities from body text
+                    entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
+                    entity_counts = count_entities(entities)
+                    top_entities = ", ".join([f"{entity} ({label})" for (entity, label), _ in entity_counts.most_common(10)])
+
+                    # Append data
                     data.append([
-                        url,               # URL
-                        meta_title,        # Meta Title
-                        h1_tag,            # H1
-                        total_word_count,  # Total Word Count (full cleaned body)
-                        custom_word_count, # Content Word Count (custom from selected tags)
-                        similarity_val,    # Cosine Similarity
-                        total_nav_links,   # Nav Links
-                        total_links,       # Total Links
-                        schema_markup,     # Schema Types
-                        lists_tables,      # Lists/Tables
-                        num_images,        # Images
+                        url, meta_title, h1_tag, total_word_count, similarity_val, top_entities,
+                        total_nav_links, total_links, schema_markup, lists_tables, num_images
                     ])
-                    
+
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url] + ["Error"] * 11)
-            
+                    data.append([url] + ["Error"] * 10)
+
+            # Create DataFrame with the new Entities column
             df = pd.DataFrame(data, columns=[
-                "URL",
-                "Meta Title",
-                "H1 Tag",
-                "Total Word Count",
-                "Custom Word Count (p, li, headers)",
-                "Overall Cosine Similarity Score",
-                "# of Header & Footer Links",
-                "Total # of Links",
-                "Schema Markup Types",
-                "Lists/Tables Present",
-                "# of Images",
+                "URL", "Meta Title", "H1", "Total Word Count", "Cosine Similarity", "Entities",
+                "Nav Links", "Total Links", "Schema Types", "Lists/Tables", "Images"
             ])
-            
-            # Reorder and rename columns as required:
-            df = df[[
-                "URL",                               # 0
-                "Meta Title",                        # 1
-                "H1 Tag",                            # 2
-                "Total Word Count",                  # 3
-                "Custom Word Count (p, li, headers)",# 4
-                "Overall Cosine Similarity Score",   # 5
-                "# of Header & Footer Links",        # 6
-                "Total # of Links",                  # 7
-                "Schema Markup Types",               # 8
-                "Lists/Tables Present",              # 9
-                "# of Images",                       # 10
-            ]]
-            df.columns = [
-                "URL",
-                "Meta Title",
-                "H1",
-                "Total Word Count",
-                "Content Word Count",
-                "Cosine Similarity",
-                "Nav Links",
-                "Total Links",
-                "Schema Types",
-                "Lists/Tables",
-                "Images",
-            ]
-            
-            # Ensure the Cosine Similarity column is numeric.
+
+            # Ensure Cosine Similarity is numeric
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
-            
+
             st.dataframe(df)
 
 
