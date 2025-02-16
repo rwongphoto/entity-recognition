@@ -712,7 +712,7 @@ def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Content Gap Analysis")
     st.markdown("""
         Extract n-grams from multiple competitor URLs and your target URL, 
-        score them using TF-IDF, and identify content gaps.
+        score them using TF-IDF, and identify content gaps (prioritized).
     """)
 
     # --- Input Section ---
@@ -728,7 +728,7 @@ def ngram_tfidf_analysis_page():
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
     max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
-    top_n = st.slider("Number of top n-grams to display:", min_value=1, max_value=50, value=10)  # Increased default and max
+    top_n = st.slider("Number of top n-grams to display:", min_value=1, max_value=50, value=10)  # For initial competitor analysis
 
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if not competitor_urls:
@@ -740,88 +740,98 @@ def ngram_tfidf_analysis_page():
 
         # --- 1. Extract Text from URLs ---
         texts = []
-        valid_urls = []  # Competitor URLs + Target URL (if text extraction successful)
+        valid_urls = []  # Competitor URLs
         url_text_dict = {}  # {url: text}
 
         with st.spinner("Extracting text from URLs..."):
             # Competitor URLs
             for url in competitor_urls:
-                text = extract_text_from_url(url)  # Assuming you have this function
+                text = extract_text_from_url(url)  # Using the updated function
                 if text:
                     texts.append(text)
                     url_text_dict[url] = text
                     valid_urls.append(url)
                 else:
                     st.warning(f"Could not extract text from {url}")
+                random_delay()
 
             # Target URL
-            target_text = extract_text_from_url(target_url)
+            target_text = extract_text_from_url(target_url) # Using the updated function
             if target_text:
                 url_text_dict[target_url] = target_text
-                # Don't add target_text to texts yet; we'll handle it separately
+                # Don't add to texts yet
             else:
                 st.warning(f"Could not extract text from {target_url}")
-                return  # Exit if we can't get text from the target URL
-
+                return
+            random_delay()
         if not texts:
             st.error("No text was extracted from the competitor URLs.")
             return
-        
+
         # --- 2. Calculate TF-IDF for Competitors ---
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(texts)  # Only competitor texts
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
-        
+
         # --- 3. Calculate TF-IDF for Target URL ---
         with st.spinner("Calculating TF-IDF scores for target URL..."):
-            # Use the *same* vectorizer (fitted on competitors) to transform the target text
+            # Use the *same* vectorizer (fitted on competitors) to transform the target
             target_tfidf_vector = vectorizer.transform([target_text])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
-        
-        # --- 4. Identify Top N-grams for Competitors ---
-        top_ngrams_competitors = {}
-        for url in valid_urls:  # Only competitor URLs
+
+       # --- 4. Identify Top N-grams for Competitors (AGGREGATED) ---
+        # Instead of per-competitor, we'll aggregate across all competitors.
+        competitor_ngram_scores = {}  # {ngram: [list of scores from different competitors]}
+
+        for url in valid_urls:  # Iterate through competitor URLs
             row = df_tfidf_competitors.loc[url]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
-            top_ngrams_competitors[url] = list(top_ngrams.index)  # Store just the n-gram strings
-        
-        # --- 5. Content Gap Analysis ---
-        content_gaps = {}  # {competitor_url: [list of gap n-grams]}
+            for ngram, score in top_ngrams.items():
+                if ngram not in competitor_ngram_scores:
+                    competitor_ngram_scores[ngram] = []
+                competitor_ngram_scores[ngram].append(score)
 
-        for competitor_url, competitor_ngrams in top_ngrams_competitors.items():
-            gap_ngrams = []
-            for ngram in competitor_ngrams:
-                # Check if the n-gram exists in the target URL's TF-IDF matrix
-                if ngram in df_tfidf_target.columns:
-                    # Compare TF-IDF scores
-                    competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                    target_score = df_tfidf_target.loc[target_url, ngram]
+        # --- 5. Content Gap Analysis (Prioritized) ---
+        gap_analysis = []  # List of (ngram, gap_score, competitor_count) tuples
 
-                    if competitor_score > target_score:
-                        gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: {target_score:.3f})")
-                else:
-                    # N-gram is completely missing from the target URL
-                     competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                     gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
+        for ngram, competitor_scores in competitor_ngram_scores.items():
+            # Calculate the "gap score":  Average competitor score - target score (or 0 if absent)
+            avg_competitor_score = sum(competitor_scores) / len(competitor_scores)
+            target_score = df_tfidf_target[ngram].values[0] if ngram in df_tfidf_target.columns else 0.0
+            gap_score = avg_competitor_score - target_score
 
-            content_gaps[competitor_url] = gap_ngrams
+            # Only consider it a gap if the gap_score is positive
+            if gap_score > 0:
+                # Count how many competitors have a higher score than the target
+                competitor_count = sum(1 for score in competitor_scores if score > target_score)
+                gap_analysis.append((ngram, gap_score, competitor_count, avg_competitor_score, target_score))
 
-        # --- 6. Display Results ---
-        st.markdown("### Content Gap Analysis")
 
-        # Display competitor top n-grams and gaps in a single DataFrame
+        # Sort by gap_score (descending), then by competitor_count (descending)
+        gap_analysis.sort(key=lambda x: (x[1], x[2]), reverse=True)
+
+        # --- 6. Display Results (Prioritized) ---
+        st.markdown("### Prioritized Content Gaps")
         st.markdown(f"**Target URL:** {target_url}")
-        all_data = {}
-        for competitor_url, gap_ngrams in content_gaps.items():
-           all_data[competitor_url] = gap_ngrams
-           #Pad to ensure all are the same length.
-           while len(all_data[competitor_url]) < top_n:
-               all_data[competitor_url].append("")
-        df_display = pd.DataFrame(all_data)
-        st.dataframe(df_display)
+
+        if gap_analysis:
+            gap_data = []
+            for ngram, gap_score, competitor_count, avg_competitor_score, target_score in gap_analysis:
+                gap_data.append([
+                    ngram,
+                    f"{gap_score:.3f}",
+                    competitor_count,
+                    f"{avg_competitor_score:.3f}",
+                    f"{target_score:.3f}"
+                ])
+
+            df_gaps = pd.DataFrame(gap_data, columns=["N-gram", "Gap Score", "Competitor Count", "Avg. Competitor Score", "Target Score"])
+            st.dataframe(df_gaps)
+        else:
+            st.info("No significant content gaps found.")
 
 # ------------------------------------
 # Main Streamlit App
