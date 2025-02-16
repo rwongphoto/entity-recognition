@@ -711,6 +711,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Analysis")
     st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering its frequency in the document and its uniqueness across documents.")
+
     urls_input = st.text_area("Enter URLs (one per line):", key="tfidf_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     n_value = st.selectbox("Select n for n‑grams:", options=[1, 2, 3, 4], index=1)
@@ -718,11 +719,14 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
     max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top n‑grams to display per site:", min_value=1, max_value=20, value=5)
+
     if st.button("Extract N‑grams and Calculate TF‑IDF", key="ngram_tfidf_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
+
         texts = []
+        valid_urls = []   # List of URLs for which we successfully extract text
         url_text_dict = {}
         with st.spinner("Extracting text from URLs..."):
             for url in urls:
@@ -730,18 +734,25 @@ def ngram_tfidf_analysis_page():
                 if text:
                     texts.append(text)
                     url_text_dict[url] = text
+                    valid_urls.append(url)
                 else:
                     st.warning(f"Could not extract text from {url}")
+
         if not texts:
             st.error("No text was extracted from the provided URLs.")
             return
+
         with st.spinner("Calculating TF‑IDF scores..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(texts)
             feature_names = vectorizer.get_feature_names_out()
-        df_tfidf = pd.DataFrame(tfidf_matrix.toarray(), index=urls, columns=feature_names)
+
+        # Create a DataFrame from the TF-IDF matrix using valid_urls as the index.
+        df_tfidf = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
+
+        # For each valid URL, extract the top n-grams
         top_ngrams_dict = {}
-        for url in urls:
+        for url in valid_urls:
             row = df_tfidf.loc[url]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row[sorted_row > 0].head(top_n)
@@ -749,6 +760,8 @@ def ngram_tfidf_analysis_page():
             while len(top_list) < top_n:
                 top_list.append("")
             top_ngrams_dict[url] = top_list
+
+        # Create a comparison DataFrame: rows as Rank, columns as URLs.
         comparison_df = pd.DataFrame(top_ngrams_dict, index=[f"Rank {i+1}" for i in range(top_n)])
         st.markdown("### Comparison of Top N-grams Across Sites")
         st.dataframe(comparison_df)
