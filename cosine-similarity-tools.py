@@ -722,8 +722,8 @@ def ngram_tfidf_analysis_page():
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
-    min_df = st.number_input("Minimum Frequency (min_df):", value=1, min_value=1)
-    max_df = st.number_input("Maximum Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
+    min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
+    max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)  # Increased default and max
 
     if st.button("Analyze Content Gaps", key="content_gap_button"):
