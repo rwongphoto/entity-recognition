@@ -9,11 +9,12 @@ import cairosvg
 import json
 
 from bs4 import BeautifulSoup
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -57,37 +58,43 @@ def initialize_bert_model():
     return tokenizer, model
 
 def extract_text_from_url(url):
-    """
-    Extracts text from a URL using undetected-chromedriver.
-    This function simulates a real browser, allowing JavaScript to run,
-    and then removes the header and footer from the page body.
-    """
+    """Extracts text from a URL using Selenium, handling JavaScript rendering,
+    and excluding header and footer content. Returns the body text."""
     try:
-        options = uc.ChromeOptions()
-        options.headless = True
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        driver = uc.Chrome(options=options)
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        chrome_options.add_argument(f"user-agent={user_agent}")
+
+        driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
-        )
-        # Scroll down to load dynamic content.
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(5)
+
+        # Wait longer for JavaScript to load
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
+
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, "html.parser")
-        # Remove header and footer from the body.
-        body = soup.find("body")
+
+        # Find the body and remove header and footer tags
+        body = soup.find('body')
         if not body:
             return None
-        for tag in body.find_all(["header", "footer"]):
+        for tag in body.find_all(['header', 'footer']):
             tag.decompose()
-        text = body.get_text(separator="\n", strip=True)
+
+        text = body.get_text(separator='\n', strip=True)
         return text
+
+    except (TimeoutException, WebDriverException) as e:
+        st.error(f"Selenium error fetching {url}: {e}")
+        return None
     except Exception as e:
-        st.error(f"Error extracting text from {url}: {e}")
+        st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
 def get_embedding(text, model, tokenizer):
@@ -106,6 +113,7 @@ def create_navigation_menu(logo_url):
         "Blog": "https://theseoconsultant.ai/blog/",
         "Contact": "https://theseoconsultant.ai/contact/"
     }
+
     st.markdown(
         f"""
         <div style="display: flex; justify-content: center;">
@@ -114,6 +122,7 @@ def create_navigation_menu(logo_url):
         """,
         unsafe_allow_html=True
     )
+
     st.markdown(
         """
         <style>
@@ -140,6 +149,7 @@ def create_navigation_menu(logo_url):
         """,
         unsafe_allow_html=True
     )
+
     menu_html = "<div class='topnav'>"
     for key, value in menu_options.items():
         menu_html += f"<a href='{value}' target='_blank'>{key}</a>"
@@ -180,6 +190,10 @@ def display_entity_barchart(entity_counts, top_n=50):
         plt.text(bar.get_x() + bar.get_width()/2, yval, int(count), ha='center', va='bottom')
     plt.tight_layout()
     st.pyplot(fig)
+
+# ------------------------------------
+# Cosine Similarity Functions
+# ------------------------------------
 
 def calculate_overall_similarity(urls, search_term, model, tokenizer):
     """Calculates the overall cosine similarity score for a list of URLs against a search term."""
@@ -253,9 +267,14 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     bottom_sections = sorted_sections[-top_n:]
     return top_sections, bottom_sections
 
+# ------------------------------------
+# Streamlit UI Functions
+# ------------------------------------
+
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
+    
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
@@ -264,6 +283,7 @@ def url_analysis_dashboard_page():
         if not urls:
             st.warning("Please enter at least one URL.")
             return
+        
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
@@ -272,12 +292,15 @@ def url_analysis_dashboard_page():
             
             for i, url in enumerate(urls):
                 try:
-                    # Use undetected-chromedriver to get full page source
-                    options = uc.ChromeOptions()
-                    options.headless = True
-                    options.add_argument("--no-sandbox")
-                    options.add_argument("--disable-dev-shm-usage")
-                    driver = uc.Chrome(options=options)
+                    # Use Selenium to get full page source
+                    chrome_options = Options()
+                    chrome_options.add_argument("--headless")
+                    chrome_options.add_argument("--no-sandbox")
+                    chrome_options.add_argument("--disable-dev-shm-usage")
+                    user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+                    chrome_options.add_argument(f"user-agent={user_agent}")
+                    driver = webdriver.Chrome(options=chrome_options)
                     driver.get(url)
                     page_source = driver.page_source
                     soup = BeautifulSoup(page_source, "html.parser")
@@ -295,7 +318,7 @@ def url_analysis_dashboard_page():
                         total_text = ""
                     total_word_count = len(total_text.split())
                     
-                    # Custom word count (only from <p>, <li>, and header tags) from the same cleaned body
+                    # Custom (content) word count: only from <p>, <li>, and header tags (from same cleaned body)
                     custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
                     custom_words = []
                     for el in custom_elements:
@@ -334,37 +357,39 @@ def url_analysis_dashboard_page():
                             continue
                     schema_markup = ", ".join(schema_types) if schema_types else "None"
                     
-                    # Lists/Tables: Extract only from the cleaned body (i.e. without header/footer)
+                    # Lists/Tables Present: Extract from the cleaned body only
                     lists_tables = (
                         f"OL: {'Yes' if body.find('ol') else 'No'} | "
                         f"UL: {'Yes' if body.find('ul') else 'No'} | "
                         f"Table: {'Yes' if body.find('table') else 'No'}"
                     )
                     
-                    # Count number of images on full page
+                    # Count the number of images (from full soup)
                     num_images = len(soup.find_all("img"))
                     
                     # Website framework via meta generator tag
                     meta_generator = soup.find("meta", attrs={"name": "generator"})
                     website_framework = meta_generator["content"] if meta_generator and meta_generator.get("content") else "Unknown"
                     
-                    # Cosine similarity score (use np.nan for missing values)
+                    # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
                     
+                    # Append data in order:
                     data.append([
-                        url,
-                        meta_title,
-                        h1_tag,
-                        total_word_count,
-                        custom_word_count,
-                        similarity_val,
-                        total_nav_links,
-                        total_links,
-                        schema_markup,
-                        lists_tables,
-                        num_images,
-                        website_framework
+                        url,               # URL
+                        meta_title,        # Meta Title
+                        h1_tag,            # H1
+                        total_word_count,  # Total Word Count (full cleaned body)
+                        custom_word_count, # Content Word Count (custom from selected tags)
+                        similarity_val,    # Cosine Similarity
+                        total_nav_links,   # Nav Links
+                        total_links,       # Total Links
+                        schema_markup,     # Schema Types
+                        lists_tables,      # Lists/Tables
+                        num_images,        # Images
+                        website_framework  # Framework
                     ])
+                    
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
                     data.append([url] + ["Error"] * 11)
@@ -386,18 +411,18 @@ def url_analysis_dashboard_page():
             
             # Reorder and rename columns as required:
             df = df[[
-                "URL",                                # 0
-                "Meta Title",                         # 1
-                "H1 Tag",                             # 2
-                "Total Word Count",                   # 3
-                "Custom Word Count (p, li, headers)",   # 4
-                "Overall Cosine Similarity Score",    # 5
-                "# of Header & Footer Links",         # 6
-                "Total # of Links",                   # 7
-                "Schema Markup Types",                # 8
-                "Lists/Tables Present",               # 9
-                "# of Images",                        # 10
-                "Website Framework"                   # 11
+                "URL",                               # 0
+                "Meta Title",                        # 1
+                "H1 Tag",                            # 2
+                "Total Word Count",                  # 3
+                "Custom Word Count (p, li, headers)",# 4
+                "Overall Cosine Similarity Score",   # 5
+                "# of Header & Footer Links",        # 6
+                "Total # of Links",                  # 7
+                "Schema Markup Types",               # 8
+                "Lists/Tables Present",              # 9
+                "# of Images",                       # 10
+                "Website Framework"                  # 11
             ]]
             df.columns = [
                 "URL",
@@ -414,7 +439,7 @@ def url_analysis_dashboard_page():
                 "Framework"
             ]
             
-            # Ensure Cosine Similarity column is numeric.
+            # Ensure the Cosine Similarity column is numeric.
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
             
             st.dataframe(df)
@@ -674,9 +699,15 @@ def named_entity_barchart_page():
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
+# ------------------------------------
+# New Tool: N-gram TF-IDF Analysis with Comparison Table
+# ------------------------------------
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Analysis")
-    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering its frequency and its uniqueness across documents.")
+    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering its frequency in the document and its uniqueness across documents.")
+
     urls_input = st.text_area("Enter URLs (one per line):", key="tfidf_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     n_value = st.selectbox("Select n for n‑grams:", options=[1, 2, 3, 4], index=1)
@@ -684,12 +715,14 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
     max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top n‑grams to display per site:", min_value=1, max_value=20, value=5)
+
     if st.button("Extract N‑grams and Calculate TF‑IDF", key="ngram_tfidf_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
+
         texts = []
-        valid_urls = []
+        valid_urls = []   # List of URLs for which we successfully extract text
         url_text_dict = {}
         with st.spinner("Extracting text from URLs..."):
             for url in urls:
@@ -700,15 +733,20 @@ def ngram_tfidf_analysis_page():
                     valid_urls.append(url)
                 else:
                     st.warning(f"Could not extract text from {url}")
+
         if not texts:
             st.error("No text was extracted from the provided URLs.")
             return
+
         with st.spinner("Calculating TF‑IDF scores..."):
-            from sklearn.feature_extraction.text import TfidfVectorizer
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(texts)
             feature_names = vectorizer.get_feature_names_out()
+
+        # Create a DataFrame from the TF-IDF matrix using valid_urls as the index.
         df_tfidf = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
+
+        # For each valid URL, extract the top n-grams
         top_ngrams_dict = {}
         for url in valid_urls:
             row = df_tfidf.loc[url]
@@ -718,9 +756,15 @@ def ngram_tfidf_analysis_page():
             while len(top_list) < top_n:
                 top_list.append("")
             top_ngrams_dict[url] = top_list
+
+        # Create a comparison DataFrame: rows as Rank, columns as URLs.
         comparison_df = pd.DataFrame(top_ngrams_dict, index=[f"Rank {i+1}" for i in range(top_n)])
         st.markdown("### Comparison of Top N-grams Across Sites")
         st.dataframe(comparison_df)
+
+# ------------------------------------
+# Main Streamlit App
+# ------------------------------------
 
 def main():
     st.set_page_config(
@@ -764,5 +808,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
