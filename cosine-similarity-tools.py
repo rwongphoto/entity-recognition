@@ -706,10 +706,9 @@ def named_entity_barchart_page():
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 def ngram_tfidf_analysis_page():
-    st.header("N-gram TF-IDF Content Gap Analysis")
+    st.header("Content Gap Analyzer")
     st.markdown("""
-        Extract n-grams from multiple competitor URLs and your target URL, 
-        score them using TF-IDF, and identify content gaps.
+        Uncover hidden opportunities by comparing your website's content to your top competitors. Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation based on what works best in your industry.
     """)
 
     # --- Input Section ---
@@ -720,12 +719,12 @@ def ngram_tfidf_analysis_page():
     competitor_urls = [url.strip() for url in competitor_urls_input.splitlines() if url.strip()]
 
     # --- N-gram and TF-IDF Options ---
-    st.subheader("N-gram and TF-IDF Options")
-    n_value = st.selectbox("Select n for n-grams:", options=[1, 2, 3, 4], index=1)
+    st.subheader("Word Options")
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
-    min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
-    max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
-    top_n = st.slider("Number of top n-grams to display:", min_value=1, max_value=50, value=10)  # Increased default and max
+    min_df = st.number_input("Minimum Frequency (min_df):", value=1, min_value=1)
+    max_df = st.number_input("Maximum Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
+    top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)  # Increased default and max
 
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if not competitor_urls:
