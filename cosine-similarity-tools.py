@@ -318,11 +318,18 @@ def url_analysis_dashboard_page():
                         total_text = ""
                     total_word_count = len(total_text.split())
                     
-                    # Custom (content) word count: only from <p>, <li>, and header tags (from same cleaned body)
+                    # Custom (content) word count: from <p>, <li>, header tags, and tables (from cleaned body)
                     custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
                     custom_words = []
                     for el in custom_elements:
                         custom_words.extend(el.get_text().split())
+
+                    # Add words from tables
+                    for table in body.find_all("table"):
+                        for row in table.find_all("tr"):
+                            for cell in row.find_all(["td", "th"]):  # Include both td and th
+                                custom_words.extend(cell.get_text().split())
+
                     custom_word_count = len(custom_words)
                     
                     # Extract H1 tag
