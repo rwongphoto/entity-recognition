@@ -323,13 +323,11 @@ def url_analysis_dashboard_page():
                     custom_words = []
                     for el in custom_elements:
                         custom_words.extend(el.get_text().split())
-
-                    # Add words from tables
+                    # Also add words from tables
                     for table in body.find_all("table"):
                         for row in table.find_all("tr"):
-                            for cell in row.find_all(["td", "th"]):  # Include both td and th
+                            for cell in row.find_all(["td", "th"]):
                                 custom_words.extend(cell.get_text().split())
-
                     custom_word_count = len(custom_words)
                     
                     # Extract H1 tag
@@ -338,12 +336,12 @@ def url_analysis_dashboard_page():
                     # Count links in header & footer navigation
                     header = soup.find("header")
                     footer = soup.find("footer")
-                    header_links = len(header.find_all("a")) if header else 0
-                    footer_links = len(footer.find_all("a")) if footer else 0
+                    header_links = len(header.find_all("a", href=True)) if header else 0
+                    footer_links = len(footer.find_all("a", href=True)) if footer else 0
                     total_nav_links = header_links + footer_links
                     
-                    # Count total links on the page (all <a> tags)
-                    total_links = len(soup.find_all("a"))
+                    # Count total links on the page
+                    total_links = len(soup.find_all("a", href=True))
                     
                     # Schema Markup: Find JSON‑LD scripts and extract types
                     schema_types = set()
@@ -377,7 +375,13 @@ def url_analysis_dashboard_page():
                     # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
                     
+                    # NEW: Count Unique Entities from the cleaned body text
+                    entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
+                    unique_entity_count = len(set([ent[0] for ent in entities]))
+                    
                     # Append data in order:
+                    # Order: URL, Meta Title, H1, Total Word Count, Content Word Count, Cosine Similarity,
+                    #        # of Unique Entities, Nav Links, Total Links, Schema Types, Lists/Tables, Images
                     data.append([
                         url,               # URL
                         meta_title,        # Meta Title
@@ -385,6 +389,7 @@ def url_analysis_dashboard_page():
                         total_word_count,  # Total Word Count (full cleaned body)
                         custom_word_count, # Content Word Count (custom from selected tags)
                         similarity_val,    # Cosine Similarity
+                        unique_entity_count,  # # of Unique Entities (new column)
                         total_nav_links,   # Nav Links
                         total_links,       # Total Links
                         schema_markup,     # Schema Types
@@ -403,6 +408,7 @@ def url_analysis_dashboard_page():
                 "Total Word Count",
                 "Custom Word Count (p, li, headers)",
                 "Overall Cosine Similarity Score",
+                "# of Unique Entities",
                 "# of Header & Footer Links",
                 "Total # of Links",
                 "Schema Markup Types",
@@ -418,11 +424,12 @@ def url_analysis_dashboard_page():
                 "Total Word Count",                  # 3
                 "Custom Word Count (p, li, headers)",# 4
                 "Overall Cosine Similarity Score",   # 5
-                "# of Header & Footer Links",        # 6
-                "Total # of Links",                  # 7
-                "Schema Markup Types",               # 8
-                "Lists/Tables Present",              # 9
-                "# of Images",                       # 10
+                "# of Unique Entities",              # 6
+                "# of Header & Footer Links",        # 7
+                "Total # of Links",                  # 8
+                "Schema Markup Types",               # 9
+                "Lists/Tables Present",              # 10
+                "# of Images",                       # 11
             ]]
             df.columns = [
                 "URL",
@@ -431,6 +438,7 @@ def url_analysis_dashboard_page():
                 "Total Word Count",
                 "Content Word Count",
                 "Cosine Similarity",
+                "# of Unique Entities",
                 "Nav Links",
                 "Total Links",
                 "Schema Types",
@@ -438,11 +446,10 @@ def url_analysis_dashboard_page():
                 "Images",
             ]
             
-            # Ensure the Cosine Similarity column is numeric.
+            # Ensure Cosine Similarity is numeric.
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
             
             st.dataframe(df)
-
 
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
@@ -724,7 +731,7 @@ def ngram_tfidf_analysis_page():
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
-    top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)  # Increased default and max
+    top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
 
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if not competitor_urls:
@@ -736,13 +743,11 @@ def ngram_tfidf_analysis_page():
 
         # --- 1. Extract Text from URLs ---
         texts = []
-        valid_urls = []  # Competitor URLs + Target URL (if text extraction successful)
-        url_text_dict = {}  # {url: text}
-
+        valid_urls = []
+        url_text_dict = {}
         with st.spinner("Extracting text from URLs..."):
-            # Competitor URLs
             for url in competitor_urls:
-                text = extract_text_from_url(url)  # Assuming you have this function
+                text = extract_text_from_url(url)
                 if text:
                     texts.append(text)
                     url_text_dict[url] = text
@@ -750,14 +755,12 @@ def ngram_tfidf_analysis_page():
                 else:
                     st.warning(f"Could not extract text from {url}")
 
-            # Target URL
             target_text = extract_text_from_url(target_url)
             if target_text:
                 url_text_dict[target_url] = target_text
-                # Don't add target_text to texts yet; we'll handle it separately
             else:
                 st.warning(f"Could not extract text from {target_url}")
-                return  # Exit if we can't get text from the target URL
+                return
 
         if not texts:
             st.error("No text was extracted from the competitor URLs.")
@@ -766,54 +769,43 @@ def ngram_tfidf_analysis_page():
         # --- 2. Calculate TF-IDF for Competitors ---
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
-            tfidf_matrix = vectorizer.fit_transform(texts)  # Only competitor texts
+            tfidf_matrix = vectorizer.fit_transform(texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
         
         # --- 3. Calculate TF-IDF for Target URL ---
         with st.spinner("Calculating TF-IDF scores for target URL..."):
-            # Use the *same* vectorizer (fitted on competitors) to transform the target text
             target_tfidf_vector = vectorizer.transform([target_text])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
         
         # --- 4. Identify Top N-grams for Competitors ---
         top_ngrams_competitors = {}
-        for url in valid_urls:  # Only competitor URLs
+        for url in valid_urls:
             row = df_tfidf_competitors.loc[url]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
-            top_ngrams_competitors[url] = list(top_ngrams.index)  # Store just the n-gram strings
+            top_ngrams_competitors[url] = list(top_ngrams.index)
         
         # --- 5. Content Gap Analysis ---
-        content_gaps = {}  # {competitor_url: [list of gap n-grams]}
-
+        content_gaps = {}
         for competitor_url, competitor_ngrams in top_ngrams_competitors.items():
             gap_ngrams = []
             for ngram in competitor_ngrams:
-                # Check if the n-gram exists in the target URL's TF-IDF matrix
                 if ngram in df_tfidf_target.columns:
-                    # Compare TF-IDF scores
                     competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
                     target_score = df_tfidf_target.loc[target_url, ngram]
-
                     if competitor_score > target_score:
                         gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: {target_score:.3f})")
                 else:
-                    # N-gram is completely missing from the target URL
-                     competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                     gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
-
+                    competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
+                    gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
             content_gaps[competitor_url] = gap_ngrams
 
-        # --- 6. Display Results ---
         st.markdown("### Content Gap Analysis")
-
-        # Display competitor top n-grams and gaps in a single DataFrame
         st.markdown(f"**Target URL:** {target_url}")
         all_data = {}
         for competitor_url, gap_ngrams in content_gaps.items():
            all_data[competitor_url] = gap_ngrams
-           #Pad to ensure all are the same length.
            while len(all_data[competitor_url]) < top_n:
                all_data[competitor_url].append("")
         df_display = pd.DataFrame(all_data)
@@ -865,5 +857,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
