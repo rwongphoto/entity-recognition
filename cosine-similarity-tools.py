@@ -739,7 +739,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 def query_kg(query, api_key):
     """
     Queries Google's Knowledge Graph Search API for the given query.
-    Returns a string with the entity's name and description if found.
+    Returns a string containing the entity's name and description if found.
     """
     try:
         service = build("kgsearch", "v1", developerKey=api_key)
@@ -795,6 +795,7 @@ def ngram_tfidf_analysis_page():
         valid_urls = []
         url_text_dict = {}
         with st.spinner("Extracting text from URLs..."):
+            # Competitor URLs
             for url in competitor_urls:
                 text = extract_text_from_url(url)
                 if text:
@@ -804,6 +805,7 @@ def ngram_tfidf_analysis_page():
                 else:
                     st.warning(f"Could not extract text from {url}")
 
+            # Target URL
             target_text = extract_text_from_url(target_url)
             if target_text:
                 url_text_dict[target_url] = target_text
@@ -828,46 +830,50 @@ def ngram_tfidf_analysis_page():
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
         
         # --- 4. Identify Top N-grams for Competitors ---
+        # Instead of just storing the n-gram string, store a tuple with n-gram and its scores.
         top_ngrams_competitors = {}
         for url in valid_urls:
             row = df_tfidf_competitors.loc[url]
             sorted_row = row.sort_values(ascending=False)
-            top_ngrams = sorted_row.head(top_n)
-            top_ngrams_competitors[url] = list(top_ngrams.index)
+            # Create a list of tuples: (ngram, competitor_score, target_score)
+            ngram_tuples = []
+            for ngram in sorted_row.index[:top_n]:
+                competitor_score = df_tfidf_competitors.loc[url, ngram]
+                if ngram in df_tfidf_target.columns:
+                    target_score = df_tfidf_target.loc[target_url, ngram]
+                else:
+                    target_score = 0.0
+                ngram_tuples.append((ngram, competitor_score, target_score))
+            top_ngrams_competitors[url] = ngram_tuples
         
         # --- 5. Content Gap Analysis ---
+        # Only include n-grams where competitor score > target score
         content_gaps = {}
-        for competitor_url, competitor_ngrams in top_ngrams_competitors.items():
+        for competitor_url, ngram_tuples in top_ngrams_competitors.items():
             gap_ngrams = []
-            for ngram in competitor_ngrams:
-                if ngram in df_tfidf_target.columns:
-                    competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                    target_score = df_tfidf_target.loc[target_url, ngram]
-                    if competitor_score > target_score:
-                        gap_ngrams.append(ngram)
-                else:
-                    gap_ngrams.append(ngram)
+            for ngram, comp_score, targ_score in ngram_tuples:
+                if comp_score > targ_score:
+                    gap_ngrams.append((ngram, comp_score, targ_score))
             content_gaps[competitor_url] = gap_ngrams
 
-        # --- 6. Query Google Knowledge Graph for each gap n-gram ---
-        # For each competitor URL, for each gap n-gram, query KG API and pair results.
+        # --- 6. Query Google Knowledge Graph for each gap n-gram and filter ---
+        # Only keep the n-grams that yield a result from the KG API, and include TF-IDF scores.
         content_gaps_kg = {}
-        for competitor_url, gap_ngrams in content_gaps.items():
-            paired_ngrams = []
-            for ngram in gap_ngrams:
+        for competitor_url, gap_tuples in content_gaps.items():
+            filtered_ngrams = []
+            for ngram, comp_score, targ_score in gap_tuples:
                 kg_result = query_kg(ngram, KG_API_KEY)
-                if kg_result:
-                    paired_ngrams.append(f"{ngram} [{kg_result}]")
-                else:
-                    paired_ngrams.append(ngram)
-            content_gaps_kg[competitor_url] = paired_ngrams
+                if kg_result:  # Only include if a valid KG result is returned
+                    paired_string = f"{ngram} (Competitor: {comp_score:.3f}, Target: {targ_score:.3f}) [{kg_result}]"
+                    filtered_ngrams.append(paired_string)
+            content_gaps_kg[competitor_url] = filtered_ngrams
 
         # --- 7. Display Results ---
         st.markdown("### Content Gap Analysis")
         st.markdown(f"**Target URL:** {target_url}")
         all_data = {}
-        for competitor_url, gap_ngrams in content_gaps_kg.items():
-            all_data[competitor_url] = gap_ngrams
+        for competitor_url, gap_results in content_gaps_kg.items():
+            all_data[competitor_url] = gap_results
             while len(all_data[competitor_url]) < top_n:
                 all_data[competitor_url].append("")
         df_display = pd.DataFrame(all_data)
