@@ -43,7 +43,7 @@ def load_spacy_model():
             print("Downloading en_core_web_sm model...")
             spacy.cli.download("en_core_web_sm")
             nlp = spacy.load("en_core_web_sm")
-            print("en_core_web_lg downloaded and loaded")
+            print("en_core_web_sm downloaded and loaded")
         except Exception as e:
             st.error(f"Failed to load spaCy model: {e}")
             return None
