@@ -753,7 +753,6 @@ def ngram_tfidf_analysis_page():
                     valid_urls.append(url)
                 else:
                     st.warning(f"Could not extract text from {url}")
-                random_delay()
 
             # Target URL
             target_text = extract_text_from_url(target_url) # Using the updated function
