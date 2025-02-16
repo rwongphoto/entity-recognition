@@ -762,7 +762,6 @@ def ngram_tfidf_analysis_page():
             else:
                 st.warning(f"Could not extract text from {target_url}")
                 return
-            random_delay()
         if not texts:
             st.error("No text was extracted from the competitor URLs.")
             return
