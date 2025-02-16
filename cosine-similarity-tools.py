@@ -7,7 +7,6 @@ import re
 from PIL import Image
 import cairosvg
 import json
-import undetected_chromedriver as uc
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -59,41 +58,43 @@ def initialize_bert_model():
     return tokenizer, model
 
 def extract_text_from_url(url):
+    """Extracts text from a URL using Selenium, handling JavaScript rendering,
+    and excluding header and footer content. Returns the body text."""
     try:
-        options = uc.ChromeOptions()
-        # Try running in non-headless mode to avoid detection:
-        # options.headless = False  # Remove or comment out headless mode
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
         user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
         chrome_options.add_argument(f"user-agent={user_agent}")
-        driver = uc.Chrome(options=options)
+
+        driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
 
-        # Wait for the body to be loaded.
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
-        )
-
-        # Scroll to the bottom to load dynamic content.
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(5)  # Wait a bit more for content to load
+        # Wait longer for JavaScript to load
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
         page_source = driver.page_source
         driver.quit()
-
         soup = BeautifulSoup(page_source, "html.parser")
-        # Remove header and footer
-        body = soup.find("body")
+
+        # Find the body and remove header and footer tags
+        body = soup.find('body')
         if not body:
             return None
-        for tag in body.find_all(["header", "footer"]):
+        for tag in body.find_all(['header', 'footer']):
             tag.decompose()
-        return body.get_text(separator="\n", strip=True)
 
+        text = body.get_text(separator='\n', strip=True)
+        return text
+
+    except (TimeoutException, WebDriverException) as e:
+        st.error(f"Selenium error fetching {url}: {e}")
+        return None
     except Exception as e:
-        print(f"Error extracting text: {e}")
+        st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
 def get_embedding(text, model, tokenizer):
