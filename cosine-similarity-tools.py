@@ -171,7 +171,7 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
             entity_counts[(entity, label)] += 1
     return entity_counts
 
-def display_entity_barchart(entity_counts, top_n=50):
+def display_entity_barchart(entity_counts, top_n=30):
     """Displays a bar chart of the top N most frequent entities."""
     entity_data = pd.DataFrame.from_dict(entity_counts, orient='index', columns=['count'])
     entity_data.index.names = ['entity']
