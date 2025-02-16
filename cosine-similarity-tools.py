@@ -367,10 +367,6 @@ def url_analysis_dashboard_page():
                     # Count the number of images (from full soup)
                     num_images = len(soup.find_all("img"))
                     
-                    # Website framework via meta generator tag
-                    meta_generator = soup.find("meta", attrs={"name": "generator"})
-                    website_framework = meta_generator["content"] if meta_generator and meta_generator.get("content") else "Unknown"
-                    
                     # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
                     
@@ -387,7 +383,6 @@ def url_analysis_dashboard_page():
                         schema_markup,     # Schema Types
                         lists_tables,      # Lists/Tables
                         num_images,        # Images
-                        website_framework  # Framework
                     ])
                     
                 except Exception as e:
@@ -406,7 +401,6 @@ def url_analysis_dashboard_page():
                 "Schema Markup Types",
                 "Lists/Tables Present",
                 "# of Images",
-                "Website Framework"
             ])
             
             # Reorder and rename columns as required:
@@ -422,7 +416,6 @@ def url_analysis_dashboard_page():
                 "Schema Markup Types",               # 8
                 "Lists/Tables Present",              # 9
                 "# of Images",                       # 10
-                "Website Framework"                  # 11
             ]]
             df.columns = [
                 "URL",
@@ -436,7 +429,6 @@ def url_analysis_dashboard_page():
                 "Schema Types",
                 "Lists/Tables",
                 "Images",
-                "Framework"
             ]
             
             # Ensure the Cosine Similarity column is numeric.
