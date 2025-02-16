@@ -6,6 +6,7 @@ import numpy as np
 import re
 from PIL import Image
 import cairosvg
+import json
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -58,40 +59,35 @@ def initialize_bert_model():
 
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
-    excluding header and footer content. Returns all text content from the
-    <body> except for the header and footer."""
+    and excluding header and footer content. Returns the body text."""
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1"
+        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
         chrome_options.add_argument(f"user-agent={user_agent}")
 
         driver = webdriver.Chrome(options=chrome_options)
-
         driver.get(url)
 
         # Wait longer for JavaScript to load
-        wait = WebDriverWait(driver, 20)  # Increased to 20 seconds
+        wait = WebDriverWait(driver, 20)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
         page_source = driver.page_source
         driver.quit()
         soup = BeautifulSoup(page_source, "html.parser")
 
-        # Find the body
+        # Find the body and remove header and footer tags
         body = soup.find('body')
         if not body:
             return None
-
-        # Remove header and footer tags
         for tag in body.find_all(['header', 'footer']):
             tag.decompose()
 
-        # Extract all text from the remaining elements in the body
         text = body.get_text(separator='\n', strip=True)
-
         return text
 
     except (TimeoutException, WebDriverException) as e:
@@ -137,7 +133,6 @@ def create_navigation_menu(logo_url):
           justify-content: center;
           margin-bottom: 35px;
         }
-
         .topnav a {
           float: left;
           display: block;
@@ -146,7 +141,6 @@ def create_navigation_menu(logo_url):
           padding: 14px 16px;
           text-decoration: none;
         }
-
         .topnav a:hover {
           background-color: #ddd;
           color: black;
@@ -160,7 +154,6 @@ def create_navigation_menu(logo_url):
     for key, value in menu_options.items():
         menu_html += f"<a href='{value}' target='_blank'>{key}</a>"
     menu_html += "</div>"
-
     st.markdown(menu_html, unsafe_allow_html=True)
 
 def identify_entities(text, nlp_model):
@@ -172,12 +165,10 @@ def identify_entities(text, nlp_model):
 def count_entities(entities: List[Tuple[str, str]]) -> Counter:
     """Counts named entities."""
     entity_counts = Counter()
-
     for entity, label in entities:
         entity = entity.replace('\n', ' ').replace('\r', '')
         if len(entity) > 2 and label != "CARDINAL":
             entity_counts[(entity, label)] += 1
-
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=50):
@@ -186,22 +177,17 @@ def display_entity_barchart(entity_counts, top_n=50):
     entity_data.index.names = ['entity']
     entity_data = entity_data.sort_values('count', ascending=False).head(top_n)
     entity_data = entity_data.reset_index()
-
     entity_names = [e[0] for e in entity_data['entity']]
-    labels = [e[1] for e in entity_data['entity']]
     counts = entity_data['count']
-
     fig, ax = plt.subplots(figsize=(12, 6))
     bars = ax.bar(entity_names, counts)
     ax.set_xlabel("Entities")
     ax.set_ylabel("Frequency")
-    ax.set_title(f"Entity Frequency Bar Chart")
+    ax.set_title("Entity Frequency Bar Chart")
     plt.xticks(rotation=45, ha="right")
-
     for bar, count in zip(bars, counts):
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval, int(count), ha='center', va='bottom')
-
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -227,74 +213,56 @@ def calculate_similarity(text, search_term, tokenizer, model):
     """Calculates similarity scores for each sentence in the text against the search term."""
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
-
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
     search_term_embedding = get_embedding(search_term, model, tokenizer)
-
     similarities = []
     for sentence_embedding in sentence_embeddings:
         similarity = cosine_similarity(sentence_embedding, search_term_embedding)[0][0]
         similarities.append(similarity)
-
     return sentences, similarities
 
 def rank_sentences_by_similarity(text, search_term):
     """Calculates cosine similarity between sentences and a search term using BERT."""
     tokenizer, model = initialize_bert_model()
-
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
-
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
     search_term_embedding = get_embedding(search_term, model, tokenizer)
-
     similarities = [cosine_similarity(sentence_embedding, search_term_embedding)[0][0]
                     for sentence_embedding in sentence_embeddings]
-
     min_similarity = min(similarities)
     max_similarity = max(similarities)
-    if max_similarity == min_similarity:
-        normalized_similarities = [0.0] * len(similarities)
-    else:
-        normalized_similarities = [(s - min_similarity) / (max_similarity - min_similarity) for s in similarities]
-
+    normalized_similarities = ([0.0] * len(similarities) if max_similarity == min_similarity 
+                               else [(s - min_similarity) / (max_similarity - min_similarity) for s in similarities])
     return list(zip(sentences, normalized_similarities))
 
 def highlight_text(text, search_term):
-    """Highlights text based on similarity to the search term using HTML/CSS, adding paragraph breaks."""
+    """Highlights text based on similarity to the search term using HTML/CSS."""
     sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
-
     highlighted_text = ""
     for sentence, similarity in sentences_with_similarity:
-        print(f"Sentence: {sentence}, Similarity: {similarity}")
         if similarity < 0.35:
             color = "red"
         elif similarity < 0.65:
             color = "black"
         else:
             color = "green"
-
         highlighted_text += f'<p style="color:{color};">{sentence}</p>'
     return highlighted_text
 
 def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     """Ranks content sections by cosine similarity to a search term using BERT embeddings."""
     tokenizer, model = initialize_bert_model()
-
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
-
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
     search_term_embedding = get_embedding(search_term, model, tokenizer)
-
     similarities = []
     for sentence_embedding in sentence_embeddings:
         similarity = cosine_similarity(sentence_embedding, search_term_embedding)[0][0]
         similarities.append(similarity)
-
     section_scores = list(zip(sentences, similarities))
     sorted_sections = sorted(section_scores, key=lambda item: item[1], reverse=True)
-
     top_sections = sorted_sections[:top_n]
     bottom_sections = sorted_sections[-top_n:]
     return top_sections, bottom_sections
@@ -306,7 +274,6 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
-
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
@@ -319,68 +286,136 @@ def url_analysis_dashboard_page():
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
-
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model, tokenizer)
 
             for i, url in enumerate(urls):
                 try:
+                    # Use Selenium to get the full page source
                     chrome_options = Options()
                     chrome_options.add_argument("--headless")
                     chrome_options.add_argument("--no-sandbox")
                     chrome_options.add_argument("--disable-dev-shm-usage")
-                    user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1"
+                    user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
                     chrome_options.add_argument(f"user-agent={user_agent}")
                     driver = webdriver.Chrome(options=chrome_options)
                     driver.get(url)
-                    meta_title = driver.title
                     page_source = driver.page_source
+                    soup = BeautifulSoup(page_source, "html.parser")
+                    meta_title = driver.title
                     driver.quit()
 
-                    text = extract_text_from_url(url)
-                    word_count = len(text.split()) if text else 0
+                    # Extract H1 tag
+                    h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
 
-                    entities = set()
-                    if nlp_model and text:
-                        doc = nlp_model(text)
-                        for ent in doc.ents:
-                            entities.add(ent.text)
-                    unique_entity_count = len(entities)
+                    # Count links in header and footer navigation
+                    header = soup.find("header")
+                    footer = soup.find("footer")
+                    header_links = len(header.find_all("a")) if header else 0
+                    footer_links = len(footer.find_all("a")) if footer else 0
+                    total_nav_links = header_links + footer_links
 
+                    # Count total number of links on the page
+                    total_links = len(soup.find_all("a"))
+
+                    # Schema Markup: Look for JSON-LD scripts
+                    schema_types = set()
+                    ld_json_scripts = soup.find_all("script", type="application/ld+json")
+                    for script in ld_json_scripts:
+                        try:
+                            script_content = script.string
+                            if script_content:
+                                data_json = json.loads(script_content)
+                                if isinstance(data_json, list):
+                                    for item in data_json:
+                                        if isinstance(item, dict) and "@type" in item:
+                                            schema_types.add(item["@type"])
+                                elif isinstance(data_json, dict):
+                                    if "@type" in data_json:
+                                        schema_types.add(data_json["@type"])
+                        except Exception:
+                            continue
+                    schema_markup = ", ".join(schema_types) if schema_types else "None"
+
+                    # Combine checks for ordered lists, unordered lists, and tables into one column.
+                    lists_tables = (
+                        f"OL: {'Yes' if soup.find('ol') else 'No'} | "
+                        f"UL: {'Yes' if soup.find('ul') else 'No'} | "
+                        f"Table: {'Yes' if soup.find('table') else 'No'}"
+                    )
+
+                    # Count the number of images
+                    num_images = len(soup.find_all("img"))
+
+                    # Custom word count (only from <p>, <li>, and header tags)
+                    elements = soup.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"])
+                    words = []
+                    for el in elements:
+                        words.extend(el.get_text().split())
+                    custom_word_count = len(words)
+
+                    # Detect website framework via meta generator tag
+                    meta_generator = soup.find("meta", attrs={"name": "generator"})
+                    website_framework = meta_generator["content"] if meta_generator and meta_generator.get("content") else "Unknown"
+
+                    # Content word count from body (using extract_text_from_url)
+                    extracted_text = extract_text_from_url(url)
+                    content_word_count = len(extracted_text.split()) if extracted_text else 0
+
+                    # Cosine similarity score (from earlier calculation)
                     similarity_score = similarity_results[i][1] if similarity_results[i][1] is not None else "N/A"
-                    if similarity_score != "N/A":
-                        st.write(f"Cosine similarity for {url}: {similarity_score}")
-                    else:
-                        st.write(f"Could not extract text from {url}")
 
-                    data.append([url, meta_title, word_count, unique_entity_count, similarity_score])
+                    data.append([
+                        url,
+                        meta_title,
+                        h1_tag,
+                        total_nav_links,
+                        total_links,            # Total links on the page
+                        schema_markup,
+                        lists_tables,           # Combined column for lists and tables
+                        num_images,
+                        custom_word_count,
+                        website_framework,
+                        content_word_count,
+                        similarity_score
+                    ])
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url, "Error", "Error", "Error", "Error"])
+                    data.append([url] + ["Error"] * 11)
 
-            df = pd.DataFrame(data, columns=["URL", "Meta Title", "Content Word Count", "# of Unique Entities", "Overall Cosine Similarity Score"])
+            # Define the DataFrame with the updated column headers.
+            df = pd.DataFrame(data, columns=[
+                "URL",
+                "Meta Title",
+                "H1 Tag",
+                "# of Header & Footer Links",
+                "Total # of Links",
+                "Schema Markup Types",
+                "Lists/Tables Present",
+                "# of Images",
+                "Custom Word Count (p, li, headers)",
+                "Website Framework",
+                "Content Word Count",
+                "Overall Cosine Similarity Score"
+            ])
             st.dataframe(df)
 
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
     st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
-
     search_term = st.text_input("Enter Search Term:", "")
-    urls_input = st.text_area("Enter URLs (one per line):", """""")
+    urls_input = st.text_area("Enter URLs (one per line):", "")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
     if st.button("Calculate Similarity"):
         if not urls:
             st.warning("Please enter at least one URL.")
         else:
             tokenizer, model = initialize_bert_model()
-
             with st.spinner("Calculating similarities..."):
                 similarity_scores = calculate_overall_similarity(urls, search_term, model, tokenizer)
-
             urls_plot = [url for url, score in similarity_scores]
             scores_plot = [score if score is not None else 0 for url, score in similarity_scores]
-
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.bar(urls_plot, scores_plot)
             ax.set_xlabel("URLs")
@@ -389,7 +424,6 @@ def cosine_similarity_competitor_analysis_page():
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             st.pyplot(fig)
-
             data = {'URL': urls_plot, 'Similarity Score': scores_plot}
             df = pd.DataFrame(data)
             st.dataframe(df)
@@ -397,14 +431,10 @@ def cosine_similarity_competitor_analysis_page():
 def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
     st.markdown("Calculates the cosine similarity score for each sentence in your input.")
-
     url = st.text_input("Enter URL (Optional):", key="every_embed_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="every_embed_use_url")
-
     text = st.text_area("Enter Text:", key="every_embed_text", value="", disabled=use_url)
-
     search_term = st.text_input("Enter Search Term:", key="every_embed_search", value="")
-
     if st.button("Calculate Similarity", key="every_embed_button"):
         if use_url:
             if url:
@@ -419,26 +449,20 @@ def cosine_similarity_every_embedding_page():
         elif not text:
             st.warning("Please enter either text or a URL.")
             return
-
         tokenizer, model = initialize_bert_model()
         with st.spinner("Calculating Similarities..."):
             sentences, similarities = calculate_similarity(text, search_term, tokenizer, model)
-
         st.subheader("Similarity Scores:")
         for i, (sentence, score) in enumerate(zip(sentences, similarities), 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
 def cosine_similarity_content_heatmap_page():
     st.header("Cosine Similarity Content Heatmap")
-    st.markdown("Green text is the most relevant to the search query. Red is the least relevant content to search query.")
-
+    st.markdown("Green text is the most relevant to the search query. Red is the least relevant.")
     url = st.text_input("Enter URL (Optional):", key="heatmap_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="heatmap_use_url")
-
     input_text = st.text_area("Enter your text:", key="heatmap_input", height=300, value="", disabled=use_url)
-
     search_term = st.text_input("Enter your search term:", key="heatmap_search", value="")
-
     if st.button("Highlight", key="heatmap_button"):
         if use_url:
             if url:
@@ -454,23 +478,17 @@ def cosine_similarity_content_heatmap_page():
         elif not input_text:
             st.error("Please enter either text or a URL.")
             return
-
         with st.spinner("Generating highlighted text..."):
             highlighted_text = highlight_text(input_text, search_term)
-
         st.markdown(highlighted_text, unsafe_allow_html=True)
 
 def top_bottom_embeddings_page():
     st.header("Top 10 & Bottom 10 Embeddings")
-
     url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
-
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="", disabled=use_url)
-
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="")
     top_n = st.slider("Number of results:", min_value=1, max_value=20, value=10, key="top_bottom_slider")
-
     if st.button("Search", key="top_bottom_button"):
         if use_url:
             if url:
@@ -479,78 +497,57 @@ def top_bottom_embeddings_page():
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return
-                input_text = text
             else:
                 st.error("Please enter either text or a URL.")
                 return
         elif not text:
             st.error("Please enter either text or a URL.")
             return
-
         tokenizer, model = initialize_bert_model()
         with st.spinner("Searching..."):
             top_sections, bottom_sections = rank_sections_by_similarity_bert(text, search_term, top_n)
-
         st.subheader("Top Sections (Highest Cosine Similarity):")
         for i, (sentence, score) in enumerate(top_sections, 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
-
         st.subheader("Bottom Sections (Lowest Cosine Similarity):")
         for i, (sentence, score) in enumerate(reversed(bottom_sections), 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze content from multiple URLs to identify common entities not found on your site. Consider adding these named entities to your content to improve search relevancy & topic coverage.")
-
+    st.markdown("Analyze multiple URLs to identify common entities missing on your site.")
     urls_input = st.text_area("Enter URLs (one per line):", key="entity_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
     exclude_url = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
-
     if st.button("Analyze", key="entity_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
-
         with st.spinner("Extracting content and analyzing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
-
             exclude_text = extract_text_from_url(exclude_url)
-            exclude_entities_set = set()
-            if exclude_text:
-                exclude_doc = nlp_model(exclude_text)
-                exclude_entities_set = {ent.text.lower() for ent in exclude_doc.ents}
-
+            exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_text).ents} if exclude_text else set()
             all_entities = []
             entity_counts_per_url: Dict[str, Counter] = {}
             url_entity_counts: Counter = Counter()
-
             for url in urls:
                 text = extract_text_from_url(url)
                 if text:
                     entities = identify_entities(text, nlp_model)
                     entities = [(entity, label) for entity, label in entities if label != "CARDINAL"]
-
                     filtered_entities = [(entity, label) for entity, label in entities if entity.lower() not in exclude_entities_set]
-
                     entity_counts_per_url[url] = count_entities(filtered_entities)
                     all_entities.extend(filtered_entities)
-
                     for entity, label in set(filtered_entities):
                         url_entity_counts[(entity, label)] += 1
-
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
-
             if url_entity_counts:
-                st.markdown("### Overall Entity Counts (Excluding Entities from Exclude URL and CARDINAL Entities, Found in More Than One URL)")
+                st.markdown("### Overall Entity Counts (Found in more than one URL)")
                 for (entity, label), count in filtered_url_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
-
                 display_entity_barchart(filtered_url_entity_counts)
-
                 st.markdown("### Entities from Exclude URL")
                 if exclude_text:
                     exclude_doc = nlp_model(exclude_text)
@@ -560,7 +557,6 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No entities found in the exclude URL.")
-
                 st.markdown("### Entities Per URL")
                 for url, entity_counts_local in entity_counts_per_url.items():
                     st.markdown(f"#### URL: {url}")
@@ -575,11 +571,9 @@ def entity_analysis_page():
 def displacy_visualization_page():
     st.header("Entity Visualizer")
     st.markdown("Visualize named entities within your content using displacy.")
-
     url = st.text_input("Enter a URL (Optional):", key="displacy_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="displacy_use_url")
     text = st.text_area("Enter Text:", key="displacy_text", value="", disabled=use_url)
-
     if st.button("Visualize Entities", key="displacy_button"):
         if use_url:
             if url:
@@ -594,11 +588,9 @@ def displacy_visualization_page():
         elif not text:
             st.warning("Please enter text or a URL.")
             return
-
         nlp_model = load_spacy_model()
         if not nlp_model:
             return
-
         doc = nlp_model(text)
         try:
             html = spacy.displacy.render(doc, style="ent", page=True)
@@ -609,22 +601,18 @@ def displacy_visualization_page():
 def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
     st.markdown("Generate a bar chart from the most frequent named entities across multiple sites.")
-
     text_source = st.radio("Select text source:", ('Enter Text', 'Enter URLs'), key="barchart_text_source")
     text = None
     urls = None
-
     if text_source == 'Enter Text':
         text = st.text_area("Enter Text:", key="barchart_text", height=300, value="")
     else:
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
         entity_texts_by_url: Dict[str, str] = {}
         entity_counts_per_url: Dict[str, Counter] = {}
-
         if text_source == 'Enter Text':
             if not text:
                 st.warning("Please enter the text to proceed.")
@@ -634,7 +622,6 @@ def named_entity_barchart_page():
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
-
             url_texts = {}
             with st.spinner("Extracting text from URLs..."):
                 for url in urls:
@@ -645,23 +632,18 @@ def named_entity_barchart_page():
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
                         return
-
             entity_texts_by_url = url_texts
-
         with st.spinner("Analyzing entities and generating bar chart..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 st.error("Could not load spaCy model. Aborting.")
                 return
-
             entities = identify_entities(all_text, nlp_model)
             entity_counts = Counter((entity[0], entity[1]) for entity in entities)
-
             if len(entity_counts) > 0:
                 display_entity_barchart(entity_counts)
-
                 if text_source == 'Enter URLs':
-                    st.subheader("List of Entities from each URLs:")
+                    st.subheader("List of Entities from each URL:")
                     for url in urls:
                         text = entity_texts_by_url.get(url)
                         if text:
@@ -670,7 +652,7 @@ def named_entity_barchart_page():
                             for entity, label in url_entities:
                                 st.write(f"- {entity} ({label})")
                         else:
-                            st.write(f"No Text for the {url}")
+                            st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
@@ -681,24 +663,18 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 def ngram_tfidf_analysis_page():
     st.header("N-gram TF-IDF Analysis")
-    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering how frequently it appears and how unique it is across multiple documents.")
-
+    st.markdown("Extract n‑grams from multiple URLs and score them using TF‑IDF. The TF‑IDF score measures how important a word or phrase is in a document by considering its frequency in the document and its uniqueness across documents.")
     urls_input = st.text_area("Enter URLs (one per line):", key="tfidf_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
     n_value = st.selectbox("Select n for n‑grams:", options=[1, 2, 3, 4], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
-
     min_df = st.number_input("Minimum Document Frequency (min_df):", value=1, min_value=1)
     max_df = st.number_input("Maximum Document Frequency (max_df):", value=1.0, min_value=0.0, step=0.1)
-    
     top_n = st.slider("Number of top n‑grams to display per site:", min_value=1, max_value=20, value=5)
-
     if st.button("Extract N‑grams and Calculate TF‑IDF", key="ngram_tfidf_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
-
         texts = []
         url_text_dict = {}
         with st.spinner("Extracting text from URLs..."):
@@ -709,39 +685,24 @@ def ngram_tfidf_analysis_page():
                     url_text_dict[url] = text
                 else:
                     st.warning(f"Could not extract text from {url}")
-
         if not texts:
             st.error("No text was extracted from the provided URLs.")
             return
-
         with st.spinner("Calculating TF‑IDF scores..."):
-            vectorizer = TfidfVectorizer(
-                ngram_range=(n_value, n_value),
-                min_df=min_df,
-                max_df=max_df
-            )
+            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(texts)
             feature_names = vectorizer.get_feature_names_out()
-
-        # Create a DataFrame from the TF-IDF matrix with URLs as rows and n-grams as columns
         df_tfidf = pd.DataFrame(tfidf_matrix.toarray(), index=urls, columns=feature_names)
-
-        # For each URL, extract the top n-grams
         top_ngrams_dict = {}
         for url in urls:
             row = df_tfidf.loc[url]
             sorted_row = row.sort_values(ascending=False)
-            # Get the top n nonzero n-grams
             top_ngrams = sorted_row[sorted_row > 0].head(top_n)
             top_list = [f"{ng} ({score:.3f})" for ng, score in top_ngrams.items()]
-            # Pad with empty strings if needed
             while len(top_list) < top_n:
                 top_list.append("")
             top_ngrams_dict[url] = top_list
-
-        # Create a comparison DataFrame: rows as Rank, columns as URLs
         comparison_df = pd.DataFrame(top_ngrams_dict, index=[f"Rank {i+1}" for i in range(top_n)])
-        
         st.markdown("### Comparison of Top N-grams Across Sites")
         st.dataframe(comparison_df)
 
@@ -755,7 +716,6 @@ def main():
         page_icon="✏️",
         layout="wide"
     )
-
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
@@ -769,7 +729,6 @@ def main():
         "Entity Frequency Bar Chart",
         "N-gram TF-IDF Analysis"
     ])
-
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
     elif tool == "Cosine Similarity - Competitor Analysis":
@@ -788,12 +747,8 @@ def main():
         named_entity_barchart_page()
     elif tool == "N-gram TF-IDF Analysis":
         ngram_tfidf_analysis_page()
-
     st.markdown("---")
-    st.markdown(
-        "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
-        unsafe_allow_html=True
-    )
+    st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
