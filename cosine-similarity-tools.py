@@ -704,8 +704,6 @@ def named_entity_barchart_page():
 # ------------------------------------
 
 from sklearn.feature_extraction.text import TfidfVectorizer
-import pandas as pd
-import streamlit as st
 
 def ngram_tfidf_analysis_page():
     st.header("Content Gap Analyzer")
