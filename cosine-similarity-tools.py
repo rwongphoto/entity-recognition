@@ -841,7 +841,7 @@ def main():
         "Entity Topic Gap Analysis",
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
-        "N-gram TF-IDF Analysis"
+        "Content Gap Analyzer"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
