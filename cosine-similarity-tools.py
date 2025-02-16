@@ -22,6 +22,9 @@ import spacy
 from collections import Counter
 from typing import List, Tuple, Dict
 
+# For Google Knowledge Graph API
+from googleapiclient.discovery import build
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -190,6 +193,26 @@ def display_entity_barchart(entity_counts, top_n=30):
         plt.text(bar.get_x() + bar.get_width()/2, yval, int(count), ha='center', va='bottom')
     plt.tight_layout()
     st.pyplot(fig)
+
+    # ------------------------------------
+# Google Knowledge Graph API Function
+# ------------------------------------
+def query_kg(query, api_key):
+    """
+    Queries the Google Knowledge Graph Search API for a given query.
+    Returns a string containing the entity's name and description if found.
+    """
+    try:
+        service = build("kgsearch", "v1", developerKey=api_key)
+        response = service.entities().search(query=query, limit=1, indent=True).execute()
+        if "itemListElement" in response and len(response["itemListElement"]) > 0:
+            result = response["itemListElement"][0]["result"]
+            name = result.get("name", "")
+            description = result.get("description", "")
+            return f"{name}: {description}"
+        return ""
+    except Exception as e:
+        return ""
 
 # ------------------------------------
 # Cosine Similarity Functions
@@ -707,17 +730,37 @@ def named_entity_barchart_page():
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
 # ------------------------------------
-# New Tool: N-gram TF-IDF Analysis with Comparison Table
+# New Tool: N-gram TF-IDF Analysis with Comparison Table (Content Gap Analyzer)
+# and paired with Google's Knowledge Graph API
 # ------------------------------------
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+def query_kg(query, api_key):
+    """
+    Queries Google's Knowledge Graph Search API for the given query.
+    Returns a string with the entity's name and description if found.
+    """
+    try:
+        service = build("kgsearch", "v1", developerKey=api_key)
+        response = service.entities().search(query=query, limit=1, indent=True).execute()
+        if "itemListElement" in response and len(response["itemListElement"]) > 0:
+            result = response["itemListElement"][0]["result"]
+            name = result.get("name", "")
+            description = result.get("description", "")
+            return f"{name}: {description}"
+        return ""
+    except Exception as e:
+        return ""
+
 def ngram_tfidf_analysis_page():
     st.header("Content Gap Analyzer")
     st.markdown("""
-        Uncover hidden opportunities by comparing your website's content to your top competitors. Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation based on what works best in your industry.
+        Uncover hidden opportunities by comparing your website's content to your top competitors.
+        Identify key phrases and topics they're covering that you might be missing,
+        and prioritize your content creation based on what works best in your industry.
     """)
-
+    
     # --- Input Section ---
     st.subheader("Input URLs")
     competitor_urls_input = st.text_area("Enter Competitor URLs (one per line):", key="competitor_urls", value="")
@@ -727,18 +770,24 @@ def ngram_tfidf_analysis_page():
 
     # --- N-gram and TF-IDF Options ---
     st.subheader("Word Options")
-    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5,6,7,8,9,10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
 
+    # --- KG API Key Input ---
+    KG_API_KEY = st.text_input("Enter your Google KG API Key:", type="password")
+    
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if not competitor_urls:
             st.warning("Please enter at least one competitor URL.")
             return
         if not target_url:
             st.warning("Please enter your target URL.")
+            return
+        if not KG_API_KEY:
+            st.warning("Please enter your Google KG API Key.")
             return
 
         # --- 1. Extract Text from URLs ---
@@ -769,7 +818,7 @@ def ngram_tfidf_analysis_page():
         # --- 2. Calculate TF-IDF for Competitors ---
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
-            tfidf_matrix = vectorizer.fit_transform(texts)
+            tfidf_matrix = vectorizer.fit_transform(texts)  # Only competitor texts
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
         
@@ -795,19 +844,32 @@ def ngram_tfidf_analysis_page():
                     competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
                     target_score = df_tfidf_target.loc[target_url, ngram]
                     if competitor_score > target_score:
-                        gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: {target_score:.3f})")
+                        gap_ngrams.append(ngram)
                 else:
-                    competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                    gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
+                    gap_ngrams.append(ngram)
             content_gaps[competitor_url] = gap_ngrams
 
+        # --- 6. Query Google Knowledge Graph for each gap n-gram ---
+        # For each competitor URL, for each gap n-gram, query KG API and pair results.
+        content_gaps_kg = {}
+        for competitor_url, gap_ngrams in content_gaps.items():
+            paired_ngrams = []
+            for ngram in gap_ngrams:
+                kg_result = query_kg(ngram, KG_API_KEY)
+                if kg_result:
+                    paired_ngrams.append(f"{ngram} [{kg_result}]")
+                else:
+                    paired_ngrams.append(ngram)
+            content_gaps_kg[competitor_url] = paired_ngrams
+
+        # --- 7. Display Results ---
         st.markdown("### Content Gap Analysis")
         st.markdown(f"**Target URL:** {target_url}")
         all_data = {}
-        for competitor_url, gap_ngrams in content_gaps.items():
-           all_data[competitor_url] = gap_ngrams
-           while len(all_data[competitor_url]) < top_n:
-               all_data[competitor_url].append("")
+        for competitor_url, gap_ngrams in content_gaps_kg.items():
+            all_data[competitor_url] = gap_ngrams
+            while len(all_data[competitor_url]) < top_n:
+                all_data[competitor_url].append("")
         df_display = pd.DataFrame(all_data)
         st.dataframe(df_display)
 
