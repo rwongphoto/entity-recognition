@@ -306,6 +306,26 @@ def url_analysis_dashboard_page():
                     meta_title = driver.title
                     driver.quit()
 
+                    # Create a cleaned-up version of the content by removing header and footer
+                    content_soup = BeautifulSoup(page_source, "html.parser")
+                    if content_soup.find("body"):
+                        body = content_soup.find("body")
+                        for tag in body.find_all(['header', 'footer']):
+                            tag.decompose()
+                        # Full content text after removal
+                        content_text = body.get_text(separator='\n', strip=True)
+                    else:
+                        content_text = ""
+                    content_word_count = len(content_text.split())
+
+                    # Compute custom word count (only from <p>, <li>, and header tags)
+                    # using the same cleaned-up body
+                    custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
+                    custom_words = []
+                    for el in custom_elements:
+                        custom_words.extend(el.get_text().split())
+                    custom_word_count = len(custom_words)
+
                     # Extract H1 tag
                     h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
 
@@ -348,20 +368,9 @@ def url_analysis_dashboard_page():
                     # Count the number of images
                     num_images = len(soup.find_all("img"))
 
-                    # Custom word count (only from <p>, <li>, and header tags)
-                    elements = soup.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"])
-                    words = []
-                    for el in elements:
-                        words.extend(el.get_text().split())
-                    custom_word_count = len(words)
-
                     # Detect website framework via meta generator tag
                     meta_generator = soup.find("meta", attrs={"name": "generator"})
                     website_framework = meta_generator["content"] if meta_generator and meta_generator.get("content") else "Unknown"
-
-                    # Content word count from body (using extract_text_from_url)
-                    extracted_text = extract_text_from_url(url)
-                    content_word_count = len(extracted_text.split()) if extracted_text else 0
 
                     # Cosine similarity score (from earlier calculation)
                     similarity_score = similarity_results[i][1] if similarity_results[i][1] is not None else "N/A"
@@ -371,9 +380,9 @@ def url_analysis_dashboard_page():
                         meta_title,
                         h1_tag,
                         total_nav_links,
-                        total_links,            # Total links on the page
+                        total_links,
                         schema_markup,
-                        lists_tables,           # Combined column for lists and tables
+                        lists_tables,
                         num_images,
                         custom_word_count,
                         website_framework,
@@ -384,7 +393,6 @@ def url_analysis_dashboard_page():
                     st.error(f"Error processing URL {url}: {e}")
                     data.append([url] + ["Error"] * 11)
 
-            # Define the DataFrame with the updated column headers.
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
@@ -400,6 +408,7 @@ def url_analysis_dashboard_page():
                 "Overall Cosine Similarity Score"
             ])
             st.dataframe(df)
+
 
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
