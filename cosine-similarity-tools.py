@@ -444,6 +444,7 @@ def url_analysis_dashboard_page():
             
             st.dataframe(df)
 
+
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
     st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
