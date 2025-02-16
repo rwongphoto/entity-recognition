@@ -98,7 +98,6 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
-@st.cache_data
 def get_embedding(text, model, tokenizer):
     """Generates a BERT embedding for the given text."""
     tokenizer.pad_token = tokenizer.unk_token
