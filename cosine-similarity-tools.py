@@ -37,13 +37,13 @@ def load_spacy_model():
     global nlp
     if nlp is None:
         try:
-            nlp = spacy.load("en_core_web_sm")
+            nlp = spacy.load("en_core_web_lg")
             print("spaCy model loaded successfully")
         except OSError:
-            print("Downloading en_core_web_sm model...")
-            spacy.cli.download("en_core_web_sm")
-            nlp = spacy.load("en_core_web_sm")
-            print("en_core_web_sm downloaded and loaded")
+            print("Downloading en_core_web_lg model...")
+            spacy.cli.download("en_core_web_lg")
+            nlp = spacy.load("en_core_web_lg")
+            print("en_core_web_lg downloaded and loaded")
         except Exception as e:
             st.error(f"Failed to load spaCy model: {e}")
             return None
