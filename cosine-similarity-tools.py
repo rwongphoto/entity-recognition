@@ -57,6 +57,7 @@ def initialize_bert_model():
     model.eval()
     return tokenizer, model
 
+@st.cache_data(ttl=3600*24)  # Cache for 24 hours
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
     and excluding header and footer content. Returns the body text."""
@@ -97,6 +98,7 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
+@st.cache_data
 def get_embedding(text, model, tokenizer):
     """Generates a BERT embedding for the given text."""
     tokenizer.pad_token = tokenizer.unk_token
