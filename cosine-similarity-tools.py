@@ -1,6 +1,6 @@
 import streamlit as st
 import torch
-from transformers import BertTokenizer, BertModel
+from transformers import AutoTokenizer, BertModel
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
@@ -51,8 +51,7 @@ def load_spacy_model():
 
 @st.cache_resource
 def initialize_bert_model():
-    """Initializes the BERT tokenizer and model."""
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')  # Use AutoTokenizer
     model = BertModel.from_pretrained('bert-base-uncased')
     model.eval()
     return tokenizer, model
@@ -113,10 +112,10 @@ def count_videos(_soup):
     return video_count + iframe_videos
 
 def get_embedding(text, model, tokenizer):
-    """Generates a BERT embedding for the given text."""
-    tokenizer.pad_token = tokenizer.unk_token
+    # tokenizer.pad_token = tokenizer.unk_token  # This line is no longer necessary
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
-    outputs = model(**inputs)
+    with torch.no_grad():  # Ensure no gradients are calculated
+        outputs = model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).detach().numpy()
 
 def create_navigation_menu(logo_url):
