@@ -950,11 +950,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import PCA
 
 def keyword_clustering_from_gap_page():
-    st.header("Keyword Clustering from Content Gap Analysis")
+    st.header("Keyword Clustering from Semantic Gap Analyzer")
     st.markdown(
         """
-        This tool combines content gap analysis with keyword clustering.
-        First, it extracts key phrases (n‑grams) where your competitors outperform your target.
+        This tool combines semantic gap analysis with keyword clustering.
+        First, it extracts key phrases where your competitors outperform your target.
         Then, it computes BERT embeddings for these gap phrases and clusters them based on their semantic similarity.
         The resulting clusters (and their representative keywords) are displayed below.
         """
