@@ -816,116 +816,131 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
     st.markdown("""
-        Uncover hidden opportunities by comparing your website's content to your top competitors. Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation based on what works best in your industry.
+        Uncover hidden opportunities by comparing your website's content to your top competitors. 
+        Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.
     """)
-
-    # --- Input Section ---
-    st.subheader("Input URLs")
-    competitor_urls_input = st.text_area("Enter Competitor URLs (one per line):", key="competitor_urls", value="")
-    target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
-
-    competitor_urls = [url.strip() for url in competitor_urls_input.splitlines() if url.strip()]
-
-    # --- N-gram and TF-IDF Options ---
+    
+    # Competitor input method
+    st.subheader("Competitor Content Input")
+    competitor_source_option = st.radio(
+        "Select competitor content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="competitor_source"
+    )
+    if competitor_source_option == "Extract from URL":
+        competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="competitor_urls", value="")
+        competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
+    else:
+        st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
+        competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
+        competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
+    
+    # Target input method
+    st.subheader("Target Content Input")
+    target_source_option = st.radio(
+        "Select target content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="target_source"
+    )
+    if target_source_option == "Extract from URL":
+        target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
+    else:
+        target_text = st.text_area("Paste your target content:", key="target_text", value="", height=200)
+    
+    # N-gram and TF-IDF Options
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
-    top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)  # Increased default and max
-
+    top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
+    
     if st.button("Analyze Content Gaps", key="content_gap_button"):
-        if not competitor_urls:
+        if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
             return
-        if not target_url:
+        if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-
-        # --- 1. Extract Text from URLs ---
-        texts = []
-        valid_urls = []  # Competitor URLs + Target URL (if text extraction successful)
-        url_text_dict = {}  # {url: text}
-
-        with st.spinner("Extracting text from URLs..."):
-            # Competitor URLs
-            for url in competitor_urls:
-                text = extract_text_from_url(url)  # Assuming you have this function
-                if text:
-                    texts.append(text)
-                    url_text_dict[url] = text
-                    valid_urls.append(url)
+        
+        # Extract competitor texts
+        competitor_texts = []
+        valid_competitor_sources = []
+        with st.spinner("Extracting competitor content..."):
+            for source in competitor_list:
+                if competitor_source_option == "Extract from URL":
+                    text = extract_text_from_url(source)
                 else:
-                    st.warning(f"Could not extract text from {url}")
-
-            # Target URL
-            target_text = extract_text_from_url(target_url)
-            if target_text:
-                url_text_dict[target_url] = target_text
-                # Don't add target_text to texts yet; we'll handle it separately
-            else:
-                st.warning(f"Could not extract text from {target_url}")
-                return  # Exit if we can't get text from the target URL
-
-        if not texts:
-            st.error("No text was extracted from the competitor URLs.")
+                    text = source
+                if text:
+                    competitor_texts.append(text)
+                    valid_competitor_sources.append(source)
+                else:
+                    st.warning(f"Could not extract content from: {source}")
+        
+        if target_source_option == "Extract from URL":
+            target_content = extract_text_from_url(target_url)
+            if not target_content:
+                st.warning(f"Could not extract content from target URL: {target_url}")
+                return
+        else:
+            target_content = target_text
+        
+        if not competitor_texts:
+            st.error("No competitor content was extracted.")
             return
         
-        # --- 2. Calculate TF-IDF for Competitors ---
+        # Calculate TF-IDF for competitors
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
-            tfidf_matrix = vectorizer.fit_transform(texts)  # Only competitor texts
+            tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
-            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_urls, columns=feature_names)
+            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
         
-        # --- 3. Calculate TF-IDF for Target URL ---
-        with st.spinner("Calculating TF-IDF scores for target URL..."):
-            # Use the *same* vectorizer (fitted on competitors) to transform the target text
-            target_tfidf_vector = vectorizer.transform([target_text])
-            df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
+        # Calculate TF-IDF for target content
+        with st.spinner("Calculating TF-IDF scores for target content..."):
+            target_tfidf_vector = vectorizer.transform([target_content])
+            df_tfidf_target = pd.DataFrame(
+                target_tfidf_vector.toarray(),
+                index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
+                columns=feature_names
+            )
         
-        # --- 4. Identify Top N-grams for Competitors ---
+        # Identify Top N-grams for Competitors
         top_ngrams_competitors = {}
-        for url in valid_urls:  # Only competitor URLs
-            row = df_tfidf_competitors.loc[url]
+        for source in valid_competitor_sources:
+            row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
-            top_ngrams_competitors[url] = list(top_ngrams.index)  # Store just the n-gram strings
+            top_ngrams_competitors[source] = list(top_ngrams.index)
         
-        # --- 5. Content Gap Analysis ---
-        content_gaps = {}  # {competitor_url: [list of gap n-grams]}
-
-        for competitor_url, competitor_ngrams in top_ngrams_competitors.items():
+        # Content Gap Analysis
+        content_gaps = {}
+        for source, competitor_ngrams in top_ngrams_competitors.items():
             gap_ngrams = []
             for ngram in competitor_ngrams:
-                # Check if the n-gram exists in the target URL's TF-IDF matrix
                 if ngram in df_tfidf_target.columns:
-                    # Compare TF-IDF scores
-                    competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                    target_score = df_tfidf_target.loc[target_url, ngram]
-
+                    competitor_score = df_tfidf_competitors.loc[source, ngram]
+                    target_score = df_tfidf_target.iloc[0][ngram]
                     if competitor_score > target_score:
                         gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: {target_score:.3f})")
                 else:
-                    # N-gram is completely missing from the target URL
-                     competitor_score = df_tfidf_competitors.loc[competitor_url, ngram]
-                     gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
-
-            content_gaps[competitor_url] = gap_ngrams
-
-        # --- 6. Display Results ---
+                    competitor_score = df_tfidf_competitors.loc[source, ngram]
+                    gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
+            content_gaps[source] = gap_ngrams
+        
         st.markdown("### Content Gap Analysis")
-
-        # Display competitor top n-grams and gaps in a single DataFrame
-        st.markdown(f"**Target URL:** {target_url}")
+        st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
         all_data = {}
-        for competitor_url, gap_ngrams in content_gaps.items():
-           all_data[competitor_url] = gap_ngrams
-           #Pad to ensure all are the same length.
-           while len(all_data[competitor_url]) < top_n:
-               all_data[competitor_url].append("")
+        for source, gap_ngrams in content_gaps.items():
+           all_data[source] = gap_ngrams
+           while len(all_data[source]) < top_n:
+               all_data[source].append("")
         df_display = pd.DataFrame(all_data)
         st.dataframe(df_display)
+
 
 # ------------------------------------
 # New Tool: Keyword Clustering
