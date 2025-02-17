@@ -1131,8 +1131,8 @@ def main():
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
         "Semantic Gap Analyzer",
-        "Keyword Clustering"  # New tool added here
-        "Topic Planner": "Topic Planner" # New tool added here
+        "Keyword Clustering",  # New tool added here
+        "Topic Planner" # New tool added here
     ])
 
     if tool == "URL Analysis Dashboard":
