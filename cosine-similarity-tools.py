@@ -111,7 +111,6 @@ def count_videos(_soup):
     
     return video_count + iframe_videos
 
-@st.cache_resource
 def get_embedding(text, model, tokenizer):
     # tokenizer.pad_token = tokenizer.unk_token  # This line is no longer necessary
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
