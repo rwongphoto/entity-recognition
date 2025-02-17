@@ -186,8 +186,16 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=30):
-    """Displays a bar chart of the top N most frequent entities."""
-    entity_data = pd.DataFrame.from_dict(entity_counts, orient='index', columns=['count'])
+    """Displays a bar chart of the top N most frequent entities (excluding CARDINAL)."""
+
+    # Filter out CARDINAL entities right before creating the DataFrame
+    filtered_entity_counts = {
+        (entity, label): count
+        for (entity, label), count in entity_counts.items()
+        if label != "CARDINAL"  # This is the filtering step
+    }
+
+    entity_data = pd.DataFrame.from_dict(filtered_entity_counts, orient='index', columns=['count'])
     entity_data.index.names = ['entity']
     entity_data = entity_data.sort_values('count', ascending=False).head(top_n)
     entity_data = entity_data.reset_index()
