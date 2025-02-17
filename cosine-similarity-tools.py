@@ -1051,17 +1051,18 @@ def keyword_clustering_from_gap_page():
 # Topic Modeling Functionality
 # ------------------------------------
 
-def preprocess_text(text, nlp): #Added nlp to arguments
+def preprocess_text(text, nlp):
     """Tokenizes and preprocesses the input text."""
     doc = nlp(text)
     tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
     return tokens
 
-def run_topic_modeling(texts, num_topics=5, nlp=None): #Added nlp to args
-    """Runs LDA topic modeling on the given texts."""
-    processed_texts = [preprocess_text(text, nlp) for text in texts]
-    dictionary = corpora.Dictionary(processed_texts)
-    corpus = [dictionary.doc2bow(text) for text in processed_texts]
+def run_topic_modeling(texts, num_topics=5, nlp=None):
+    """Runs LDA topic modeling on the combined texts."""  # Changed the docstring
+    combined_text = " ".join(texts)  # Combine all texts into one string
+    processed_text = preprocess_text(combined_text, nlp)  # Process the combined text
+    dictionary = corpora.Dictionary([processed_text])  # Dictionary from the single processed text
+    corpus = [dictionary.doc2bow(processed_text)]  # Corpus from the single processed text
 
     lda_model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics, random_state=42, passes=15)
 
@@ -1074,10 +1075,9 @@ def display_topics(lda_model, num_words=10):
         st.write(topic)
         st.write("---")
 
-# topic_planner_page function (modified to handle None)
 def topic_planner_page():
     st.header("Topic Planner")
-    st.markdown("Enter URLs to perform topic modeling on the content.")
+    st.markdown("Enter URLs to perform topic modeling on the combined content.")  # Updated description
 
     urls_input = st.text_area("Enter URLs (one per line):", key="topic_planner_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
@@ -1098,10 +1098,10 @@ def topic_planner_page():
                     st.warning(f"Could not extract text from {url}")
 
             if texts:
-                nlp_model = load_spacy_model()  # Get the model (or None)
+                nlp_model = load_spacy_model()
                 if nlp_model is None:
                     st.error("Failed to load the spaCy model.  Topic modeling cannot proceed.")
-                    return  # Stop execution
+                    return
 
                 # Pass nlp_model to run_topic_modeling
                 lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics, nlp=nlp_model)
@@ -1119,6 +1119,7 @@ def topic_planner_page():
 
                 # Display the visualization in Streamlit
                 components.html(html_string, width=1300, height=800)
+
             else:
                 st.warning("No valid text extracted from the provided URLs.")
 
