@@ -29,6 +29,7 @@ from gensim.utils import simple_preprocess
 import pyLDAvis
 import pyLDAvis.gensim_models
 import streamlit.components.v1 as components
+import logging  # Import the logging module
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -1052,24 +1053,51 @@ def keyword_clustering_from_gap_page():
 # ------------------------------------
 
 def preprocess_text(text, nlp):
-    """Tokenizes and preprocesses the input text."""
+    """Tokenizes, lemmatizes, and removes stopwords/punctuation."""
     doc = nlp(text)
+    # Lemmatize, convert to lowercase, and remove stop words, punctuation, and whitespace.
     tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
     return tokens
 
-def run_topic_modeling(texts, num_topics=5, nlp=None):
-    """Runs LDA topic modeling on the combined texts."""  # Changed the docstring
-    combined_text = " ".join(texts)  # Combine all texts into one string
-    processed_text = preprocess_text(combined_text, nlp)  # Process the combined text
-    dictionary = corpora.Dictionary([processed_text])  # Dictionary from the single processed text
-    corpus = [dictionary.doc2bow(processed_text)]  # Corpus from the single processed text
+def run_topic_modeling(texts, num_topics=5, nlp=None, num_words=10, passes=15, workers=None):
+    """Runs LDA topic modeling, handling preprocessing and visualization."""
 
-    lda_model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics, random_state=42, passes=15)
+    combined_text = " ".join(texts)
+    processed_tokens = preprocess_text(combined_text, nlp)
 
-    return lda_model, corpus, dictionary
+    # Create Dictionary
+    id2word = corpora.Dictionary([processed_tokens])
+
+    # Create Corpus: Term Document Frequency
+    corpus = [id2word.doc2bow(processed_tokens)]
+
+
+    # Build LDA model (or LdaMulticore if workers is specified)
+    if workers:
+        lda_model = LdaMulticore(corpus=corpus,
+                                  id2word=id2word,
+                                  num_topics=num_topics,
+                                  random_state=100,
+                                  chunksize=100,  # Adjust chunksize as needed
+                                  passes=passes,
+                                  per_word_topics=True,
+                                  workers=workers)
+    else:
+        lda_model = LdaModel(corpus=corpus,
+                             id2word=id2word,
+                             num_topics=num_topics,
+                             random_state=100,
+                             update_every=1,  #  0 for batch learning, 1 for online learning
+                             chunksize=100,  # Number of documents to be used in each training chunk
+                             passes=passes,      # Number of passes through the corpus during training.
+                             alpha='auto',    # Can also be a float or a list/numpy array
+                             per_word_topics=True)
+
+
+    return lda_model, corpus, id2word
 
 def display_topics(lda_model, num_words=10):
-    """Displays the topics and their top words."""
+    """Displays the top words for each topic."""
     for idx, topic in lda_model.print_topics(-1, num_words=num_words):
         st.write(f"**Topic: {idx}**")
         st.write(topic)
@@ -1077,11 +1105,28 @@ def display_topics(lda_model, num_words=10):
 
 def topic_planner_page():
     st.header("Topic Planner")
-    st.markdown("Enter URLs to perform topic modeling on the combined content.")  # Updated description
+    st.markdown("Enter URLs to perform topic modeling on the combined content.")
 
     urls_input = st.text_area("Enter URLs (one per line):", key="topic_planner_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     num_topics = st.number_input("Number of topics:", min_value=2, max_value=10, value=5)
+    num_words = st.number_input("Number of words per topic:", min_value=5, max_value=20, value=10)
+    passes = st.number_input("Number of passes:", min_value=1, max_value=50, value=15)
+
+    # Option for multicore processing
+    use_multicore = st.checkbox("Use Multicore Processing (faster, if available)")
+    workers = None
+    if use_multicore:
+        try:
+            import multiprocessing
+            workers = multiprocessing.cpu_count() -1   # Leave one core free
+            if workers < 1:
+                workers = None
+                st.warning("Multiprocessing not available. Using single core.")
+        except ImportError:
+            workers = None
+            st.warning("Multiprocessing module not available.  Using single core.")
+
 
     if st.button("Run Topic Modeling"):
         if not urls:
@@ -1100,25 +1145,23 @@ def topic_planner_page():
             if texts:
                 nlp_model = load_spacy_model()
                 if nlp_model is None:
-                    st.error("Failed to load the spaCy model.  Topic modeling cannot proceed.")
+                    st.error("Failed to load the spaCy model. Topic modeling cannot proceed.")
                     return
 
-                # Pass nlp_model to run_topic_modeling
-                lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics, nlp=nlp_model)
+                lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics, nlp=nlp_model,
+                                                                  num_words=num_words, passes=passes,
+                                                                  workers=workers)
 
                 # Display topics
                 st.subheader("Discovered Topics:")
-                display_topics(lda_model)
+                display_topics(lda_model, num_words=num_words)
 
                 # Prepare and display pyLDAvis visualization
                 st.subheader("Topic Visualization (pyLDAvis):")
                 lda_display = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary, sort_topics=False)
-
-                # Generate the HTML for pyLDAvis visualization
                 html_string = pyLDAvis.prepared_data_to_html(lda_display)
-
-                # Display the visualization in Streamlit
                 components.html(html_string, width=1300, height=800)
+
 
             else:
                 st.warning("No valid text extracted from the provided URLs.")
