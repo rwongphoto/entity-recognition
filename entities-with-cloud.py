@@ -899,7 +899,7 @@ def main():
         displacy_visualization_page()
     elif tool == "Entity Frequency Bar Chart":
         named_entity_barchart_page()
-    elif tool == "Sematic Gap Analyzer":
+    elif tool == "Semantic Gap Analyzer":
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_page()
