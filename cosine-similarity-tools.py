@@ -23,7 +23,7 @@ from typing import List, Tuple, Dict
 
 # For Topic Modeling with Gensim's LDA Mallet
 from gensim import corpora
-from gensim.models.wrappers import LdaMallet
+from gensim.models.ldamallet import LdaMallet
 from gensim.utils import simple_preprocess
 import nltk
 from nltk.corpus import stopwords
