@@ -832,137 +832,179 @@ def ngram_tfidf_analysis_page():
 # New Tool: Keyword Clustering
 # ------------------------------------
 
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import PCA
 
-def keyword_clustering_page():
-    st.header("Keyword Clustering from URL N‑grams")
+def keyword_clustering_from_gap_page():
+    st.header("Keyword Clustering from Content Gap Analysis")
     st.markdown(
         """
-        This tool extracts n‑grams from the text of provided URLs and clusters them based on their semantic similarity using BERT embeddings.
-        The clusters (and their representative keywords) are displayed below.
+        This tool combines content gap analysis with keyword clustering.
+        First, it extracts key phrases (n‑grams) where your competitors outperform your target.
+        Then, it computes BERT embeddings for these gap phrases and clusters them based on their semantic similarity.
+        The resulting clusters (and their representative keywords) are displayed below.
         """
     )
-
-    # Input URLs
-    urls_input = st.text_area("Enter URLs (one per line):", value="")
-    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-    if not urls:
-        st.warning("Please enter some URLs.")
+    
+    # --- Input Section for Semantic Gap Analysis ---
+    st.subheader("Input URLs")
+    competitor_urls_input = st.text_area("Enter Competitor URLs (one per line):", key="comp_urls", value="")
+    target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
+    
+    competitor_urls = [url.strip() for url in competitor_urls_input.splitlines() if url.strip()]
+    if not competitor_urls or not target_url:
+        st.warning("Please enter at least one competitor URL and your target URL.")
         return
+    
+    # --- N-gram Options for Gap Analysis ---
+    st.subheader("N‑gram Settings")
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1)
+    min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
+    max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
+    top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10)
+    
+    if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
+        # --- 1. Extract Text from Competitors and Target ---
+        competitor_texts = []
+        competitor_valid_urls = []
+        url_text_dict = {}
+        with st.spinner("Extracting text from competitor URLs..."):
+            for url in competitor_urls:
+                text = extract_text_from_url(url)
+                if text:
+                    competitor_texts.append(text)
+                    url_text_dict[url] = text
+                    competitor_valid_urls.append(url)
+                else:
+                    st.warning(f"Could not extract text from {url}")
+        
+        target_text = extract_text_from_url(target_url)
+        if not target_text:
+            st.error("Could not extract text from the target URL.")
+            return
+        
+        # --- 2. Calculate TF‑IDF for Competitors and Target ---
+        with st.spinner("Calculating TF‑IDF scores for competitors..."):
+            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
+            tfidf_matrix = vectorizer.fit_transform(competitor_texts)  # Competitor texts only
+            feature_names = vectorizer.get_feature_names_out()
+            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=competitor_valid_urls, columns=feature_names)
+        
+        with st.spinner("Calculating TF‑IDF scores for target URL..."):
+            # Use the same vectorizer fitted on competitors to transform the target text
+            target_tfidf_vector = vectorizer.transform([target_text])
+            df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
+        
+        # --- 3. Identify Gap n‑grams ---
+        gap_ngrams = set()
+        for url in competitor_valid_urls:
+            row = df_tfidf_competitors.loc[url]
+            sorted_row = row.sort_values(ascending=False)
+            top_ngrams = sorted_row.head(top_n)
+            for ngram in top_ngrams.index:
+                comp_score = df_tfidf_competitors.loc[url, ngram]
+                # Check if n‑gram exists in target; if not, assume 0 score for target
+                target_score = df_tfidf_target.loc[target_url, ngram] if ngram in df_tfidf_target.columns else 0.0
+                if comp_score > target_score:
+                    gap_ngrams.add(ngram)
+        
+        gap_ngrams = list(gap_ngrams)
+        if not gap_ngrams:
+            st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
+            return
+        
+        st.markdown("### Identified Gap n‑grams:")
+        st.write(gap_ngrams)
+        
+        # --- 4. Cluster the Gap n‑grams using BERT Embeddings ---
+        # Select clustering algorithm and parameters
+        st.subheader("Clustering Settings")
+        algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
+        if algorithm == "K-Means":
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5)
+        elif algorithm == "DBSCAN":
+            eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1)
+            min_samples = st.number_input("Minimum Samples:", min_value=1, value=2)
+        elif algorithm == "Agglomerative Clustering":
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5)
+        
+        # Compute BERT embeddings for each gap n‑gram
+        tokenizer, model = initialize_bert_model()
+        embeddings = []
+        valid_gap_ngrams = []
+        with st.spinner("Computing BERT embeddings for gap n‑grams..."):
+            for gram in gap_ngrams:
+                emb = get_embedding(gram, model, tokenizer)
+                if emb is not None:
+                    embeddings.append(emb.squeeze())
+                    valid_gap_ngrams.append(gram)
+        
+        if len(valid_gap_ngrams) == 0:
+            st.error("Could not compute embeddings for any gap n‑grams.")
+            return
+        
+        embeddings = np.vstack(embeddings)
+        
+        # --- 5. Perform Clustering ---
+        if algorithm == "K-Means":
+            from sklearn.cluster import KMeans
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
+            cluster_labels = clustering_model.fit_predict(embeddings)
+            centers = clustering_model.cluster_centers_
+            rep_keywords = {}
+            for i in range(n_clusters):
+                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+                if not cluster_grams:
+                    continue
+                cluster_embeddings = embeddings[cluster_labels == i]
+                distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
+                rep_keyword = cluster_grams[np.argmin(distances)]
+                rep_keywords[i] = rep_keyword
 
-    # Select n‑gram size
-    n_value = st.selectbox("Select n for n‑grams:", options=[1, 2, 3, 4], index=1)  # Default to bigrams
-
-    # Clustering algorithm selection and hyperparameters
-    algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
-    if algorithm == "K-Means":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=100, value=5)
-    elif algorithm == "DBSCAN":
-        eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1)
-        min_samples = st.number_input("Minimum Samples:", min_value=1, value=2)
-    elif algorithm == "Agglomerative Clustering":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=100, value=5)
-
-    # Extract text from all provided URLs
-    all_text = ""
-    with st.spinner("Extracting text from URLs..."):
-        for url in urls:
-            text = extract_text_from_url(url)
-            if text:
-                all_text += text + " "
-
-    if not all_text.strip():
-        st.error("No text could be extracted from the provided URLs.")
-        return
-
-    # Extract n‑grams using CountVectorizer
-    vectorizer = CountVectorizer(ngram_range=(n_value, n_value), stop_words='english')
-    vectorizer.fit([all_text])
-    ngrams = vectorizer.get_feature_names_out()
-    if len(ngrams) == 0:
-        st.error("No n‑grams were found. Try changing the n‑gram parameter.")
-        return
-
-    st.markdown("### Extracted n‑grams:")
-    st.write(ngrams)
-
-    # Compute BERT embeddings for each n‑gram
-    tokenizer, model = initialize_bert_model()
-    embeddings = []
-    valid_ngrams = []
-    with st.spinner("Computing embeddings for each n‑gram..."):
-        for gram in ngrams:
-            emb = get_embedding(gram, model, tokenizer)
-            if emb is not None:
-                embeddings.append(emb.squeeze())
-                valid_ngrams.append(gram)
-    if len(valid_ngrams) == 0:
-        st.error("No embeddings could be computed for the extracted n‑grams.")
-        return
-
-    embeddings = np.vstack(embeddings)  # shape: (n_ngrams, hidden_dim)
-
-    # Cluster the embeddings using the selected algorithm
-    if algorithm == "K-Means":
-        from sklearn.cluster import KMeans
-        clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
-        cluster_labels = clustering_model.fit_predict(embeddings)
-        centers = clustering_model.cluster_centers_
-        rep_keywords = {}
-        for i in range(n_clusters):
-            cluster_ngrams = [ng for ng, label in zip(valid_ngrams, cluster_labels) if label == i]
-            if not cluster_ngrams:
-                continue
-            cluster_embeddings = embeddings[cluster_labels == i]
-            distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
-            rep_keyword = cluster_ngrams[np.argmin(distances)]
-            rep_keywords[i] = rep_keyword
-
-    elif algorithm == "DBSCAN":
-        from sklearn.cluster import DBSCAN
-        clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
-        cluster_labels = clustering_model.fit_predict(embeddings)
-        rep_keywords = {}
-        unique_labels = set(cluster_labels)
-        for label in unique_labels:
-            if label == -1:  # -1 denotes noise
-                continue
-            cluster_ngrams = [ng for ng, l in zip(valid_ngrams, cluster_labels) if l == label]
-            cluster_embeddings = embeddings[cluster_labels == label]
-            sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-            rep_keyword = cluster_ngrams[np.argmax(np.sum(sims, axis=1))]
-            rep_keywords[label] = rep_keyword
-
-    elif algorithm == "Agglomerative Clustering":
-        from sklearn.cluster import AgglomerativeClustering
-        clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
-        cluster_labels = clustering_model.fit_predict(embeddings)
-        rep_keywords = {}
-        for i in range(n_clusters):
-            cluster_ngrams = [ng for ng, label in zip(valid_ngrams, cluster_labels) if label == i]
-            cluster_embeddings = embeddings[cluster_labels == i]
-            if len(cluster_embeddings) > 1:
+        elif algorithm == "DBSCAN":
+            from sklearn.cluster import DBSCAN
+            clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
+            cluster_labels = clustering_model.fit_predict(embeddings)
+            rep_keywords = {}
+            unique_labels = set(cluster_labels)
+            for label in unique_labels:
+                if label == -1:
+                    continue
+                cluster_grams = [ng for ng, l in zip(valid_gap_ngrams, cluster_labels) if l == label]
+                cluster_embeddings = embeddings[cluster_labels == label]
                 sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-                rep_keyword = cluster_ngrams[np.argmax(np.sum(sims, axis=1))]
+                rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+                rep_keywords[label] = rep_keyword
+
+        elif algorithm == "Agglomerative Clustering":
+            from sklearn.cluster import AgglomerativeClustering
+            clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+            cluster_labels = clustering_model.fit_predict(embeddings)
+            rep_keywords = {}
+            for i in range(n_clusters):
+                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+                cluster_embeddings = embeddings[cluster_labels == i]
+                if len(cluster_embeddings) > 1:
+                    sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+                    rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+                else:
+                    rep_keyword = cluster_grams[0]
+                rep_keywords[i] = rep_keyword
+        
+        # --- 6. Display the Clusters ---
+        clusters = {}
+        for gram, label in zip(valid_gap_ngrams, cluster_labels):
+            clusters.setdefault(label, []).append(gram)
+        
+        st.markdown("### Keyword Clusters:")
+        for label, gram_list in clusters.items():
+            if label == -1:
+                st.markdown("**Noise:**")
             else:
-                rep_keyword = cluster_ngrams[0]
-            rep_keywords[i] = rep_keyword
-
-    # Organize clusters
-    clusters = {}
-    for ng, label in zip(valid_ngrams, cluster_labels):
-        clusters.setdefault(label, []).append(ng)
-
-    # Display the clusters
-    st.markdown("### Clusters:")
-    for label, ngram_list in clusters.items():
-        if label == -1:
-            st.markdown("**Noise:**")
-        else:
-            st.markdown(f"**Cluster {label}** (Representative: {rep_keywords.get(label, 'N/A')}):")
-        for ngram in ngram_list:
-            st.write(f" - {ngram}")
+                rep = rep_keywords.get(label, "N/A")
+                st.markdown(f"**Cluster {label}** (Representative: {rep}):")
+            for gram in gram_list:
+                st.write(f" - {gram}")
 
 # ------------------------------------
 # Main Streamlit App
