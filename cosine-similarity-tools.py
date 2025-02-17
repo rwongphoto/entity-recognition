@@ -1075,6 +1075,7 @@ def display_topics(lda_model, num_words=10):
         st.write(topic)
         st.write("---")
 
+# topic_planner_page function (modified to handle None)
 def topic_planner_page():
     st.header("Topic Planner")
     st.markdown("Enter URLs to perform topic modeling on the content.")
@@ -1096,15 +1097,19 @@ def topic_planner_page():
                     texts.append(text)
                 else:
                     st.warning(f"Could not extract text from {url}")
-            
+
             if texts:
                 nlp_model = load_spacy_model()
+                if nlp_model is None:  # *** KEY CHANGE: Check if loading failed
+                    st.error("Failed to load the spaCy model.  Topic modeling cannot proceed.")
+                    return  # Stop execution of this function
+
                 lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics)
-                
+
                 # Display topics
                 st.subheader("Discovered Topics:")
                 display_topics(lda_model)
-                
+
                 # Prepare and display pyLDAvis visualization
                 st.subheader("Topic Visualization (pyLDAvis):")
                 lda_display = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary, sort_topics=False)
