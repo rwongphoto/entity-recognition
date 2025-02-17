@@ -1064,13 +1064,23 @@ def main():
         layout="wide"
     )
 
-# Hide Streamlit's default header and footer (and *really* remove the footer)
+    # Hide Streamlit's default header and footer (more aggressive approach)
     hide_streamlit_style = """
         <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}  /* Hide the footer container */
-        footer > div:first-child {display: none;}  /* Target and remove the footer *content* */
+        #MainMenu {visibility: hidden !important;}
+        header {visibility: hidden !important;}
+        /* Targeting footer and its contents more aggressively */
+        footer {
+            display: none !important;
+        }
+        footer > div {
+            display: none !important;
+        }
+        /* Just in case, target any element containing "Made with Streamlit" */
+        *[data-testid="stDecoration"] {
+            display: none !important;
+        }
+
         div.block-container {padding-top: 1rem;} /*Add padding*/
         </style>
         """
