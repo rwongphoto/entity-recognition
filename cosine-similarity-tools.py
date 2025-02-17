@@ -485,28 +485,60 @@ def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
     st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
     search_term = st.text_input("Enter Search Term:", "")
-    urls_input = st.text_area("Enter URLs (one per line):", "")
-    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+    
+    # Let the user choose the input method for competitor content
+    source_option = st.radio("Select content source for competitors:", options=["Extract from URL", "Paste Content"], index=0)
+    
+    # Depending on the selection, show the appropriate input field
+    if source_option == "Extract from URL":
+        urls_input = st.text_area("Enter Competitor URLs (one per line):", "")
+        competitor_urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+    else:
+        st.markdown(
+            "Paste the competitor content in the text area below. "
+            "If you have multiple competitors, separate each content block with the delimiter `---`."
+        )
+        pasted_content = st.text_area("Enter Competitor Content:", height=200)
+        competitor_contents = [content.strip() for content in pasted_content.split('---') if content.strip()]
+
     if st.button("Calculate Similarity"):
-        if not urls:
-            st.warning("Please enter at least one URL.")
-        else:
-            tokenizer, model = initialize_bert_model()
-            with st.spinner("Calculating similarities..."):
-                similarity_scores = calculate_overall_similarity(urls, search_term, model, tokenizer)
+        tokenizer, model = initialize_bert_model()
+        if source_option == "Extract from URL":
+            if not competitor_urls:
+                st.warning("Please enter at least one URL.")
+                return
+            with st.spinner("Calculating similarities from URLs..."):
+                similarity_scores = calculate_overall_similarity(competitor_urls, search_term, model, tokenizer)
+            # Prepare data for plotting or display
             urls_plot = [url for url, score in similarity_scores]
             scores_plot = [score if score is not None else 0 for url, score in similarity_scores]
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(urls_plot, scores_plot)
-            ax.set_xlabel("URLs")
-            ax.set_ylabel("Similarity Score")
-            ax.set_title("Cosine Similarity of URLs to Search Term")
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            st.pyplot(fig)
-            data = {'URL': urls_plot, 'Similarity Score': scores_plot}
-            df = pd.DataFrame(data)
-            st.dataframe(df)
+        else:
+            if not competitor_contents:
+                st.warning("Please paste at least one content block.")
+                return
+            with st.spinner("Calculating similarities from pasted content..."):
+                similarity_scores = []
+                for idx, content in enumerate(competitor_contents):
+                    text_embedding = get_embedding(content, model, tokenizer)
+                    search_embedding = get_embedding(search_term, model, tokenizer)
+                    similarity = cosine_similarity(text_embedding, search_embedding)[0][0]
+                    similarity_scores.append((f"Competitor {idx+1}", similarity))
+            urls_plot = [label for label, score in similarity_scores]
+            scores_plot = [score for label, score in similarity_scores]
+
+        # Display the results (plot and table)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.bar(urls_plot, scores_plot)
+        ax.set_xlabel("Competitors")
+        ax.set_ylabel("Similarity Score")
+        ax.set_title("Cosine Similarity of Competitor Content to Search Term")
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        st.pyplot(fig)
+        data = {'Competitor': urls_plot, 'Similarity Score': scores_plot}
+        df = pd.DataFrame(data)
+        st.dataframe(df)
+
 
 def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
