@@ -1064,6 +1064,16 @@ def main():
         layout="wide"
     )
 
+    # Hide Streamlit's default header and footer
+    hide_streamlit_style = """
+                <style>
+                #MainMenu {visibility: hidden;}
+                header {visibility: hidden;}
+                footer {visibility: hidden;}
+                </style>
+                """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
