@@ -870,39 +870,39 @@ def main():
 
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
-    tool = st.sidebar.selectbox("Select Tool:", [
-        "URL Analysis Dashboard",
-        "Cosine Similarity - Competitor Analysis",
-        "Cosine Similarity - Every Embedding",
-        "Cosine Similarity - Content Heatmap",
-        "Top/Bottom 10 Embeddings",
-        "Entity Topic Gap Analysis",
-        "Entity Visualizer",
-        "Entity Frequency Bar Chart",
-        "Semantic Gap Analyzer",
-        "Keyword Clustering"  # New tool added here
-    ])
+tool = st.sidebar.selectbox("Select Tool:", [
+    "URL Analysis Dashboard",
+    "Cosine Similarity - Competitor Analysis",
+    "Cosine Similarity - Every Embedding",
+    "Cosine Similarity - Content Heatmap",
+    "Top/Bottom 10 Embeddings",
+    "Entity Topic Gap Analysis",
+    "Entity Visualizer",
+    "Entity Frequency Bar Chart",
+    "Semantic Gap Analyzer",  # Ensure this matches exactly
+    "Keyword Clustering"       # New tool added here
+])
 
-    if tool == "URL Analysis Dashboard":
-        url_analysis_dashboard_page()
-    elif tool == "Cosine Similarity - Competitor Analysis":
-        cosine_similarity_competitor_analysis_page()
-    elif tool == "Cosine Similarity - Every Embedding":
-        cosine_similarity_every_embedding_page()
-    elif tool == "Cosine Similarity - Content Heatmap":
-        cosine_similarity_content_heatmap_page()
-    elif tool == "Top/Bottom 10 Embeddings":
-        top_bottom_embeddings_page()
-    elif tool == "Entity Topic Gap Analysis":
-        entity_analysis_page()
-    elif tool == "Entity Visualizer":
-        displacy_visualization_page()
-    elif tool == "Entity Frequency Bar Chart":
-        named_entity_barchart_page()
-    elif tool == "Semantic Gap Analyzer":
-        ngram_tfidf_analysis_page()
-    elif tool == "Keyword Clustering":
-        keyword_clustering_page()
+if tool == "URL Analysis Dashboard":
+    url_analysis_dashboard_page()
+elif tool == "Cosine Similarity - Competitor Analysis":
+    cosine_similarity_competitor_analysis_page()
+elif tool == "Cosine Similarity - Every Embedding":
+    cosine_similarity_every_embedding_page()
+elif tool == "Cosine Similarity - Content Heatmap":
+    cosine_similarity_content_heatmap_page()
+elif tool == "Top/Bottom 10 Embeddings":
+    top_bottom_embeddings_page()
+elif tool == "Entity Topic Gap Analysis":
+    entity_analysis_page()
+elif tool == "Entity Visualizer":
+    displacy_visualization_page()
+elif tool == "Entity Frequency Bar Chart":
+    named_entity_barchart_page()
+elif tool == "Semantic Gap Analyzer":  # Fixed spelling here
+    ngram_tfidf_analysis_page()
+elif tool == "Keyword Clustering":
+    keyword_clustering_page()
 
     st.markdown("---")
     st.markdown(
