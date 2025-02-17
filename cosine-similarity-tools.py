@@ -22,6 +22,15 @@ import spacy
 from collections import Counter
 from typing import List, Tuple, Dict
 
+# Additional imports for topic modeling and visualization
+from gensim import corpora
+from gensim.models import LdaModel
+from gensim.utils import simple_preprocess
+import pyLDAvis
+import pyLDAvis.gensim_models
+import streamlit.components.v1 as components
+import os
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -30,6 +39,7 @@ logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-these
 
 # Global spaCy model variable
 nlp = None
+stop_words = spacy.lang.en.stop_words.STOP_WORDS  # Use spaCy's stop words
 
 @st.cache_resource
 def load_spacy_model():
@@ -1041,6 +1051,76 @@ def keyword_clustering_from_gap_page():
             st.pyplot(fig)
 
 # ------------------------------------
+# Topic Modeling Functionality
+# ------------------------------------
+
+def preprocess_text(text):
+    """Tokenizes and preprocesses the input text."""
+    doc = nlp(text)
+    tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
+    return tokens
+
+def run_topic_modeling(texts, num_topics=5):
+    """Runs LDA topic modeling on the given texts."""
+    processed_texts = [preprocess_text(text) for text in texts]
+    dictionary = corpora.Dictionary(processed_texts)
+    corpus = [dictionary.doc2bow(text) for text in processed_texts]
+    
+    lda_model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics, random_state=42, passes=15)
+    
+    return lda_model, corpus, dictionary
+
+def display_topics(lda_model, num_words=10):
+    """Displays the topics and their top words."""
+    for idx, topic in lda_model.print_topics(-1, num_words=num_words):
+        st.write(f"**Topic: {idx}**")
+        st.write(topic)
+        st.write("---")
+
+def topic_planner_page():
+    st.header("Topic Planner")
+    st.markdown("Enter URLs to perform topic modeling on the content.")
+
+    urls_input = st.text_area("Enter URLs (one per line):", key="topic_planner_urls", value="")
+    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+    num_topics = st.number_input("Number of topics:", min_value=2, max_value=10, value=5)
+
+    if st.button("Run Topic Modeling"):
+        if not urls:
+            st.warning("Please enter at least one URL.")
+            return
+
+        with st.spinner("Extracting text and running topic modeling..."):
+            texts = []
+            for url in urls:
+                text = extract_text_from_url(url)
+                if text:
+                    texts.append(text)
+                else:
+                    st.warning(f"Could not extract text from {url}")
+            
+            if texts:
+                nlp_model = load_spacy_model()
+                lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics)
+                
+                # Display topics
+                st.subheader("Discovered Topics:")
+                display_topics(lda_model)
+                
+                # Prepare and display pyLDAvis visualization
+                st.subheader("Topic Visualization (pyLDAvis):")
+                lda_display = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary, sort_topics=False)
+
+                # Generate the HTML for pyLDAvis visualization
+                html_string = pyLDAvis.prepared_data_to_html(lda_display)
+
+                # Display the visualization in Streamlit
+                components.html(html_string, width=1300, height=800)
+
+            else:
+                st.warning("No valid text extracted from the provided URLs.")
+
+# ------------------------------------
 # Main Streamlit App
 # ------------------------------------
 
@@ -1063,7 +1143,8 @@ def main():
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
         "Semantic Gap Analyzer",
-        "Keyword Clustering"  # New tool added here
+        "Keyword Clustering",
+        "Topic Planner"
     ])
 
     if tool == "URL Analysis Dashboard":
@@ -1086,6 +1167,8 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
+    elif page == "Topic Planner":
+        topic_planner_page()
 
     st.markdown("---")
     st.markdown(
