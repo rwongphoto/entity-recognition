@@ -719,11 +719,11 @@ def named_entity_barchart_page():
                 st.error("Could not load spaCy model. Aborting.")
                 return
             entities = identify_entities(all_text, nlp_model)
-            # Filter out both CARDINAL and PERCENT entities
+            # Filter out CARDINAL, PERCENT, and MONEY entities
             filtered_entities = [
                 (entity, label)
                 for entity, label in entities
-                if label != "CARDINAL" and label != "PERCENT"  # This line is changed
+                if label != "CARDINAL" and label != "PERCENT" and label != "MONEY"  # Added MONEY
             ]
             entity_counts = count_entities(filtered_entities)
             if len(entity_counts) > 0:
