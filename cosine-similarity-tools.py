@@ -715,7 +715,7 @@ def named_entity_barchart_page():
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 def ngram_tfidf_analysis_page():
-    st.header("Content Gap Analyzer")
+    st.header("Semantic Gap Analyzer")
     st.markdown("""
         Uncover hidden opportunities by comparing your website's content to your top competitors. Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation based on what works best in your industry.
     """)
@@ -849,7 +849,7 @@ def main():
         "Entity Topic Gap Analysis",
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
-        "Content Gap Analyzer"
+        "Semantic Gap Analyzer"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -867,11 +867,13 @@ def main():
         displacy_visualization_page()
     elif tool == "Entity Frequency Bar Chart":
         named_entity_barchart_page()
-    elif tool == "Content Gap Analyzer":
+    elif tool == "Semantic Gap Analyzer":
         ngram_tfidf_analysis_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
+
 
