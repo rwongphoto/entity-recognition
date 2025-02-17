@@ -627,40 +627,72 @@ def top_bottom_embeddings_page():
 
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze multiple URLs to identify common entities missing on your site.")
-    urls_input = st.text_area("Enter URLs (one per line):", key="entity_urls", value="")
-    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-    exclude_url = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
+    st.markdown("Analyze multiple sources to identify common entities missing on your site.")
+    
+    # Competitor input method selection
+    competitor_source_option = st.radio(
+        "Select competitor content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="entity_comp_source"
+    )
+    if competitor_source_option == "Extract from URL":
+        competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="entity_urls", value="")
+        competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
+    else:
+        st.markdown("Paste competitor content below. For multiple sources, separate each with `---`.")
+        competitor_input = st.text_area("Enter Competitor Content:", key="entity_competitor_text", value="", height=200)
+        competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
+    
+    # Exclude content input method selection
+    st.markdown("#### Exclude Source")
+    exclude_option = st.radio(
+        "Select exclude content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="exclude_source"
+    )
+    if exclude_option == "Extract from URL":
+        exclude_input = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
+    else:
+        exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
+    
     if st.button("Analyze", key="entity_button"):
-        if not urls:
-            st.warning("Please enter at least one URL.")
+        if not competitor_list:
+            st.warning("Please provide at least one competitor content or URL.")
             return
         with st.spinner("Extracting content and analyzing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
-            exclude_text = extract_text_from_url(exclude_url)
+            if exclude_option == "Extract from URL":
+                exclude_text = extract_text_from_url(exclude_input) if exclude_input else ""
+            else:
+                exclude_text = exclude_input
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_text).ents} if exclude_text else set()
             all_entities = []
-            entity_counts_per_url: Dict[str, Counter] = {}
-            url_entity_counts: Counter = Counter()
-            for url in urls:
-                text = extract_text_from_url(url)
+            entity_counts_per_source = {}
+            url_entity_counts = Counter()
+            for source in competitor_list:
+                if competitor_source_option == "Extract from URL":
+                    text = extract_text_from_url(source)
+                else:
+                    text = source
                 if text:
                     entities = identify_entities(text, nlp_model)
                     entities = [(entity, label) for entity, label in entities if label != "CARDINAL"]
                     filtered_entities = [(entity, label) for entity, label in entities if entity.lower() not in exclude_entities_set]
-                    entity_counts_per_url[url] = count_entities(filtered_entities)
+                    entity_counts_per_source[source] = count_entities(filtered_entities)
                     all_entities.extend(filtered_entities)
                     for entity, label in set(filtered_entities):
                         url_entity_counts[(entity, label)] += 1
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
             if url_entity_counts:
-                st.markdown("### Overall Entity Counts (Found in more than one URL)")
+                st.markdown("### Overall Entity Counts (Found in more than one source)")
                 for (entity, label), count in filtered_url_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
                 display_entity_barchart(filtered_url_entity_counts)
-                st.markdown("### Entities from Exclude URL")
+                st.markdown("### Entities from Exclude Content")
                 if exclude_text:
                     exclude_doc = nlp_model(exclude_text)
                     exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
@@ -668,10 +700,10 @@ def entity_analysis_page():
                     for (entity, label), count in exclude_entity_counts.most_common(50):
                         st.write(f"- {entity} ({label}): {count}")
                 else:
-                    st.write("No entities found in the exclude URL.")
-                st.markdown("### Entities Per URL")
-                for url, entity_counts_local in entity_counts_per_url.items():
-                    st.markdown(f"#### URL: {url}")
+                    st.write("No entities found in the exclude content.")
+                st.markdown("### Entities Per Source")
+                for source, entity_counts_local in entity_counts_per_source.items():
+                    st.markdown(f"#### Source: {source}")
                     if entity_counts_local:
                         for (entity, label), count in entity_counts_local.most_common(50):
                             st.write(f"- {entity} ({label}): {count}")
@@ -679,6 +711,7 @@ def entity_analysis_page():
                         st.write("No relevant entities found.")
             else:
                 st.warning("No relevant entities found.")
+
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
