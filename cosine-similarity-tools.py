@@ -960,28 +960,49 @@ def keyword_clustering_from_gap_page():
         """
     )
     
-    # --- Input Section for Semantic Gap Analysis ---
-    st.subheader("Input URLs")
-    competitor_urls_input = st.text_area("Enter Competitor URLs (one per line):", key="comp_urls", value="")
-    target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
+    # Competitor input method selection
+    st.subheader("Competitor Content Input")
+    competitor_source_option = st.radio(
+        "Select competitor content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="comp_source"
+    )
+    if competitor_source_option == "Extract from URL":
+        competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="comp_urls", value="")
+        competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
+    else:
+        st.markdown("Paste competitor content below. Separate each block with `---`.")
+        competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
+        competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
     
-    competitor_urls = [url.strip() for url in competitor_urls_input.splitlines() if url.strip()]
-    if not competitor_urls or not target_url:
-        st.warning("Please enter at least one competitor URL and your target URL.")
-        return
+    # Target input method selection
+    st.subheader("Target Content Input")
+    target_source_option = st.radio(
+        "Select target content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="target_source_cluster"
+    )
+    if target_source_option == "Extract from URL":
+        target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
+    else:
+        target_text = st.text_area("Paste your target content:", key="target_content", value="", height=200)
     
-    # --- N-gram Options for Gap Analysis ---
+    # N-gram Options for Gap Analysis
     st.subheader("N‑gram Settings")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
     
-    # --- Clustering Settings (Select Algorithm and Parameters) ---
+    # Clustering Settings
     st.subheader("Clustering Settings")
-    algorithm = st.selectbox("Select Clustering Algorithm:", 
-                             options=["K-Means", "DBSCAN", "Agglomerative Clustering"],
-                             key="clustering_algo_gap")
+    algorithm = st.selectbox(
+        "Select Clustering Algorithm:", 
+        options=["K-Means", "DBSCAN", "Agglomerative Clustering"],
+        key="clustering_algo_gap"
+    )
     if algorithm == "K-Means":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
     elif algorithm == "DBSCAN":
@@ -990,50 +1011,62 @@ def keyword_clustering_from_gap_page():
     elif algorithm == "Agglomerative Clustering":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
     
-    # --- Analyze & Cluster Button ---
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
-        # 1. Extract Text from Competitors and Target
+        # Extract competitor content
         competitor_texts = []
-        competitor_valid_urls = []
-        url_text_dict = {}
-        with st.spinner("Extracting text from competitor URLs..."):
-            for url in competitor_urls:
-                text = extract_text_from_url(url)
+        valid_competitor_sources = []
+        with st.spinner("Extracting competitor content..."):
+            for source in competitor_list:
+                if competitor_source_option == "Extract from URL":
+                    text = extract_text_from_url(source)
+                else:
+                    text = source
                 if text:
                     competitor_texts.append(text)
-                    url_text_dict[url] = text
-                    competitor_valid_urls.append(url)
+                    valid_competitor_sources.append(source)
                 else:
-                    st.warning(f"Could not extract text from {url}")
+                    st.warning(f"Could not extract content from: {source}")
         
-        target_text = extract_text_from_url(target_url)
-        if not target_text:
-            st.error("Could not extract text from the target URL.")
+        # Extract target content
+        if target_source_option == "Extract from URL":
+            target_content = extract_text_from_url(target_url)
+            if not target_content:
+                st.error("Could not extract content from the target URL.")
+                return
+        else:
+            target_content = target_text
+        
+        if not competitor_texts:
+            st.error("No competitor content was extracted.")
             return
         
-        # 2. Calculate TF‑IDF for Competitors and Target
+        # Calculate TF‑IDF for Competitors
         with st.spinner("Calculating TF‑IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
-            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=competitor_valid_urls, columns=feature_names)
+            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
         
-        with st.spinner("Calculating TF‑IDF scores for target URL..."):
-            target_tfidf_vector = vectorizer.transform([target_text])
-            df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
+        # Calculate TF‑IDF for Target Content
+        with st.spinner("Calculating TF‑IDF scores for target content..."):
+            target_tfidf_vector = vectorizer.transform([target_content])
+            df_tfidf_target = pd.DataFrame(
+                target_tfidf_vector.toarray(),
+                index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
+                columns=feature_names
+            )
         
-        # 3. Identify Gap n‑grams
+        # Identify Gap n‑grams
         gap_ngrams = set()
-        for url in competitor_valid_urls:
-            row = df_tfidf_competitors.loc[url]
+        for source in valid_competitor_sources:
+            row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
             for ngram in top_ngrams.index:
-                comp_score = df_tfidf_competitors.loc[url, ngram]
-                target_score = df_tfidf_target.loc[target_url, ngram] if ngram in df_tfidf_target.columns else 0.0
+                comp_score = df_tfidf_competitors.loc[source, ngram]
+                target_score = df_tfidf_target.iloc[0][ngram] if ngram in df_tfidf_target.columns else 0.0
                 if comp_score > target_score:
                     gap_ngrams.add(ngram)
-        
         gap_ngrams = list(gap_ngrams)
         if not gap_ngrams:
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
@@ -1042,7 +1075,7 @@ def keyword_clustering_from_gap_page():
         st.markdown("### Identified Gap n‑grams:")
         st.write(gap_ngrams)
         
-        # 4. Compute BERT Embeddings for Each Gap n‑gram
+        # Compute BERT Embeddings for Each Gap n‑gram
         tokenizer, model = initialize_bert_model()
         embeddings = []
         valid_gap_ngrams = []
@@ -1059,7 +1092,7 @@ def keyword_clustering_from_gap_page():
         
         embeddings = np.vstack(embeddings)
         
-        # 5. Perform Clustering Using Selected Algorithm and Parameters
+        # Perform Clustering
         if algorithm == "K-Means":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
@@ -1074,7 +1107,6 @@ def keyword_clustering_from_gap_page():
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
-        
         elif algorithm == "DBSCAN":
             from sklearn.cluster import DBSCAN
             clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
@@ -1089,7 +1121,6 @@ def keyword_clustering_from_gap_page():
                 sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
                 rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
                 rep_keywords[label] = rep_keyword
-        
         elif algorithm == "Agglomerative Clustering":
             from sklearn.cluster import AgglomerativeClustering
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
@@ -1105,7 +1136,7 @@ def keyword_clustering_from_gap_page():
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
         
-        # 6. Display the Clusters
+        # Display the Clusters
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
@@ -1132,6 +1163,7 @@ def keyword_clustering_from_gap_page():
             ax.set_xlabel("PCA Component 1")
             ax.set_ylabel("PCA Component 2")
             st.pyplot(fig)
+
 
 # ------------------------------------
 # Main Streamlit App
