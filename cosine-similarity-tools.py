@@ -16,6 +16,18 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
+from googlesearch import search  # pip install google
+import gensim
+from gensim.utils import simple_preprocess
+from gensim import corpora
+from gensim.models.wrappers import LdaMallet
+import nltk
+from nltk.corpus import stopwords
+
+# Download NLTK stopwords if not already available
+nltk.download('stopwords')
+stop_words = stopwords.words('english')
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import spacy
@@ -118,6 +130,39 @@ def get_embedding(text, model, tokenizer):
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
     outputs = model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).detach().numpy()
+
+def preprocess_text(text):
+    """
+    Tokenizes and preprocesses input text using gensim's simple_preprocess.
+    Removes punctuation and stop words.
+    """
+    tokens = simple_preprocess(text, deacc=True)
+    return [token for token in tokens if token not in stop_words and len(token) > 3]
+
+def get_google_results(query, num_results=10):
+    """
+    Returns a list of URLs from the first page of Google.
+    Here we use the 'googlesearch' Python module.
+    """
+    urls = []
+    try:
+        for url in search(query, num_results=num_results, pause=2.0):
+            urls.append(url)
+    except Exception as e:
+        st.error(f"Error fetching Google results: {e}")
+    return urls
+
+def run_lda_mallet(tokenized_texts, num_topics=5, iterations=1000, mallet_path='/path/to/mallet'):
+    """
+    Builds a dictionary and corpus from the tokenized texts, then runs Gensim's LDA Mallet.
+    Replace '/path/to/mallet' with the actual path to your Mallet installation.
+    Returns the list of discovered topics.
+    """
+    dictionary = corpora.Dictionary(tokenized_texts)
+    corpus = [dictionary.doc2bow(text) for text in tokenized_texts]
+    lda_model = LdaMallet(mallet_path, corpus=corpus, num_topics=num_topics, id2word=dictionary, iterations=iterations)
+    topics = lda_model.show_topics(formatted=False)
+    return topics
 
 def create_navigation_menu(logo_url):
     """Creates a top navigation menu."""
@@ -1040,6 +1085,46 @@ def keyword_clustering_from_gap_page():
             ax.set_ylabel("PCA Component 2")
             st.pyplot(fig)
 
+# --------------------
+# Topic Planner Page Function
+# --------------------
+def topic_planner_page():
+    st.header("Topic Planner")
+    st.markdown("Search for a query, fetch the top Google SEO results, and process the content for topic modeling.")
+    
+    # Input: Search query for planning topics
+    query = st.text_input("Enter your search query for topic planning:", "SEO trends")
+    
+    # Input: Specify the number of topics you want to extract
+    num_topics = st.number_input("Number of topics to extract:", min_value=2, max_value=20, value=5)
+    
+    if st.button("Run Topic Planner"):
+        with st.spinner("Fetching Google results and processing topics..."):
+            # Retrieve URLs from Google search
+            urls = get_google_results(query, num_results=10)
+            st.write("### Google Results URLs")
+            for url in urls:
+                st.write(url)
+            
+            # Extract text from each URL and preprocess the text
+            all_tokens = []
+            for url in urls:
+                text = extract_text_from_url(url)
+                if text:
+                    tokens = preprocess_text(text)
+                    if tokens:
+                        all_tokens.append(tokens)
+            
+            if all_tokens:
+                # Run the LDA Mallet topic model
+                topics = run_lda_mallet(all_tokens, num_topics=num_topics, mallet_path="/path/to/mallet")
+                st.write("### Discovered Topics")
+                for idx, topic in topics:
+                    topic_words = ", ".join([word for word, weight in topic])
+                    st.write(f"Topic {idx}: {topic_words}")
+            else:
+                st.write("No valid text was extracted from the found URLs.")
+
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
@@ -1064,6 +1149,7 @@ def main():
         "Entity Frequency Bar Chart",
         "Semantic Gap Analyzer",
         "Keyword Clustering"  # New tool added here
+        "Topic Planner"  # New tool added here
     ])
 
     if tool == "URL Analysis Dashboard":
@@ -1086,6 +1172,8 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
+    elif tool == "Topic Planner":
+        topic_planner_page()
 
     st.markdown("---")
     st.markdown(
