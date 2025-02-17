@@ -1165,7 +1165,7 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
-    elif page == "Topic Planner":
+    elif tool == "Topic Planner":  # Corrected line: Use 'tool'
         topic_planner_page()
 
     st.markdown("---")
