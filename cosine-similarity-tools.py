@@ -1051,7 +1051,7 @@ def main():
     elif tool == "Semantic Gap Analyzer":
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
-        keyword_clustering_page()
+        keyword_clustering_from_gap_page()
 
     st.markdown("---")
     st.markdown(
