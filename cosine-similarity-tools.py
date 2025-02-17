@@ -1064,27 +1064,18 @@ def main():
         layout="wide"
     )
 
-    # Hide Streamlit's default header and footer (more aggressive approach)
-    hide_streamlit_style = """
+    # Hide Streamlit elements using data-testid (from Streamlit forum solution)
+    hide_streamlit_elements = """
         <style>
         #MainMenu {visibility: hidden !important;}
         header {visibility: hidden !important;}
-        /* Targeting footer and its contents more aggressively */
-        footer {
+        [data-testid="stDecoration"] {
             display: none !important;
         }
-        footer > div {
-            display: none !important;
-        }
-        /* Just in case, target any element containing "Made with Streamlit" */
-        *[data-testid="stDecoration"] {
-            display: none !important;
-        }
-
         div.block-container {padding-top: 1rem;} /*Add padding*/
         </style>
         """
-    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+    st.markdown(hide_streamlit_elements, unsafe_allow_html=True)
 
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
