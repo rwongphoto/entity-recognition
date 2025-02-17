@@ -36,26 +36,25 @@ import streamlit.components.v1 as components
 
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
 
-# Global spaCy model variable
-nlp = None
 
 @st.cache_resource
 def load_spacy_model():
     """Loads the spaCy model (only once)."""
-    global nlp
-    if nlp is None:
-        try:
-            nlp = spacy.load("en_core_web_lg")
-            print("spaCy model loaded successfully")
-        except OSError:
-            print("Downloading en_core_web_lg model...")
-            spacy.cli.download("en_core_web_lg")
-            nlp = spacy.load("en_core_web_lg")
-            print("en_core_web_lg downloaded and loaded")
-        except Exception as e:
-            st.error(f"Failed to load spaCy model: {e}")
-            return None
-    return nlp
+    #global nlp  # NO LONGER NEEDED. We won't modify global scope.
+    #if nlp is None: # Not needed because of the cache_resource
+    try:
+        nlp_local = spacy.load("en_core_web_lg") #Local Variable
+        print("spaCy model loaded successfully")
+        return nlp_local
+    except OSError:
+        print("Downloading en_core_web_lg model...")
+        spacy.cli.download("en_core_web_lg")
+        nlp_local = spacy.load("en_core_web_lg")
+        print("en_core_web_lg downloaded and loaded")
+        return nlp_local
+    except Exception as e:
+        st.error(f"Failed to load spaCy model: {e}")
+        return None  # Important: Return None on failure
 
 @st.cache_resource
 def initialize_bert_model():
@@ -1052,20 +1051,20 @@ def keyword_clustering_from_gap_page():
 # Topic Modeling Functionality
 # ------------------------------------
 
-def preprocess_text(text):
+def preprocess_text(text, nlp): #Added nlp to arguments
     """Tokenizes and preprocesses the input text."""
     doc = nlp(text)
     tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
     return tokens
 
-def run_topic_modeling(texts, num_topics=5):
+def run_topic_modeling(texts, num_topics=5, nlp=None): #Added nlp to args
     """Runs LDA topic modeling on the given texts."""
-    processed_texts = [preprocess_text(text) for text in texts]
+    processed_texts = [preprocess_text(text, nlp) for text in texts]
     dictionary = corpora.Dictionary(processed_texts)
     corpus = [dictionary.doc2bow(text) for text in processed_texts]
-    
+
     lda_model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics, random_state=42, passes=15)
-    
+
     return lda_model, corpus, dictionary
 
 def display_topics(lda_model, num_words=10):
@@ -1099,12 +1098,13 @@ def topic_planner_page():
                     st.warning(f"Could not extract text from {url}")
 
             if texts:
-                nlp_model = load_spacy_model()
-                if nlp_model is None:  # *** KEY CHANGE: Check if loading failed
+                nlp_model = load_spacy_model()  # Get the model (or None)
+                if nlp_model is None:
                     st.error("Failed to load the spaCy model.  Topic modeling cannot proceed.")
-                    return  # Stop execution of this function
+                    return  # Stop execution
 
-                lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics)
+                # Pass nlp_model to run_topic_modeling
+                lda_model, corpus, dictionary = run_topic_modeling(texts, num_topics, nlp=nlp_model)
 
                 # Display topics
                 st.subheader("Discovered Topics:")
@@ -1119,7 +1119,6 @@ def topic_planner_page():
 
                 # Display the visualization in Streamlit
                 components.html(html_string, width=1300, height=800)
-
             else:
                 st.warning("No valid text extracted from the provided URLs.")
 
