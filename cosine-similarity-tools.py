@@ -858,10 +858,10 @@ def keyword_clustering_from_gap_page():
     
     # --- N-gram Options for Gap Analysis ---
     st.subheader("N‑gram Settings")
-    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1)
-    min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
-    max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
-    top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10)
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
+    min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
+    max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
+    top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
     
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
         # --- 1. Extract Text from Competitors and Target ---
@@ -886,12 +886,11 @@ def keyword_clustering_from_gap_page():
         # --- 2. Calculate TF‑IDF for Competitors and Target ---
         with st.spinner("Calculating TF‑IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
-            tfidf_matrix = vectorizer.fit_transform(competitor_texts)  # Competitor texts only
+            tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=competitor_valid_urls, columns=feature_names)
         
         with st.spinner("Calculating TF‑IDF scores for target URL..."):
-            # Use the same vectorizer fitted on competitors to transform the target text
             target_tfidf_vector = vectorizer.transform([target_text])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=[target_url], columns=feature_names)
         
@@ -903,7 +902,6 @@ def keyword_clustering_from_gap_page():
             top_ngrams = sorted_row.head(top_n)
             for ngram in top_ngrams.index:
                 comp_score = df_tfidf_competitors.loc[url, ngram]
-                # Check if n‑gram exists in target; if not, assume 0 score for target
                 target_score = df_tfidf_target.loc[target_url, ngram] if ngram in df_tfidf_target.columns else 0.0
                 if comp_score > target_score:
                     gap_ngrams.add(ngram)
@@ -916,19 +914,20 @@ def keyword_clustering_from_gap_page():
         st.markdown("### Identified Gap n‑grams:")
         st.write(gap_ngrams)
         
-        # --- 4. Cluster the Gap n‑grams using BERT Embeddings ---
-        # Select clustering algorithm and parameters
+        # --- 4. Clustering Settings ---
         st.subheader("Clustering Settings")
-        algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
+        algorithm = st.selectbox("Select Clustering Algorithm:", 
+                                 options=["K-Means", "DBSCAN", "Agglomerative Clustering"],
+                                 key="clustering_algo_gap")
         if algorithm == "K-Means":
-            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5)
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5, key="kmeans_clusters_gap")
         elif algorithm == "DBSCAN":
-            eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1)
-            min_samples = st.number_input("Minimum Samples:", min_value=1, value=2)
+            eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1, key="dbscan_eps_gap")
+            min_samples = st.number_input("Minimum Samples:", min_value=1, value=2, key="dbscan_min_samples_gap")
         elif algorithm == "Agglomerative Clustering":
-            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5)
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(gap_ngrams), value=5, key="agg_clusters_gap")
         
-        # Compute BERT embeddings for each gap n‑gram
+        # --- 5. Compute BERT Embeddings for Each Gap n‑gram ---
         tokenizer, model = initialize_bert_model()
         embeddings = []
         valid_gap_ngrams = []
@@ -945,7 +944,7 @@ def keyword_clustering_from_gap_page():
         
         embeddings = np.vstack(embeddings)
         
-        # --- 5. Perform Clustering ---
+        # --- 6. Perform Clustering ---
         if algorithm == "K-Means":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
@@ -960,7 +959,7 @@ def keyword_clustering_from_gap_page():
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
-
+        
         elif algorithm == "DBSCAN":
             from sklearn.cluster import DBSCAN
             clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
@@ -975,7 +974,7 @@ def keyword_clustering_from_gap_page():
                 sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
                 rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
                 rep_keywords[label] = rep_keyword
-
+        
         elif algorithm == "Agglomerative Clustering":
             from sklearn.cluster import AgglomerativeClustering
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
@@ -991,7 +990,7 @@ def keyword_clustering_from_gap_page():
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
         
-        # --- 6. Display the Clusters ---
+        # --- 7. Display the Clusters ---
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
@@ -1005,6 +1004,19 @@ def keyword_clustering_from_gap_page():
                 st.markdown(f"**Cluster {label}** (Representative: {rep}):")
             for gram in gram_list:
                 st.write(f" - {gram}")
+        
+        # --- Optional: Visualize Clusters using PCA ---
+        with st.spinner("Generating cluster visualization..."):
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(embeddings)
+            fig, ax = plt.subplots(figsize=(10, 6))
+            scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=cluster_labels, cmap='viridis', s=100)
+            for i, txt in enumerate(valid_gap_ngrams):
+                ax.annotate(txt, (embeddings_2d[i, 0], embeddings_2d[i, 1]), fontsize=8)
+            ax.set_title("Cluster Visualization (PCA Reduced)")
+            ax.set_xlabel("PCA Component 1")
+            ax.set_ylabel("PCA Component 2")
+            st.pyplot(fig)
 
 # ------------------------------------
 # Main Streamlit App
