@@ -15,26 +15,16 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import spacy
 from collections import Counter
 from typing import List, Tuple, Dict
 
-# For Topic Modeling with Gensim's LDA Mallet
-from gensim import corpora
-from gensim.models.ldamallet import LdaMallet
-from gensim.utils import simple_preprocess
-import nltk
-from nltk.corpus import stopwords
-
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
-
-# Download NLTK stopwords if necessary
-nltk.download('stopwords')
-stop_words = stopwords.words('english')
 
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
 
@@ -216,29 +206,6 @@ def display_entity_barchart(entity_counts, top_n=30):
     plt.tight_layout()
     st.pyplot(fig)
 
-# ------------------------------
-# Helper Functions for Topic Planner
-# ------------------------------
-
-def preprocess_text(text):
-    """
-    Tokenizes and preprocesses input text using gensim's simple_preprocess.
-    Removes punctuation and stop words.
-    """
-    tokens = simple_preprocess(text, deacc=True)
-    return [token for token in tokens if token not in stop_words and len(token) > 3]
-
-def run_lda_mallet(tokenized_texts, num_topics=5, iterations=1000, mallet_path='/path/to/mallet'):
-    """
-    Builds a dictionary and corpus from the tokenized texts, then runs Gensim's LDA Mallet.
-    Replace '/path/to/mallet' with the actual path to your Mallet installation.
-    Returns the list of discovered topics.
-    """
-    dictionary = corpora.Dictionary(tokenized_texts)
-    corpus = [dictionary.doc2bow(text) for text in tokenized_texts]
-    lda_model = LdaMallet(mallet_path, corpus=corpus, num_topics=num_topics, id2word=dictionary, iterations=iterations)
-    topics = lda_model.show_topics(formatted=False)
-    return topics
 
 # ------------------------------------
 # Cosine Similarity Functions
@@ -1073,41 +1040,6 @@ def keyword_clustering_from_gap_page():
             ax.set_ylabel("PCA Component 2")
             st.pyplot(fig)
 
-def topic_planner_page():
-    st.header("Topic Planner")
-    st.markdown("Input a list of URLs. The app will fetch each URL's text content and perform topic modeling using Gensim's LDA Mallet.")
-    
-    urls_input = st.text_area("Enter URLs (one per line):", value="")
-    num_topics = st.number_input("Number of topics to extract:", min_value=2, max_value=20, value=5)
-    mallet_path = st.text_input("Mallet path (e.g., /path/to/mallet):", value="/path/to/mallet")
-    
-    if st.button("Run Topic Planner"):
-        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-        if not urls:
-            st.warning("Please enter at least one URL.")
-            return
-        
-        all_tokens = []
-        st.write("Fetching and processing URLs...")
-        for url in urls:
-            st.write(f"Processing: {url}")
-            text = extract_text_from_url(url)
-            if text:
-                tokens = preprocess_text(text)
-                if tokens:
-                    all_tokens.append(tokens)
-            else:
-                st.warning(f"Could not extract text from: {url}")
-        
-        if all_tokens:
-            topics = run_lda_mallet(all_tokens, num_topics=num_topics, mallet_path=mallet_path)
-            st.write("### Discovered Topics")
-            for idx, topic in topics:
-                topic_words = ", ".join([word for word, weight in topic])
-                st.write(f"Topic {idx}: {topic_words}")
-        else:
-            st.write("No valid text was extracted from the provided URLs.")
-
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
@@ -1131,8 +1063,7 @@ def main():
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
         "Semantic Gap Analyzer",
-        "Keyword Clustering",  # New tool added here
-        "Topic Planner" # New tool added here
+        "Keyword Clustering"  # New tool added here
     ])
 
     if tool == "URL Analysis Dashboard":
@@ -1155,8 +1086,6 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
-    elif tool == "Topic Planner":
-        topic_planner_page()
 
     st.markdown("---")
     st.markdown(
