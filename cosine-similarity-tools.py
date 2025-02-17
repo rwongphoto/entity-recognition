@@ -29,7 +29,6 @@ from gensim.utils import simple_preprocess
 import pyLDAvis
 import pyLDAvis.gensim_models
 import streamlit.components.v1 as components
-import os
 
 # ------------------------------------
 # Global Variables & Utility Functions
