@@ -1064,14 +1064,16 @@ def main():
         layout="wide"
     )
 
-    # Hide Streamlit's default header and footer
+# Hide Streamlit's default header and footer (and *really* remove the footer)
     hide_streamlit_style = """
-                <style>
-                #MainMenu {visibility: hidden;}
-                header {visibility: hidden;}
-                footer {visibility: hidden;}
-                </style>
-                """
+        <style>
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}  /* Hide the footer container */
+        footer > div:first-child {display: none;}  /* Target and remove the footer *content* */
+        div.block-container {padding-top: 1rem;} /*Add padding*/
+        </style>
+        """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
     create_navigation_menu(logo_url)
