@@ -829,6 +829,119 @@ def ngram_tfidf_analysis_page():
         st.dataframe(df_display)
 
 # ------------------------------------
+# New Tool: Keyword Clustering
+# ------------------------------------
+
+from sklearn.decomposition import PCA
+
+def keyword_clustering_page():
+    st.header("Keyword Clustering")
+    st.markdown(
+        """
+        Cluster semantically related keywords based on their BERT embeddings.
+        Enter a list of keywords (one per line) below, select a clustering algorithm,
+        and view the resulting clusters along with a visual representation.
+        """
+    )
+
+    # Input list of keywords
+    keywords_input = st.text_area("Enter Keywords (one per line):", value="")
+    keywords = [kw.strip() for kw in keywords_input.splitlines() if kw.strip()]
+    if not keywords:
+        st.warning("Please enter some keywords to proceed.")
+        return
+
+    # Choose clustering algorithm
+    algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
+
+    # Set algorithm-specific hyperparameters
+    if algorithm == "K-Means":
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(keywords), value=3)
+    elif algorithm == "DBSCAN":
+        eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1)
+        min_samples = st.number_input("Minimum Samples:", min_value=1, value=2)
+    elif algorithm == "Agglomerative Clustering":
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(keywords), value=3)
+
+    # Compute embeddings for each keyword using BERT
+    tokenizer, model = initialize_bert_model()
+    embeddings = []
+    for kw in keywords:
+        emb = get_embedding(kw, model, tokenizer)  # shape (1, hidden_dim)
+        embeddings.append(emb.squeeze())
+    embeddings = np.vstack(embeddings)  # shape (n_keywords, hidden_dim)
+
+    # Cluster the embeddings using the selected algorithm
+    if algorithm == "K-Means":
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        cluster_labels = kmeans.fit_predict(embeddings)
+        centers = kmeans.cluster_centers_
+        rep_keywords = {}
+        for i in range(n_clusters):
+            cluster_keywords = [kw for kw, label in zip(keywords, cluster_labels) if label == i]
+            cluster_embeddings = embeddings[cluster_labels == i]
+            distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
+            rep_keyword = cluster_keywords[np.argmin(distances)]
+            rep_keywords[i] = rep_keyword
+
+    elif algorithm == "DBSCAN":
+        from sklearn.cluster import DBSCAN
+        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+        cluster_labels = dbscan.fit_predict(embeddings)
+        rep_keywords = {}
+        unique_labels = set(cluster_labels)
+        for label in unique_labels:
+            if label == -1:
+                continue  # -1 is noise
+            cluster_keywords = [kw for kw, l in zip(keywords, cluster_labels) if l == label]
+            cluster_embeddings = embeddings[cluster_labels == label]
+            # For representative, choose the keyword with the highest total cosine similarity within the cluster
+            sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+            rep_keyword = cluster_keywords[np.argmax(np.sum(sims, axis=1))]
+            rep_keywords[label] = rep_keyword
+
+    elif algorithm == "Agglomerative Clustering":
+        from sklearn.cluster import AgglomerativeClustering
+        agg = AgglomerativeClustering(n_clusters=n_clusters)
+        cluster_labels = agg.fit_predict(embeddings)
+        rep_keywords = {}
+        for i in range(n_clusters):
+            cluster_keywords = [kw for kw, label in zip(keywords, cluster_labels) if label == i]
+            cluster_embeddings = embeddings[cluster_labels == i]
+            if len(cluster_embeddings) > 1:
+                sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+                rep_keyword = cluster_keywords[np.argmax(np.sum(sims, axis=1))]
+            else:
+                rep_keyword = cluster_keywords[0]
+            rep_keywords[i] = rep_keyword
+
+    # Organize and display clusters
+    clusters = {}
+    for kw, label in zip(keywords, cluster_labels):
+        clusters.setdefault(label, []).append(kw)
+    
+    st.markdown("### Clusters:")
+    for label, kw_list in clusters.items():
+        if label == -1:
+            st.markdown(f"**Noise:** {', '.join(kw_list)}")
+        else:
+            st.markdown(f"**Cluster {label}** (Representative: {rep_keywords[label]}): {', '.join(kw_list)}")
+
+    # Visualize clusters using PCA (2D scatter plot)
+    pca = PCA(n_components=2)
+    embeddings_2d = pca.fit_transform(embeddings)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=cluster_labels, cmap='viridis', s=100)
+    for i, txt in enumerate(keywords):
+        ax.annotate(txt, (embeddings_2d[i, 0], embeddings_2d[i, 1]), fontsize=8)
+    ax.set_title("Keyword Clustering Visualization (PCA Reduced)")
+    ax.set_xlabel("PCA Component 1")
+    ax.set_ylabel("PCA Component 2")
+    st.pyplot(fig)
+
+# ------------------------------------
 # Main Streamlit App
 # ------------------------------------
 
@@ -838,6 +951,7 @@ def main():
         page_icon="✏️",
         layout="wide"
     )
+
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
@@ -849,8 +963,10 @@ def main():
         "Entity Topic Gap Analysis",
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
-        "Semantic Gap Analyzer"
+        "Semantic Gap Analyzer",
+        "Keyword Clustering"  # New tool added here
     ])
+
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
     elif tool == "Cosine Similarity - Competitor Analysis":
@@ -869,8 +985,14 @@ def main():
         named_entity_barchart_page()
     elif tool == "Semantic Gap Analyzer":
         ngram_tfidf_analysis_page()
+    elif tool == "Keyword Clustering":
+        keyword_clustering_page()
+
     st.markdown("---")
-    st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
+    st.markdown(
+        "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
