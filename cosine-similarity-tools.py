@@ -273,6 +273,16 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 # Streamlit UI Functions
 # ------------------------------------
 
+def count_videos(soup):
+    """Counts the number of video elements and embedded videos on the page."""
+    # Count HTML5 <video> tags
+    video_count = len(soup.find_all("video"))
+    # Count <iframe> tags with YouTube or Vimeo sources
+    iframe_videos = len([iframe for iframe in soup.find_all("iframe")
+                         if "youtube.com" in (iframe.get("src") or "") 
+                         or "vimeo.com" in (iframe.get("src") or "")])
+    return video_count + iframe_videos
+
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
@@ -325,7 +335,6 @@ def url_analysis_dashboard_page():
                     custom_words = []
                     for el in custom_elements:
                         custom_words.extend(el.get_text().split())
-                    # Also add words from tables
                     for table in body.find_all("table"):
                         for row in table.find_all("tr"):
                             for cell in row.find_all(["td", "th"]):
@@ -374,34 +383,36 @@ def url_analysis_dashboard_page():
                     # Count the number of images (from full soup)
                     num_images = len(soup.find_all("img"))
                     
+                    # Count videos using the helper function
+                    num_videos = count_videos(soup)
+                    
                     # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
                     
-                    # NEW: Count Unique Entities from the cleaned body text
+                    # Count Unique Entities from the cleaned body text
                     entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
                     unique_entity_count = len(set([ent[0] for ent in entities]))
                     
                     # Append data in order:
-                    # Order: URL, Meta Title, H1, Total Word Count, Content Word Count, Cosine Similarity,
-                    #        # of Unique Entities, Nav Links, Total Links, Schema Types, Lists/Tables, Images
                     data.append([
                         url,               # URL
                         meta_title,        # Meta Title
                         h1_tag,            # H1
-                        total_word_count,  # Total Word Count (full cleaned body)
-                        custom_word_count, # Content Word Count (custom from selected tags)
+                        total_word_count,  # Total Word Count
+                        custom_word_count, # Content Word Count
                         similarity_val,    # Cosine Similarity
-                        unique_entity_count,  # # of Unique Entities (new column)
+                        unique_entity_count,  # # of Unique Entities
                         total_nav_links,   # Nav Links
                         total_links,       # Total Links
                         schema_markup,     # Schema Types
                         lists_tables,      # Lists/Tables
                         num_images,        # Images
+                        num_videos         # Videos
                     ])
                     
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url] + ["Error"] * 11)
+                    data.append([url] + ["Error"] * 12)
             
             df = pd.DataFrame(data, columns=[
                 "URL",
@@ -416,22 +427,24 @@ def url_analysis_dashboard_page():
                 "Schema Markup Types",
                 "Lists/Tables Present",
                 "# of Images",
+                "# of Videos"
             ])
             
             # Reorder and rename columns as required:
             df = df[[
-                "URL",                               # 0
-                "Meta Title",                        # 1
-                "H1 Tag",                            # 2
-                "Total Word Count",                  # 3
-                "Custom Word Count (p, li, headers)",# 4
-                "Overall Cosine Similarity Score",   # 5
-                "# of Unique Entities",              # 6
-                "# of Header & Footer Links",        # 7
-                "Total # of Links",                  # 8
-                "Schema Markup Types",               # 9
-                "Lists/Tables Present",              # 10
-                "# of Images",                       # 11
+                "URL",
+                "Meta Title",
+                "H1 Tag",
+                "Total Word Count",
+                "Custom Word Count (p, li, headers)",
+                "Overall Cosine Similarity Score",
+                "# of Unique Entities",
+                "# of Header & Footer Links",
+                "Total # of Links",
+                "Schema Markup Types",
+                "Lists/Tables Present",
+                "# of Images",
+                "# of Videos"
             ]]
             df.columns = [
                 "URL",
@@ -446,12 +459,14 @@ def url_analysis_dashboard_page():
                 "Schema Types",
                 "Lists/Tables",
                 "Images",
+                "Videos"
             ]
             
             # Ensure Cosine Similarity is numeric.
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
             
             st.dataframe(df)
+
 
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
