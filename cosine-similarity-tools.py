@@ -98,15 +98,15 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
-@st.cache_data(ttl=3600*24)  # Cache for 24 hours
-def count_videos(soup):
+@st.cache_data
+def count_videos(_soup):
     """Counts the number of video elements and embedded videos on the page."""
     # Count HTML5 <video> tags
-    video_count = len(soup.find_all("video"))
+    video_count = len(_soup.find_all("video"))
     
     # Count <iframe> tags that have YouTube or Vimeo sources
     iframe_videos = len([
-        iframe for iframe in soup.find_all("iframe")
+        iframe for iframe in _soup.find_all("iframe")
         if any(domain in (iframe.get("src") or "") for domain in ["youtube.com", "youtube-nocookie.com", "vimeo.com"])
     ])
     
