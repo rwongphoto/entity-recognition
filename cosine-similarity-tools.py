@@ -38,7 +38,6 @@ logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-these
 
 # Global spaCy model variable
 nlp = None
-stop_words = spacy.lang.en.stop_words.STOP_WORDS  # Use spaCy's stop words
 
 @st.cache_resource
 def load_spacy_model():
