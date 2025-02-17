@@ -832,114 +832,137 @@ def ngram_tfidf_analysis_page():
 # New Tool: Keyword Clustering
 # ------------------------------------
 
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import PCA
 
 def keyword_clustering_page():
-    st.header("Keyword Clustering")
+    st.header("Keyword Clustering from URL N‑grams")
     st.markdown(
         """
-        Cluster semantically related keywords based on their BERT embeddings.
-        Enter a list of keywords (one per line) below, select a clustering algorithm,
-        and view the resulting clusters along with a visual representation.
+        This tool extracts n‑grams from the text of provided URLs and clusters them based on their semantic similarity using BERT embeddings.
+        The clusters (and their representative keywords) are displayed below.
         """
     )
 
-    # Input list of keywords
-    keywords_input = st.text_area("Enter Keywords (one per line):", value="")
-    keywords = [kw.strip() for kw in keywords_input.splitlines() if kw.strip()]
-    if not keywords:
-        st.warning("Please enter some keywords to proceed.")
+    # Input URLs
+    urls_input = st.text_area("Enter URLs (one per line):", value="")
+    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+    if not urls:
+        st.warning("Please enter some URLs.")
         return
 
-    # Choose clustering algorithm
-    algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
+    # Select n‑gram size
+    n_value = st.selectbox("Select n for n‑grams:", options=[1, 2, 3, 4], index=1)  # Default to bigrams
 
-    # Set algorithm-specific hyperparameters
+    # Clustering algorithm selection and hyperparameters
+    algorithm = st.selectbox("Select Clustering Algorithm:", options=["K-Means", "DBSCAN", "Agglomerative Clustering"])
     if algorithm == "K-Means":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(keywords), value=3)
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=100, value=5)
     elif algorithm == "DBSCAN":
         eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1)
         min_samples = st.number_input("Minimum Samples:", min_value=1, value=2)
     elif algorithm == "Agglomerative Clustering":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=len(keywords), value=3)
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, max_value=100, value=5)
 
-    # Compute embeddings for each keyword using BERT
+    # Extract text from all provided URLs
+    all_text = ""
+    with st.spinner("Extracting text from URLs..."):
+        for url in urls:
+            text = extract_text_from_url(url)
+            if text:
+                all_text += text + " "
+
+    if not all_text.strip():
+        st.error("No text could be extracted from the provided URLs.")
+        return
+
+    # Extract n‑grams using CountVectorizer
+    vectorizer = CountVectorizer(ngram_range=(n_value, n_value), stop_words='english')
+    vectorizer.fit([all_text])
+    ngrams = vectorizer.get_feature_names_out()
+    if len(ngrams) == 0:
+        st.error("No n‑grams were found. Try changing the n‑gram parameter.")
+        return
+
+    st.markdown("### Extracted n‑grams:")
+    st.write(ngrams)
+
+    # Compute BERT embeddings for each n‑gram
     tokenizer, model = initialize_bert_model()
     embeddings = []
-    for kw in keywords:
-        emb = get_embedding(kw, model, tokenizer)  # shape (1, hidden_dim)
-        embeddings.append(emb.squeeze())
-    embeddings = np.vstack(embeddings)  # shape (n_keywords, hidden_dim)
+    valid_ngrams = []
+    with st.spinner("Computing embeddings for each n‑gram..."):
+        for gram in ngrams:
+            emb = get_embedding(gram, model, tokenizer)
+            if emb is not None:
+                embeddings.append(emb.squeeze())
+                valid_ngrams.append(gram)
+    if len(valid_ngrams) == 0:
+        st.error("No embeddings could be computed for the extracted n‑grams.")
+        return
+
+    embeddings = np.vstack(embeddings)  # shape: (n_ngrams, hidden_dim)
 
     # Cluster the embeddings using the selected algorithm
     if algorithm == "K-Means":
         from sklearn.cluster import KMeans
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        cluster_labels = kmeans.fit_predict(embeddings)
-        centers = kmeans.cluster_centers_
+        clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
+        cluster_labels = clustering_model.fit_predict(embeddings)
+        centers = clustering_model.cluster_centers_
         rep_keywords = {}
         for i in range(n_clusters):
-            cluster_keywords = [kw for kw, label in zip(keywords, cluster_labels) if label == i]
+            cluster_ngrams = [ng for ng, label in zip(valid_ngrams, cluster_labels) if label == i]
+            if not cluster_ngrams:
+                continue
             cluster_embeddings = embeddings[cluster_labels == i]
             distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
-            rep_keyword = cluster_keywords[np.argmin(distances)]
+            rep_keyword = cluster_ngrams[np.argmin(distances)]
             rep_keywords[i] = rep_keyword
 
     elif algorithm == "DBSCAN":
         from sklearn.cluster import DBSCAN
-        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-        cluster_labels = dbscan.fit_predict(embeddings)
+        clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
+        cluster_labels = clustering_model.fit_predict(embeddings)
         rep_keywords = {}
         unique_labels = set(cluster_labels)
         for label in unique_labels:
-            if label == -1:
-                continue  # -1 is noise
-            cluster_keywords = [kw for kw, l in zip(keywords, cluster_labels) if l == label]
+            if label == -1:  # -1 denotes noise
+                continue
+            cluster_ngrams = [ng for ng, l in zip(valid_ngrams, cluster_labels) if l == label]
             cluster_embeddings = embeddings[cluster_labels == label]
-            # For representative, choose the keyword with the highest total cosine similarity within the cluster
             sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-            rep_keyword = cluster_keywords[np.argmax(np.sum(sims, axis=1))]
+            rep_keyword = cluster_ngrams[np.argmax(np.sum(sims, axis=1))]
             rep_keywords[label] = rep_keyword
 
     elif algorithm == "Agglomerative Clustering":
         from sklearn.cluster import AgglomerativeClustering
-        agg = AgglomerativeClustering(n_clusters=n_clusters)
-        cluster_labels = agg.fit_predict(embeddings)
+        clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+        cluster_labels = clustering_model.fit_predict(embeddings)
         rep_keywords = {}
         for i in range(n_clusters):
-            cluster_keywords = [kw for kw, label in zip(keywords, cluster_labels) if label == i]
+            cluster_ngrams = [ng for ng, label in zip(valid_ngrams, cluster_labels) if label == i]
             cluster_embeddings = embeddings[cluster_labels == i]
             if len(cluster_embeddings) > 1:
                 sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-                rep_keyword = cluster_keywords[np.argmax(np.sum(sims, axis=1))]
+                rep_keyword = cluster_ngrams[np.argmax(np.sum(sims, axis=1))]
             else:
-                rep_keyword = cluster_keywords[0]
+                rep_keyword = cluster_ngrams[0]
             rep_keywords[i] = rep_keyword
 
-    # Organize and display clusters
+    # Organize clusters
     clusters = {}
-    for kw, label in zip(keywords, cluster_labels):
-        clusters.setdefault(label, []).append(kw)
-    
+    for ng, label in zip(valid_ngrams, cluster_labels):
+        clusters.setdefault(label, []).append(ng)
+
+    # Display the clusters
     st.markdown("### Clusters:")
-    for label, kw_list in clusters.items():
+    for label, ngram_list in clusters.items():
         if label == -1:
-            st.markdown(f"**Noise:** {', '.join(kw_list)}")
+            st.markdown("**Noise:**")
         else:
-            st.markdown(f"**Cluster {label}** (Representative: {rep_keywords[label]}): {', '.join(kw_list)}")
-
-    # Visualize clusters using PCA (2D scatter plot)
-    pca = PCA(n_components=2)
-    embeddings_2d = pca.fit_transform(embeddings)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=cluster_labels, cmap='viridis', s=100)
-    for i, txt in enumerate(keywords):
-        ax.annotate(txt, (embeddings_2d[i, 0], embeddings_2d[i, 1]), fontsize=8)
-    ax.set_title("Keyword Clustering Visualization (PCA Reduced)")
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    st.pyplot(fig)
+            st.markdown(f"**Cluster {label}** (Representative: {rep_keywords.get(label, 'N/A')}):")
+        for ngram in ngram_list:
+            st.write(f" - {ngram}")
 
 # ------------------------------------
 # Main Streamlit App
