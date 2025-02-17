@@ -26,7 +26,6 @@ gensim
 gitdb==4.0.12
 GitPython==3.1.44
 google-api-python-client
-googlesearch
 h11==0.14.0
 huggingface-hub==0.28.1
 idna==3.10
