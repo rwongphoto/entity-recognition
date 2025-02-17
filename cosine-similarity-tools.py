@@ -1064,12 +1064,17 @@ def main():
         layout="wide"
     )
 
-    # Hide Streamlit elements using data-testid (from Streamlit forum solution)
+    # Hide Streamlit elements using class names and data-testid (most robust)
     hide_streamlit_elements = """
         <style>
         #MainMenu {visibility: hidden !important;}
         header {visibility: hidden !important;}
         [data-testid="stDecoration"] {
+            display: none !important;
+        }
+        /* Target the specific classes used by the "Hosted with Streamlit" badge */
+        a[href*='streamlit.io/cloud'],
+        div._profileContainer_gzau3_53 {
             display: none !important;
         }
         div.block-container {padding-top: 1rem;} /*Add padding*/
