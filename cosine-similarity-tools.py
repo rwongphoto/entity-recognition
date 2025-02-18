@@ -1167,7 +1167,7 @@ def keyword_clustering_from_gap_page():
         embeddings = np.vstack(embeddings)
         
         # Perform Clustering based on the selected algorithm
-        if algorithm == "Kindred":
+        if algorithm == "Kindred Spirit":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
             cluster_labels = clustering_model.fit_predict(embeddings)
