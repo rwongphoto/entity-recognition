@@ -1027,7 +1027,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import PCA
 
 def keyword_clustering_from_gap_page():
-    st.header("Keyword Clustering from Semantic Gap Analyzer")
+    st.header("Keyword Clusters")
     st.markdown(
         """
         This tool combines semantic gap analysis with keyword clustering.
