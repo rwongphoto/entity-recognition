@@ -785,7 +785,7 @@ def entity_analysis_page():
 
 
             # --- Display Results ---
-            st.markdown("### Entities Present in Competitors but Missing in Target")
+            st.markdown("### # of Sites Entities Are Present but Missing in Target")
             if gap_entities:
                 for (entity, label), count in gap_entities.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
