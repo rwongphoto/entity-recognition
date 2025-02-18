@@ -247,7 +247,7 @@ def summarization_page():
         else:
             with st.spinner("Generating summary..."):
                 summarizer = load_summarizer()
-                summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
+                summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False, truncation=True)
             st.subheader("Summary:")
             st.write(summary[0]['summary_text'])
 
@@ -274,7 +274,7 @@ def summarization_comparison_page():
             with st.spinner(f"Processing competitor URL: {url}"):
                 text = extract_text_from_url(url)
                 if text:
-                    summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
+                    summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False, truncation=True)
                     competitor_summaries[url] = summary[0]['summary_text']
                 else:
                     competitor_summaries[url] = "No content extracted."
@@ -283,7 +283,7 @@ def summarization_comparison_page():
             if not my_text:
                 st.error("Could not extract content from your URL.")
                 return
-            my_summary = summarizer(my_text, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text']
+            my_summary = summarizer(my_text, max_length=max_length, min_length=min_length, do_sample=False, truncation=True)[0]['summary_text']
         st.subheader("Competitor Summaries:")
         for url, summary in competitor_summaries.items():
             st.markdown(f"**{url}:**")
@@ -298,7 +298,7 @@ def summarization_comparison_page():
             "in terms of topics, tone, and coverage."
         )
         with st.spinner("Generating comparison summary..."):
-            comparison_summary = summarizer(comparison_prompt, max_length=max_length, min_length=50, do_sample=False)[0]['summary_text']
+            comparison_summary = summarizer(comparison_prompt, max_length=max_length, min_length=50, do_sample=False, truncation=True)[0]['summary_text']
         st.subheader("Comparison Summary:")
         st.write(comparison_summary)
 
