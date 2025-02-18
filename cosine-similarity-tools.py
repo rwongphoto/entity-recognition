@@ -940,7 +940,7 @@ def named_entity_barchart_page():
 # New Tool: N-gram TF-IDF Analysis with Comparison Table
 # ------------------------------------
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
