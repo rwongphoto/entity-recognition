@@ -618,6 +618,7 @@ def cosine_similarity_content_heatmap_page():
 
 def top_bottom_embeddings_page():
     st.header("Top 10 & Bottom 10 Embeddings")
+    st.markdown("Assess and consider re-writing the bottom 10 embeddings.")
     url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="", disabled=use_url)
