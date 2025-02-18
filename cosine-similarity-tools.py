@@ -718,7 +718,7 @@ def entity_analysis_page():
                 # Display bar chart
                 display_entity_barchart(filtered_url_entity_counts)
                 # Display wordcloud
-                st.subheader("Entity Wordcloud")
+                st.subheader("Topic Gap Wordcloud")
                 display_entity_wordcloud(filtered_url_entity_counts)
                 
                 st.markdown("### Entities from Exclude Content")
