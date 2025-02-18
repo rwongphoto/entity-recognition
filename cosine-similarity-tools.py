@@ -56,7 +56,6 @@ def load_spacy_model():
             return None
     return nlp
 
-@st.cache_resource
 def initialize_bert_model():
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')  # Use AutoTokenizer
     model = BertModel.from_pretrained('bert-base-uncased')
