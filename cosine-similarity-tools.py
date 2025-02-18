@@ -1219,7 +1219,7 @@ def keyword_clustering_from_gap_page():
             scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=cluster_labels, cmap='viridis', s=100)
             for i, txt in enumerate(valid_gap_ngrams):
                 ax.annotate(txt, (embeddings_2d[i, 0], embeddings_2d[i, 1]), fontsize=8)
-            ax.set_title("Opportunity Landscape")
+            ax.set_title("Semantic Opportunity")
             ax.set_xlabel("Topic Focus: Broad vs. Niche")
             ax.set_ylabel("Competitive Pressure: High vs. Low")
             st.pyplot(fig)
