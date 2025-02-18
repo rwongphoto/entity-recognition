@@ -207,7 +207,7 @@ def display_entity_barchart(entity_counts, top_n=30):
     bars = ax.bar(entity_names, counts)
     ax.set_xlabel("Entities")
     ax.set_ylabel("Frequency")
-    ax.set_title("Entity Frequency Bar Chart")
+    ax.set_title("Most Common Entity Gaps")
     plt.xticks(rotation=45, ha="right")
     for bar, count in zip(bars, counts):
         yval = bar.get_height()
