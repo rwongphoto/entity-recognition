@@ -73,6 +73,7 @@ sortedcontainers==2.4.0
 soupsieve==2.6
 sympy==1.13.3
 tenacity==9.0.0
+textstat
 threadpoolctl==3.5.0
 tinycss2==1.4.0
 tokenizers==0.21.0
