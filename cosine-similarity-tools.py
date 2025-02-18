@@ -440,7 +440,7 @@ def url_analysis_dashboard_page():
                         total_word_count,  # Total Word Count
                         custom_word_count, # Content Word Count
                         similarity_val,    # Cosine Similarity
-                        flesch_kincaid     # Flesch-Kincaid Grade Level  <-- ADDED HERE
+                        flesch_kincaid,    # Flesch-Kincaid Grade Level  <-- ADDED HERE
                         unique_entity_count,  # # of Unique Entities
                         total_nav_links,   # Nav Links
                         total_links,       # Total Links
