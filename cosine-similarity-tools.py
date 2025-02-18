@@ -805,7 +805,7 @@ def named_entity_barchart_page():
                 st.warning("Please enter the text to proceed.")
                 return
             all_text = text
-        else:
+        else:  # "Extract from URL" branch
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
@@ -817,8 +817,10 @@ def named_entity_barchart_page():
                         all_text += extracted_text + "\n"
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
-                        return
+                        # REMOVE THE 'return' STATEMENT:  Do NOT return here
+                        # Continue to the next URL in the loop
 
+        # ---  Rest of your entity analysis logic remains the same ---
         with st.spinner("Analyzing entities and generating visualizations..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
@@ -847,7 +849,7 @@ def named_entity_barchart_page():
                             for entity, label in url_entities:
                                 st.write(f"- {entity} ({label})")
                         else:
-                            st.write(f"No text for {url}")
+                            st.write(f"No text for {url}")  # This will now show for failed URLs
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
