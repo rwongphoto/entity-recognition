@@ -701,18 +701,9 @@ def entity_analysis_page():
     else:
         target_input = st.text_area("Paste target content:", key="target_text", value="", height=100)
 
-    # Exclude content input method selection (Optional - kept for flexibility)
-    st.markdown("#### Exclude Source (Optional)")
-    exclude_option = st.radio(
-        "Select exclude content source:",
-        options=["Extract from URL", "Paste Content"],
-        index=0,
-        key="exclude_source"
-    )
-    if exclude_option == "Extract from URL":
-        exclude_input = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
-    else:
-        exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
+    # Exclude content input method selection (Simplified to Paste Content Only)
+    st.markdown("#### Exclude Content (Paste Only)")
+    exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
 
 
     # Entity Type Filtering
@@ -750,12 +741,8 @@ def entity_analysis_page():
             target_entities_set = set(target_entity_counts.keys())
 
 
-            # --- Process Exclude Site (Optional) ---
-            if exclude_option == "Extract from URL":
-                exclude_text = extract_text_from_url(exclude_input) if exclude_input else ""
-            else:
-                exclude_text = exclude_input
-            exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_text).ents} if exclude_text else set()
+            # --- Process Exclude Content ---
+            exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
 
             # --- Process Competitors ---
             all_competitor_entities = []  # Store (lemma, label) tuples
@@ -815,9 +802,9 @@ def entity_analysis_page():
             else:
                 st.write("No unique entities found on the target site.")
 
-            if exclude_text:  # Keep the display of exclude entities.
+            if exclude_input:  # Keep the display of exclude entities.
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
-                exclude_doc = nlp_model(exclude_text)
+                exclude_doc = nlp_model(exclude_input)
                 exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
                 exclude_entity_counts = count_entities(exclude_entities_list, nlp_model)
                 for (entity, label), count in exclude_entity_counts.most_common(50):
