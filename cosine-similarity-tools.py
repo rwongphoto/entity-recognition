@@ -743,7 +743,7 @@ def entity_analysis_page():
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
-    st.markdown("Visualize named entities within your content using displacy.")
+    st.markdown("Visualize named entities within your content.")
     url = st.text_input("Enter a URL (Optional):", key="displacy_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="displacy_use_url")
     text = st.text_area("Enter Text:", key="displacy_text", value="", disabled=use_url)
