@@ -1217,10 +1217,7 @@ def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
         """
-        This tool combines semantic gap analysis with keyword clustering.
-        First, it identifies key phrases where your competitors outperform your target.
-        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
-        The resulting clusters (and their representative keywords) are displayed below.
+    The Keyword Clusters tool is a powerful way to identify and prioritize content opportunities based on a semantic comparison of your website's content with that of your competitors. It goes beyond simple keyword research by using advanced natural language processing (NLP) and machine learning to reveal hidden topic gaps.
         """
     )
 
