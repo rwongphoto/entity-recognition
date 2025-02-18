@@ -1026,9 +1026,6 @@ def ngram_tfidf_analysis_page():
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import PCA
 
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.decomposition import PCA
-
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clustering from Semantic Gap Analyzer")
     st.markdown(
