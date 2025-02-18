@@ -867,9 +867,9 @@ def ngram_tfidf_analysis_page():
     """)
     
     # Competitor input method
-    st.subheader("Competitor Content Input")
+    st.subheader("Competitors")
     competitor_source_option = st.radio(
-        "Select competitor content source:",
+        "Select content source:",
         options=["Extract from URL", "Paste Content"],
         index=0,
         key="competitor_source"
@@ -883,9 +883,9 @@ def ngram_tfidf_analysis_page():
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
     
     # Target input method
-    st.subheader("Target Content Input")
+    st.subheader("Your Site")
     target_source_option = st.radio(
-        "Select target content source:",
+        "Select content source:",
         options=["Extract from URL", "Paste Content"],
         index=0,
         key="target_source"
