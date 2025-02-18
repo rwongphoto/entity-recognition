@@ -24,6 +24,9 @@ from typing import List, Tuple, Dict
 import textstat  # Import the textstat library
 
 from wordcloud import WordCloud
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer, ENGLISH_STOP_WORDS
+from sklearn.decomposition import PCA
+import plotly.express as px  # Import plotly express
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -940,7 +943,6 @@ def named_entity_barchart_page():
 # New Tool: N-gram TF-IDF Analysis with Comparison Table
 # ------------------------------------
 
-from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
@@ -1209,8 +1211,6 @@ def ngram_tfidf_analysis_page():
 # New Tool: Keyword Clustering
 # ------------------------------------
 
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.decomposition import PCA
 
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
@@ -1222,7 +1222,7 @@ def keyword_clustering_from_gap_page():
         The resulting clusters (and their representative keywords) are displayed below.
         """
     )
-    
+
     # Competitor input method selection
     st.subheader("Competitors")
     competitor_source_option = st.radio(
@@ -1238,7 +1238,7 @@ def keyword_clustering_from_gap_page():
         st.markdown("Paste competitor content below. Separate each block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-    
+
     # Target input method selection
     st.subheader("Your Site")
     target_source_option = st.radio(
@@ -1251,18 +1251,18 @@ def keyword_clustering_from_gap_page():
         target_url = st.text_input("Enter Your URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your content:", key="target_content", value="", height=200)
-    
+
     # N-gram Options for Gap Analysis
     st.subheader("Word Count Settings")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
-    
+
     # Clustering Settings with re-labeled options
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
-        "Select Clustering Type:", 
+        "Select Clustering Type:",
         options=["Kindred Spirit", "Affinity Stack"],
         key="clustering_algo_gap"
     )
@@ -1270,7 +1270,7 @@ def keyword_clustering_from_gap_page():
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
     elif algorithm == "Affinity Stack":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
-    
+
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
         # Extract competitor content
         competitor_texts = []
@@ -1286,7 +1286,7 @@ def keyword_clustering_from_gap_page():
                     valid_competitor_sources.append(source)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
+
         # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
@@ -1295,18 +1295,18 @@ def keyword_clustering_from_gap_page():
                 return
         else:
             target_content = target_text
-        
+
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-        
+
         # Calculate TF‑IDF for Competitors
         with st.spinner("Calculating TF‑IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
-        
+
         # Calculate TF‑IDF for Target Content
         with st.spinner("Calculating TF‑IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
@@ -1315,7 +1315,7 @@ def keyword_clustering_from_gap_page():
                 index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
                 columns=feature_names
             )
-        
+
         # Identify Gap n‑grams
         gap_ngrams = set()
         for source in valid_competitor_sources:
@@ -1331,10 +1331,10 @@ def keyword_clustering_from_gap_page():
         if not gap_ngrams:
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
-        
+
         st.markdown("### Top Phrases:")
         st.write(gap_ngrams)
-        
+
         # Compute BERT Embeddings for Each Gap n‑gram
         tokenizer, model = initialize_bert_model()
         embeddings = []
@@ -1345,19 +1345,19 @@ def keyword_clustering_from_gap_page():
                 if emb is not None:
                     embeddings.append(emb.squeeze())
                     valid_gap_ngrams.append(gram)
-        
+
         if len(valid_gap_ngrams) == 0:
             st.error("Could not compute embeddings for any gap n‑grams.")
             return
-        
+
         embeddings = np.vstack(embeddings)
-        
+
         # Perform Clustering based on the selected algorithm
         if algorithm == "Kindred Spirit":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
             cluster_labels = clustering_model.fit_predict(embeddings)
-            centers = clustering_model.cluster_centers_
+            centers = clustering_model.cluster_centers
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
@@ -1381,8 +1381,8 @@ def keyword_clustering_from_gap_page():
                 else:
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
-        
-        # Display the Clusters
+
+        # Display the Clusters (using the table format from before)
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
@@ -1396,19 +1396,28 @@ def keyword_clustering_from_gap_page():
                 st.markdown(f"**Cluster {label}** (Representative: {rep}):")
             for gram in gram_list:
                 st.write(f" - {gram}")
-        
-        # Optional: Visualize Clusters using PCA
-        with st.spinner("Generating cluster visualization..."):
+
+
+        # --- Interactive Scatter Plot with Plotly ---
+        with st.spinner("Generating interactive cluster visualization..."):
             pca = PCA(n_components=2)
             embeddings_2d = pca.fit_transform(embeddings)
-            fig, ax = plt.subplots(figsize=(10, 6))
-            scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=cluster_labels, cmap='viridis', s=100)
-            for i, txt in enumerate(valid_gap_ngrams):
-                ax.annotate(txt, (embeddings_2d[i, 0], embeddings_2d[i, 1]), fontsize=8)
-            ax.set_title("Semantic Opportunity")
-            ax.set_xlabel("Topic Focus: Broad vs. Niche")
-            ax.set_ylabel("Competitive Pressure: High vs. Low")
-            st.pyplot(fig)
+
+            # Create a DataFrame for Plotly
+            df = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Keyword': valid_gap_ngrams,
+                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]  # String labels for Plotly
+            })
+
+            fig = px.scatter(df, x='x', y='y', color='Cluster', hover_data=['Keyword'],
+                             title="Semantic Opportunity Clusters")
+            fig.update_layout(
+                xaxis_title="Topic Focus: Broad vs. Niche",  # Optional: Add axis labels
+                yaxis_title="Competitive Pressure: High vs. Low"  # Optional
+            )
+            st.plotly_chart(fig) # Display with Streamlit
 
 
 
