@@ -14,13 +14,14 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import spacy
 from collections import Counter
 from typing import List, Tuple, Dict
+import textstat  # Import the textstat library
 
 from wordcloud import WordCloud
 
@@ -321,22 +322,22 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
-    
+
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
-    
+
     if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
-        
+
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model, tokenizer)
-            
+
             for i, url in enumerate(urls):
                 try:
                     # Use Selenium to get full page source
@@ -353,7 +354,7 @@ def url_analysis_dashboard_page():
                     soup = BeautifulSoup(page_source, "html.parser")
                     meta_title = driver.title
                     driver.quit()
-                    
+
                     # Create cleaned content by removing header and footer from <body>
                     content_soup = BeautifulSoup(page_source, "html.parser")
                     if content_soup.find("body"):
@@ -364,7 +365,7 @@ def url_analysis_dashboard_page():
                     else:
                         total_text = ""
                     total_word_count = len(total_text.split())
-                    
+
                     # Custom (content) word count: from <p>, <li>, header tags, and tables (from cleaned body)
                     custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
                     custom_words = []
@@ -375,20 +376,20 @@ def url_analysis_dashboard_page():
                             for cell in row.find_all(["td", "th"]):
                                 custom_words.extend(cell.get_text().split())
                     custom_word_count = len(custom_words)
-                    
+
                     # Extract H1 tag
                     h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
-                    
+
                     # Count links in header & footer navigation
                     header = soup.find("header")
                     footer = soup.find("footer")
                     header_links = len(header.find_all("a", href=True)) if header else 0
                     footer_links = len(footer.find_all("a", href=True)) if footer else 0
                     total_nav_links = header_links + footer_links
-                    
+
                     # Count total links on the page
                     total_links = len(soup.find_all("a", href=True))
-                    
+
                     # Schema Markup: Find JSON‑LD scripts and extract types
                     schema_types = set()
                     ld_json_scripts = soup.find_all("script", type="application/ld+json")
@@ -407,27 +408,30 @@ def url_analysis_dashboard_page():
                         except Exception:
                             continue
                     schema_markup = ", ".join(schema_types) if schema_types else "None"
-                    
+
                     # Lists/Tables Present: Extract from the cleaned body only
                     lists_tables = (
                         f"OL: {'Yes' if body.find('ol') else 'No'} | "
                         f"UL: {'Yes' if body.find('ul') else 'No'} | "
                         f"Table: {'Yes' if body.find('table') else 'No'}"
                     )
-                    
+
                     # Count the number of images (from full soup)
                     num_images = len(soup.find_all("img"))
-                    
+
                     # Count videos using the helper function
                     num_videos = count_videos(soup)
-                    
+
                     # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
-                    
+
                     # Count Unique Entities from the cleaned body text
                     entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
                     unique_entity_count = len(set([ent[0] for ent in entities]))
-                    
+
+                    # Calculate Flesch-Kincaid Grade Level
+                    flesch_kincaid = textstat.flesch_kincaid_grade(total_text) if total_text else None
+
                     # Append data in order:
                     data.append([
                         url,               # URL
@@ -436,19 +440,21 @@ def url_analysis_dashboard_page():
                         total_word_count,  # Total Word Count
                         custom_word_count, # Content Word Count
                         similarity_val,    # Cosine Similarity
+                        flesch_kincaid     # Flesch-Kincaid Grade Level  <-- ADDED HERE
                         unique_entity_count,  # # of Unique Entities
                         total_nav_links,   # Nav Links
                         total_links,       # Total Links
                         schema_markup,     # Schema Types
                         lists_tables,      # Lists/Tables
                         num_images,        # Images
-                        num_videos         # Videos
+                        num_videos,        # Videos
+                        
                     ])
-                    
+
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url] + ["Error"] * 12)
-            
+                    data.append([url] + ["Error"] * 13) #Adjust the "Error" length
+
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
@@ -456,6 +462,7 @@ def url_analysis_dashboard_page():
                 "Total Word Count",
                 "Custom Word Count (p, li, headers)",
                 "Overall Cosine Similarity Score",
+                "Flesch-Kincaid Grade Level",
                 "# of Unique Entities",
                 "# of Header & Footer Links",
                 "Total # of Links",
@@ -463,31 +470,18 @@ def url_analysis_dashboard_page():
                 "Lists/Tables Present",
                 "# of Images",
                 "# of Videos"
+                
             ])
-            
+
             # Reorder and rename columns as required:
             df = df[[
-                "URL",
-                "Meta Title",
-                "H1 Tag",
-                "Total Word Count",
-                "Custom Word Count (p, li, headers)",
-                "Overall Cosine Similarity Score",
-                "# of Unique Entities",
-                "# of Header & Footer Links",
-                "Total # of Links",
-                "Schema Markup Types",
-                "Lists/Tables Present",
-                "# of Images",
-                "# of Videos"
-            ]]
-            df.columns = [
                 "URL",
                 "Meta Title",
                 "H1",
                 "Total Word Count",
                 "Content Word Count",
                 "Cosine Similarity",
+                "Flesch-Kincaid Grade Level",
                 "# of Unique Entities",
                 "Nav Links",
                 "Total Links",
@@ -495,11 +489,13 @@ def url_analysis_dashboard_page():
                 "Lists/Tables",
                 "Images",
                 "Videos"
-            ]
-            
-            # Ensure Cosine Similarity is numeric.
+
+            ]]
+
+            # Ensure numeric columns are numeric
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
-            
+            df["Flesch-Kincaid Grade Level"] = pd.to_numeric(df["Flesch-Kincaid Grade Level"], errors="coerce")
+
             st.dataframe(df)
 
 
