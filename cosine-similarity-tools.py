@@ -1,6 +1,6 @@
 import streamlit as st
 import torch
-from transformers import AutoTokenizer, BertModel
+from transformers import AutoTokenizer, BertModel, pipeline
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
@@ -53,7 +53,7 @@ def load_spacy_model():
 
 @st.cache_resource
 def initialize_bert_model():
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')  # Use AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     model = BertModel.from_pretrained('bert-base-uncased')
     model.eval()
     return tokenizer, model
@@ -67,7 +67,8 @@ def extract_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
         chrome_options.add_argument(f"user-agent={user_agent}")
 
         driver = webdriver.Chrome(options=chrome_options)
@@ -101,21 +102,16 @@ def extract_text_from_url(url):
 @st.cache_data
 def count_videos(_soup):
     """Counts the number of video elements and embedded videos on the page."""
-    # Count HTML5 <video> tags
     video_count = len(_soup.find_all("video"))
-    
-    # Count <iframe> tags that have YouTube or Vimeo sources
     iframe_videos = len([
         iframe for iframe in _soup.find_all("iframe")
         if any(domain in (iframe.get("src") or "") for domain in ["youtube.com", "youtube-nocookie.com", "vimeo.com"])
     ])
-    
     return video_count + iframe_videos
 
 def get_embedding(text, model, tokenizer):
-    # tokenizer.pad_token = tokenizer.unk_token  # This line is no longer necessary
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
-    with torch.no_grad():  # Ensure no gradients are calculated
+    with torch.no_grad():
         outputs = model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).detach().numpy()
 
@@ -128,7 +124,6 @@ def create_navigation_menu(logo_url):
         "Blog": "https://theseoconsultant.ai/blog/",
         "Contact": "https://theseoconsultant.ai/contact/"
     }
-
     st.markdown(
         f"""
         <div style="display: flex; justify-content: center;">
@@ -137,7 +132,6 @@ def create_navigation_menu(logo_url):
         """,
         unsafe_allow_html=True
     )
-
     st.markdown(
         """
         <style>
@@ -164,7 +158,6 @@ def create_navigation_menu(logo_url):
         """,
         unsafe_allow_html=True
     )
-
     menu_html = "<div class='topnav'>"
     for key, value in menu_options.items():
         menu_html += f"<a href='{value}' target='_blank'>{key}</a>"
@@ -188,14 +181,11 @@ def count_entities(entities: List[Tuple[str, str]]) -> Counter:
 
 def display_entity_barchart(entity_counts, top_n=30):
     """Displays a bar chart of the top N most frequent entities (excluding CARDINAL)."""
-
-    # Filter out CARDINAL entities right before creating the DataFrame
     filtered_entity_counts = {
         (entity, label): count
         for (entity, label), count in entity_counts.items()
-        if label != "CARDINAL"  # This is the filtering step
+        if label != "CARDINAL"
     }
-
     entity_data = pd.DataFrame.from_dict(filtered_entity_counts, orient='index', columns=['count'])
     entity_data.index.names = ['entity']
     entity_data = entity_data.sort_values('count', ascending=False).head(top_n)
@@ -221,13 +211,11 @@ def display_entity_wordcloud(entity_counts):
     """
     aggregated = {}
     for key, count in entity_counts.items():
-        # If key is a tuple, extract the entity text; otherwise, use the key as is.
         if isinstance(key, tuple):
             k = key[0]
         else:
             k = key
         aggregated[k] = aggregated.get(k, 0) + count
-
     wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(aggregated)
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.imshow(wordcloud, interpolation='bilinear')
@@ -235,13 +223,89 @@ def display_entity_wordcloud(entity_counts):
     plt.tight_layout()
     st.pyplot(fig)
 
+# ------------------------------------
+# Summarization Functionality
+# ------------------------------------
+@st.cache_resource
+def load_summarizer():
+    """
+    Load the summarization pipeline.
+    This model uses the facebook/bart-large-cnn model.
+    """
+    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    return summarizer
+
+def summarization_page():
+    st.header("Text Summarization")
+    st.markdown("Enter your text below and click **Summarize** to generate a summary.")
+    text = st.text_area("Enter text to summarize:", height=300)
+    max_length = st.slider("Maximum summary length:", min_value=50, max_value=300, value=150)
+    min_length = st.slider("Minimum summary length:", min_value=20, max_value=100, value=30)
+    if st.button("Summarize"):
+        if not text:
+            st.warning("Please enter some text to summarize.")
+        else:
+            with st.spinner("Generating summary..."):
+                summarizer = load_summarizer()
+                summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
+            st.subheader("Summary:")
+            st.write(summary[0]['summary_text'])
+
+def summarization_comparison_page():
+    st.header("Summarization & Comparison")
+    st.markdown(
+        """
+        This feature extracts content from competitor URLs and your URL, generates summaries for each,
+        and then produces a final comparison summary highlighting key differences between your site and your competitors.
+        """
+    )
+    competitor_input = st.text_area("Enter Competitor URLs (one per line):", height=150)
+    my_url = st.text_input("Enter Your URL:")
+    max_length = st.slider("Maximum summary length:", min_value=50, max_value=300, value=150)
+    min_length = st.slider("Minimum summary length:", min_value=20, max_value=100, value=40)
+    if st.button("Analyze and Compare Summaries"):
+        if not competitor_input or not my_url:
+            st.warning("Please enter both competitor URLs and your URL.")
+            return
+        competitor_urls = [url.strip() for url in competitor_input.splitlines() if url.strip()]
+        summarizer = load_summarizer()
+        competitor_summaries = {}
+        for url in competitor_urls:
+            with st.spinner(f"Processing competitor URL: {url}"):
+                text = extract_text_from_url(url)
+                if text:
+                    summary = summarizer(text, max_length=max_length, min_length=min_length, do_sample=False)
+                    competitor_summaries[url] = summary[0]['summary_text']
+                else:
+                    competitor_summaries[url] = "No content extracted."
+        with st.spinner("Processing your URL..."):
+            my_text = extract_text_from_url(my_url)
+            if not my_text:
+                st.error("Could not extract content from your URL.")
+                return
+            my_summary = summarizer(my_text, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text']
+        st.subheader("Competitor Summaries:")
+        for url, summary in competitor_summaries.items():
+            st.markdown(f"**{url}:**")
+            st.write(summary)
+        st.subheader("Your Site Summary:")
+        st.write(my_summary)
+        competitor_combined = " ".join(competitor_summaries.values())
+        comparison_prompt = (
+            f"Competitor summaries: {competitor_combined}\n\n"
+            f"My site summary: {my_summary}\n\n"
+            "Based on the above, summarize the key differences between the competitor content and my site content "
+            "in terms of topics, tone, and coverage."
+        )
+        with st.spinner("Generating comparison summary..."):
+            comparison_summary = summarizer(comparison_prompt, max_length=max_length, min_length=50, do_sample=False)[0]['summary_text']
+        st.subheader("Comparison Summary:")
+        st.write(comparison_summary)
 
 # ------------------------------------
 # Cosine Similarity Functions
 # ------------------------------------
-
 def calculate_overall_similarity(urls, search_term, model, tokenizer):
-    """Calculates the overall cosine similarity score for a list of URLs against a search term."""
     search_term_embedding = get_embedding(search_term, model, tokenizer)
     results = []
     for url in urls:
@@ -255,7 +319,6 @@ def calculate_overall_similarity(urls, search_term, model, tokenizer):
     return results
 
 def calculate_similarity(text, search_term, tokenizer, model):
-    """Calculates similarity scores for each sentence in the text against the search term."""
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
     sentence_embeddings = [get_embedding(sentence, model, tokenizer) for sentence in sentences]
@@ -267,7 +330,6 @@ def calculate_similarity(text, search_term, tokenizer, model):
     return sentences, similarities
 
 def rank_sentences_by_similarity(text, search_term):
-    """Calculates cosine similarity between sentences and a search term using BERT."""
     tokenizer, model = initialize_bert_model()
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -282,7 +344,6 @@ def rank_sentences_by_similarity(text, search_term):
     return list(zip(sentences, normalized_similarities))
 
 def highlight_text(text, search_term):
-    """Highlights text based on similarity to the search term using HTML/CSS."""
     sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
     highlighted_text = ""
     for sentence, similarity in sentences_with_similarity:
@@ -296,7 +357,6 @@ def highlight_text(text, search_term):
     return highlighted_text
 
 def rank_sections_by_similarity_bert(text, search_term, top_n=10):
-    """Ranks content sections by cosine similarity to a search term using BERT embeddings."""
     tokenizer, model = initialize_bert_model()
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -315,30 +375,23 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 # ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
-
-
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
-    
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
-    
     if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
-        
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             tokenizer, model = initialize_bert_model()
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model, tokenizer)
-            
             for i, url in enumerate(urls):
                 try:
-                    # Use Selenium to get full page source
                     chrome_options = Options()
                     chrome_options.add_argument("--headless")
                     chrome_options.add_argument("--no-sandbox")
@@ -352,8 +405,6 @@ def url_analysis_dashboard_page():
                     soup = BeautifulSoup(page_source, "html.parser")
                     meta_title = driver.title
                     driver.quit()
-                    
-                    # Create cleaned content by removing header and footer from <body>
                     content_soup = BeautifulSoup(page_source, "html.parser")
                     if content_soup.find("body"):
                         body = content_soup.find("body")
@@ -363,8 +414,6 @@ def url_analysis_dashboard_page():
                     else:
                         total_text = ""
                     total_word_count = len(total_text.split())
-                    
-                    # Custom (content) word count: from <p>, <li>, header tags, and tables (from cleaned body)
                     custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
                     custom_words = []
                     for el in custom_elements:
@@ -374,21 +423,13 @@ def url_analysis_dashboard_page():
                             for cell in row.find_all(["td", "th"]):
                                 custom_words.extend(cell.get_text().split())
                     custom_word_count = len(custom_words)
-                    
-                    # Extract H1 tag
                     h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
-                    
-                    # Count links in header & footer navigation
                     header = soup.find("header")
                     footer = soup.find("footer")
                     header_links = len(header.find_all("a", href=True)) if header else 0
                     footer_links = len(footer.find_all("a", href=True)) if footer else 0
                     total_nav_links = header_links + footer_links
-                    
-                    # Count total links on the page
                     total_links = len(soup.find_all("a", href=True))
-                    
-                    # Schema Markup: Find JSON‑LD scripts and extract types
                     schema_types = set()
                     ld_json_scripts = soup.find_all("script", type="application/ld+json")
                     for script in ld_json_scripts:
@@ -406,48 +447,34 @@ def url_analysis_dashboard_page():
                         except Exception:
                             continue
                     schema_markup = ", ".join(schema_types) if schema_types else "None"
-                    
-                    # Lists/Tables Present: Extract from the cleaned body only
                     lists_tables = (
                         f"OL: {'Yes' if body.find('ol') else 'No'} | "
                         f"UL: {'Yes' if body.find('ul') else 'No'} | "
                         f"Table: {'Yes' if body.find('table') else 'No'}"
                     )
-                    
-                    # Count the number of images (from full soup)
                     num_images = len(soup.find_all("img"))
-                    
-                    # Count videos using the helper function
                     num_videos = count_videos(soup)
-                    
-                    # Cosine similarity score from earlier calculation
                     similarity_val = similarity_results[i][1] if similarity_results[i][1] is not None else np.nan
-                    
-                    # Count Unique Entities from the cleaned body text
                     entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
                     unique_entity_count = len(set([ent[0] for ent in entities]))
-                    
-                    # Append data in order:
                     data.append([
-                        url,               # URL
-                        meta_title,        # Meta Title
-                        h1_tag,            # H1
-                        total_word_count,  # Total Word Count
-                        custom_word_count, # Content Word Count
-                        similarity_val,    # Cosine Similarity
-                        unique_entity_count,  # # of Unique Entities
-                        total_nav_links,   # Nav Links
-                        total_links,       # Total Links
-                        schema_markup,     # Schema Types
-                        lists_tables,      # Lists/Tables
-                        num_images,        # Images
-                        num_videos         # Videos
+                        url,
+                        meta_title,
+                        h1_tag,
+                        total_word_count,
+                        custom_word_count,
+                        similarity_val,
+                        unique_entity_count,
+                        total_nav_links,
+                        total_links,
+                        schema_markup,
+                        lists_tables,
+                        num_images,
+                        num_videos
                     ])
-                    
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
                     data.append([url] + ["Error"] * 12)
-            
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
@@ -463,8 +490,6 @@ def url_analysis_dashboard_page():
                 "# of Images",
                 "# of Videos"
             ])
-            
-            # Reorder and rename columns as required:
             df = df[[
                 "URL",
                 "Meta Title",
@@ -495,33 +520,21 @@ def url_analysis_dashboard_page():
                 "Images",
                 "Videos"
             ]
-            
-            # Ensure Cosine Similarity is numeric.
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
-            
             st.dataframe(df)
-
 
 def cosine_similarity_competitor_analysis_page():
     st.title("Cosine Similarity Competitor Analysis")
     st.markdown("By: [The SEO Consultant.ai](https://theseoconsultant.ai)")
     search_term = st.text_input("Enter Search Term:", "")
-    
-    # Let the user choose the input method for competitor content
     source_option = st.radio("Select content source for competitors:", options=["Extract from URL", "Paste Content"], index=0)
-    
-    # Depending on the selection, show the appropriate input field
     if source_option == "Extract from URL":
         urls_input = st.text_area("Enter Competitor URLs (one per line):", "")
         competitor_urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
     else:
-        st.markdown(
-            "Paste the competitor content in the text area below. "
-            "If you have multiple competitors, separate each content block with the delimiter `---`."
-        )
+        st.markdown("Paste the competitor content below. If you have multiple competitors, separate each with `---`.")
         pasted_content = st.text_area("Enter Competitor Content:", height=200)
         competitor_contents = [content.strip() for content in pasted_content.split('---') if content.strip()]
-
     if st.button("Calculate Similarity"):
         tokenizer, model = initialize_bert_model()
         if source_option == "Extract from URL":
@@ -530,7 +543,6 @@ def cosine_similarity_competitor_analysis_page():
                 return
             with st.spinner("Calculating similarities from URLs..."):
                 similarity_scores = calculate_overall_similarity(competitor_urls, search_term, model, tokenizer)
-            # Prepare data for plotting or display
             urls_plot = [url for url, score in similarity_scores]
             scores_plot = [score if score is not None else 0 for url, score in similarity_scores]
         else:
@@ -546,8 +558,6 @@ def cosine_similarity_competitor_analysis_page():
                     similarity_scores.append((f"Competitor {idx+1}", similarity))
             urls_plot = [label for label, score in similarity_scores]
             scores_plot = [score for label, score in similarity_scores]
-
-        # Display the results (plot and table)
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.bar(urls_plot, scores_plot)
         ax.set_xlabel("Competitors")
@@ -559,7 +569,6 @@ def cosine_similarity_competitor_analysis_page():
         data = {'Competitor': urls_plot, 'Similarity Score': scores_plot}
         df = pd.DataFrame(data)
         st.dataframe(df)
-
 
 def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
@@ -649,8 +658,6 @@ def top_bottom_embeddings_page():
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
     st.markdown("Analyze multiple sources to identify common entities missing on your site.")
-    
-    # Competitor input method selection
     competitor_source_option = st.radio(
         "Select competitor content source:",
         options=["Extract from URL", "Paste Content"],
@@ -664,8 +671,6 @@ def entity_analysis_page():
         st.markdown("Paste competitor content below. For multiple sources, separate each with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="entity_competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-    
-    # Exclude content input method selection
     st.markdown("#### Exclude Source")
     exclude_option = st.radio(
         "Select exclude content source:",
@@ -677,7 +682,6 @@ def entity_analysis_page():
         exclude_input = st.text_input("Enter URL to exclude:", key="exclude_url", value="")
     else:
         exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
-    
     if st.button("Analyze", key="entity_button"):
         if not competitor_list:
             st.warning("Please provide at least one competitor content or URL.")
@@ -707,18 +711,14 @@ def entity_analysis_page():
                     all_entities.extend(filtered_entities)
                     for entity, label in set(filtered_entities):
                         url_entity_counts[(entity, label)] += 1
-            # Only consider entities found in more than one source.
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
             if url_entity_counts:
                 st.markdown("### Overall Entity Counts (Found in more than one source)")
                 for (entity, label), count in filtered_url_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
-                # Display bar chart
                 display_entity_barchart(filtered_url_entity_counts)
-                # Display wordcloud
                 st.subheader("Entity Wordcloud")
                 display_entity_wordcloud(filtered_url_entity_counts)
-                
                 st.markdown("### Entities from Exclude Content")
                 if exclude_text:
                     exclude_doc = nlp_model(exclude_text)
@@ -738,8 +738,6 @@ def entity_analysis_page():
                         st.write("No relevant entities found.")
             else:
                 st.warning("No relevant entities found.")
-
-
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
@@ -774,28 +772,22 @@ def displacy_visualization_page():
 def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
     st.markdown("Generate a bar chart and wordcloud from the most frequent named entities across multiple sources.")
-
-    # Choose the input method and provide instructions
     input_method = st.radio(
         "Select content input method:",
         options=["Extract from URL", "Paste Content"],
         key="entity_barchart_input"
     )
-
     if input_method == "Paste Content":
         st.markdown(
-            "Please paste your content in the text area below. "
-            "If you have multiple sources, separate each content block with the delimiter `---`."
+            "Please paste your content in the text area below. If you have multiple sources, separate each content block with the delimiter `---`."
         )
         text = st.text_area("Enter Text:", key="barchart_text", height=300, value="")
     else:
         st.markdown(
-            "Please enter one or more URLs (one per line) from which to extract content. "
-            "The app will fetch and combine the text from each URL."
+            "Please enter one or more URLs (one per line) from which to extract content. The app will fetch and combine the text from each URL."
         )
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
     if st.button("Generate Visualizations", key="barchart_button"):
         all_text = ""
         entity_texts_by_url: Dict[str, str] = {}
@@ -817,14 +809,12 @@ def named_entity_barchart_page():
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
                         return
-
         with st.spinner("Analyzing entities and generating visualizations..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 st.error("Could not load spaCy model. Aborting.")
                 return
             entities = identify_entities(all_text, nlp_model)
-            # Filter out unwanted entity types
             filtered_entities = [
                 (entity, label)
                 for entity, label in entities
@@ -850,23 +840,14 @@ def named_entity_barchart_page():
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
-
-
-
-# ------------------------------------
-# New Tool: N-gram TF-IDF Analysis with Comparison Table
-# ------------------------------------
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
-    st.markdown("""
+    st.markdown(
+        """
         Uncover hidden opportunities by comparing your website's content to your top competitors. 
         Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.
-    """)
-    
-    # Competitor input method
+        """
+    )
     st.subheader("Competitors")
     competitor_source_option = st.radio(
         "Select content source:",
@@ -881,8 +862,6 @@ def ngram_tfidf_analysis_page():
         st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-    
-    # Target input method
     st.subheader("Your Site")
     target_source_option = st.radio(
         "Select content source:",
@@ -894,15 +873,12 @@ def ngram_tfidf_analysis_page():
         target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your target content:", key="target_text", value="", height=200)
-    
-    # N-gram and TF-IDF Options
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
-    
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
@@ -910,8 +886,6 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-        
-        # Extract competitor texts
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -925,7 +899,6 @@ def ngram_tfidf_analysis_page():
                     valid_competitor_sources.append(source)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
             if not target_content:
@@ -933,19 +906,14 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
-        
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-        
-        # Calculate TF-IDF for competitors
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
-        
-        # Calculate TF-IDF for target content
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(
@@ -953,16 +921,12 @@ def ngram_tfidf_analysis_page():
                 index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
                 columns=feature_names
             )
-        
-        # Identify Top N-grams for Competitors
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
-        
-        # Content Gap Analysis
         content_gaps = {}
         for source, competitor_ngrams in top_ngrams_competitors.items():
             gap_ngrams = []
@@ -976,7 +940,6 @@ def ngram_tfidf_analysis_page():
                     competitor_score = df_tfidf_competitors.loc[source, ngram]
                     gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
             content_gaps[source] = gap_ngrams
-        
         st.markdown("### Semantic Gap Analysis")
         st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
         all_data = {}
@@ -986,15 +949,11 @@ def ngram_tfidf_analysis_page():
                 all_data[source].append("")
         df_display = pd.DataFrame(all_data)
         st.dataframe(df_display)
-        
-        # Create a Wordcloud for each competitor site
         st.subheader("Semantic Gap Wordclouds")
         for source, gap_ngrams in content_gaps.items():
-            # Build frequency dictionary for this competitor site
             site_gap_counts = {}
             for gap in gap_ngrams:
-                if gap:  # Ensure non-empty string
-                    # Extract only the n-gram text (before the " (")
+                if gap:
                     ngram_text = gap.split(" (")[0]
                     site_gap_counts[ngram_text] = site_gap_counts.get(ngram_text, 0) + 1
             if site_gap_counts:
@@ -1002,8 +961,6 @@ def ngram_tfidf_analysis_page():
                 display_entity_wordcloud(site_gap_counts)
             else:
                 st.write(f"No gap n‑grams for {source} to create a wordcloud.")
-        
-        # Create a combined Wordcloud for all competitors
         combined_gap_counts = {}
         for gap_list in content_gaps.values():
             for gap in gap_list:
@@ -1016,16 +973,6 @@ def ngram_tfidf_analysis_page():
         else:
             st.write("No combined gap n‑grams to create a wordcloud.")
 
-
-
-
-# ------------------------------------
-# New Tool: Keyword Clustering
-# ------------------------------------
-
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.decomposition import PCA
-
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
@@ -1036,8 +983,6 @@ def keyword_clustering_from_gap_page():
         The resulting clusters (and their representative keywords) are displayed below.
         """
     )
-    
-    # Competitor input method selection
     st.subheader("Competitors")
     competitor_source_option = st.radio(
         "Select competitor content source:",
@@ -1052,8 +997,6 @@ def keyword_clustering_from_gap_page():
         st.markdown("Paste competitor content below. Separate each block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-    
-    # Target input method selection
     st.subheader("Your Site")
     target_source_option = st.radio(
         "Select target content source:",
@@ -1065,15 +1008,11 @@ def keyword_clustering_from_gap_page():
         target_url = st.text_input("Enter Your URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your content:", key="target_content", value="", height=200)
-    
-    # N-gram Options for Gap Analysis
     st.subheader("Word Count Settings")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
-    
-    # Clustering Settings with re-labeled options
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
         "Select Clustering Type:", 
@@ -1084,9 +1023,7 @@ def keyword_clustering_from_gap_page():
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
     elif algorithm == "Affinity Stack":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
-    
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
-        # Extract competitor content
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -1100,8 +1037,6 @@ def keyword_clustering_from_gap_page():
                     valid_competitor_sources.append(source)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
-        # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
             if not target_content:
@@ -1109,19 +1044,14 @@ def keyword_clustering_from_gap_page():
                 return
         else:
             target_content = target_text
-        
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-        
-        # Calculate TF‑IDF for Competitors
         with st.spinner("Calculating TF‑IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
-        
-        # Calculate TF‑IDF for Target Content
         with st.spinner("Calculating TF‑IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(
@@ -1129,8 +1059,6 @@ def keyword_clustering_from_gap_page():
                 index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
                 columns=feature_names
             )
-        
-        # Identify Gap n‑grams
         gap_ngrams = set()
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -1145,11 +1073,8 @@ def keyword_clustering_from_gap_page():
         if not gap_ngrams:
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
-        
         st.markdown("### Top Phrases:")
         st.write(gap_ngrams)
-        
-        # Compute BERT Embeddings for Each Gap n‑gram
         tokenizer, model = initialize_bert_model()
         embeddings = []
         valid_gap_ngrams = []
@@ -1159,14 +1084,10 @@ def keyword_clustering_from_gap_page():
                 if emb is not None:
                     embeddings.append(emb.squeeze())
                     valid_gap_ngrams.append(gram)
-        
         if len(valid_gap_ngrams) == 0:
             st.error("Could not compute embeddings for any gap n‑grams.")
             return
-        
         embeddings = np.vstack(embeddings)
-        
-        # Perform Clustering based on the selected algorithm
         if algorithm == "Kindred Spirit":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
@@ -1195,12 +1116,9 @@ def keyword_clustering_from_gap_page():
                 else:
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
-        
-        # Display the Clusters
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
-        
         st.markdown("### Keyword Clusters:")
         for label, gram_list in clusters.items():
             if label == -1:
@@ -1210,8 +1128,6 @@ def keyword_clustering_from_gap_page():
                 st.markdown(f"**Cluster {label}** (Representative: {rep}):")
             for gram in gram_list:
                 st.write(f" - {gram}")
-        
-        # Optional: Visualize Clusters using PCA
         with st.spinner("Generating cluster visualization..."):
             pca = PCA(n_components=2)
             embeddings_2d = pca.fit_transform(embeddings)
@@ -1224,37 +1140,25 @@ def keyword_clustering_from_gap_page():
             ax.set_ylabel("Competitive Pressure: High vs. Low")
             st.pyplot(fig)
 
-
-
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
-
 def main():
     st.set_page_config(
         page_title="Semantic Search SEO Analysis Tools | The SEO Consultant.ai",
         page_icon="✏️",
         layout="wide"
     )
-
-    # Hide Streamlit elements using class names and data-testid (most robust)
     hide_streamlit_elements = """
         <style>
         #MainMenu {visibility: hidden !important;}
         header {visibility: hidden !important;}
-        [data-testid="stDecoration"] {
-            display: none !important;
-        }
-        /* Target the specific classes used by the "Hosted with Streamlit" badge */
-        a[href*='streamlit.io/cloud'],
-        div._profileContainer_gzau3_53 {
-            display: none !important;
-        }
-        div.block-container {padding-top: 1rem;} /*Add padding*/
+        [data-testid="stDecoration"] { display: none !important; }
+        a[href*='streamlit.io/cloud'], div._profileContainer_gzau3_53 { display: none !important; }
+        div.block-container {padding-top: 1rem;}
         </style>
         """
     st.markdown(hide_streamlit_elements, unsafe_allow_html=True)
-
     create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
@@ -1267,9 +1171,10 @@ def main():
         "Entity Visualizer",
         "Entity Frequency Bar Chart",
         "Semantic Gap Analyzer",
-        "Keyword Clustering"  # New tool added here
+        "Keyword Clustering",
+        "Text Summarization",
+        "Summarization & Comparison"
     ])
-
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
     elif tool == "Cosine Similarity - Competitor Analysis":
@@ -1290,15 +1195,16 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
-
+    elif tool == "Text Summarization":
+        summarization_page()
+    elif tool == "Summarization & Comparison":
+        summarization_comparison_page()
     st.markdown("---")
-    st.markdown(
-        "Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)",
-        unsafe_allow_html=True
-    )
+    st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
 
 
 
