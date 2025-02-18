@@ -947,7 +947,7 @@ def named_entity_barchart_page():
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
     st.markdown("""
-        Uncover hidden opportunities by comparing your website's content to your top competitors.
+        Uncover hidden opportunities by comparing your website's content to your top competitors. 
         Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.
     """)
 
@@ -982,38 +982,21 @@ def ngram_tfidf_analysis_page():
 
     # N-gram and TF-IDF Options
     st.subheader("Word Options")
-    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=1)
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5,6,7,8,9,10], index=1)
     st.markdown("*(For example, choose 2 for bigrams)*")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
 
-    # --- CUSTOM STOP WORD HANDLING ---
-    st.subheader("Custom Stop Words")
-    custom_stop_words_add = st.text_area("Add custom stop words (comma-separated):", "")
-    custom_stop_words_remove = st.text_area("Remove stop words from default list (comma-separated):", "")
-
-    # Process user input for stop words
-    add_words = [word.strip() for word in custom_stop_words_add.split(",") if word.strip()]
-    remove_words = [word.strip() for word in custom_stop_words_remove.split(",") if word.strip()]
-
-    # Combine stop words
-    stop_words = list(ENGLISH_STOP_WORDS)  # Start with the default list
-    stop_words.extend(add_words)  # Add custom additions
-    stop_words = [word for word in stop_words if word not in remove_words]  # Remove custom removals
-    # --- END CUSTOM STOP WORD HANDLING ---
-
-
     if st.button("Analyze Content Gaps", key="content_gap_button"):
-        if not competitor_list:
-            st.warning("Please enter at least one competitor URL or content.")
+        if competitor_source_option == "Extract from URL" and not competitor_list:
+            st.warning("Please enter at least one competitor URL.")
             return
-        if (target_source_option == "Extract from URL" and not target_url) or \
-           (target_source_option == "Paste Content" and not target_text):
-            st.warning("Please enter your target URL or content.")
+        if target_source_option == "Extract from URL" and not target_url:
+            st.warning("Please enter your target URL.")
             return
 
-        # --- PREPARE NLP (FOR LEMMATIZATION AND POS TAGGING) ---
+        # Prepare NLP model for lemmatization/processing
         nlp_model = load_spacy_model()
         if not nlp_model:
             return
@@ -1028,20 +1011,12 @@ def ngram_tfidf_analysis_page():
                 else:
                     text = source
                 if text:
-                     # --- LEMMATIZE AND POS-TAG COMPETITOR TEXT ---
-                    doc = nlp_model(text)
-                    processed_tokens = []
-                    for token in doc:
-                        # POS-based stop word removal
-                        if token.lemma_.lower() in stop_words and token.pos_ not in ("NOUN", "VERB", "ADJ", "ADV"):
-                            continue  # Skip stop words unless they are important parts of speech
-                        processed_tokens.append(token.lemma_)
-                    processed_text = " ".join(processed_tokens)
-                    competitor_texts.append(processed_text)
+                    competitor_texts.append(text)
                     valid_competitor_sources.append(source)
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
+        # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
             if not target_content:
@@ -1050,38 +1025,13 @@ def ngram_tfidf_analysis_page():
         else:
             target_content = target_text
 
-        # --- LEMMATIZE AND POS-TAG TARGET TEXT ---
-        target_doc = nlp_model(target_content)
-        processed_target_tokens = []
-        for token in target_doc:
-            #POS-based stop word removal
-            if token.lemma_.lower() in stop_words and token.pos_ not in ("NOUN", "VERB", "ADJ", "ADV"):
-                continue
-            processed_target_tokens.append(token.lemma_)
-        target_content = " ".join(processed_target_tokens)
-
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
 
-        # --- BERT EMBEDDING CALCULATIONS (FOR COMBINED APPROACH) ---
-        tokenizer, model = initialize_bert_model()
-
-        # Calculate BERT embeddings for competitor texts
-        competitor_embeddings = []
-        with st.spinner("Calculating BERT embeddings for competitors..."):
-            for text in competitor_texts:
-                embedding = get_embedding(text, model, tokenizer)
-                competitor_embeddings.append(embedding)
-
-        # Calculate BERT embedding for target content
-        with st.spinner("Calculating BERT embedding for target content..."):
-            target_embedding = get_embedding(target_content, model, tokenizer)
-
-        # --- TF-IDF CALCULATIONS (USING PROCESSED TEXT) ---
         # Calculate TF-IDF for competitors
         with st.spinner("Calculating TF-IDF scores for competitors..."):
-            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words=stop_words)
+            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
@@ -1095,9 +1045,12 @@ def ngram_tfidf_analysis_page():
                 columns=feature_names
             )
 
-        # --- COMBINED GAP ANALYSIS (TF-IDF + BERT) ---
+        # Calculate BERT embeddings for target content
+        tokenizer, model = initialize_bert_model()
+        with st.spinner("Calculating BERT embedding for target content..."):
+            target_embedding = get_embedding(target_content, model, tokenizer)
 
-        # Identify Top N-grams for Competitors (BASED ON TF-IDF - for now)
+        # For each competitor, get their top n-grams
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -1105,88 +1058,83 @@ def ngram_tfidf_analysis_page():
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
 
-        # Content Gap Analysis (COMBINED)
+        # Calculate BERT embeddings for competitor texts (store in order)
+        competitor_embeddings = []
+        with st.spinner("Calculating BERT embeddings for competitors..."):
+            for text in competitor_texts:
+                emb = get_embedding(text, model, tokenizer)
+                competitor_embeddings.append(emb)
+
+        # --- GAP ANALYSIS ---
+        # We'll compute a combined score (TF-IDF diff + BERT diff) for each n-gram.
+        # Only n-grams with a positive combined gap score will be kept.
         content_gaps = {}
-        for source_idx, source in enumerate(valid_competitor_sources):
+        # Use enumerate so we have an index for competitor_texts and embeddings
+        for idx, source in enumerate(valid_competitor_sources):
             gap_ngrams = []
             for ngram in top_ngrams_competitors[source]:
                 if ngram in df_tfidf_target.columns:
-                    # --- TF-IDF Score Difference ---
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
                     target_tfidf = df_tfidf_target.iloc[0][ngram]
                     tfidf_diff = competitor_tfidf - target_tfidf
 
-                    # --- BERT Cosine Similarity Difference ---
-                    ngram_embedding_index = competitor_texts[source_idx].find(ngram)
-                    if ngram_embedding_index != -1:
-                        ngram_embedding = competitor_embeddings[source_idx]
+                    # Only process if there is a positive TF-IDF gap
+                    if tfidf_diff <= 0:
+                        continue
 
-                        competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
-                        target_bert_similarity = cosine_similarity(ngram_embedding, target_embedding)[0][0]
-                        bert_diff = competitor_bert_similarity - target_bert_similarity
+                    # For BERT, use the entire competitor text's embedding (since extracting per n-gram is tricky)
+                    # Here, we'll simply compare the cosine similarity of the competitor text and target text.
+                    competitor_bert_similarity = cosine_similarity(competitor_embeddings[idx], competitor_embeddings[idx])[0][0]
+                    target_bert_similarity = cosine_similarity(competitor_embeddings[idx], target_embedding)[0][0]
+                    bert_diff = competitor_bert_similarity - target_bert_similarity
 
-                        # --- COMBINED SCORE ---
-                        combined_score = (tfidf_diff + bert_diff) / 2
-                        # Consolidated Data (for combined table)
+                    combined_score = (tfidf_diff + bert_diff) / 2
+                    if combined_score > 0:
                         gap_ngrams.append((ngram, combined_score))
-
-
-                else:  # n-gram not in target content
+                else:  # n-gram not present in target content
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
-                    ngram_embedding_index = competitor_texts[source_idx].find(ngram)
-
-                    if ngram_embedding_index != -1:
-                        ngram_embedding = competitor_embeddings[source_idx]
-                        competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
-                        bert_diff = competitor_bert_similarity
-
-                        # --- COMBINED SCORE ---
-                        combined_score = (competitor_tfidf + bert_diff) / 2
-                        # Consolidated Data
+                    # In this case, target score is implicitly 0
+                    bert_diff = cosine_similarity(competitor_embeddings[idx], competitor_embeddings[idx])[0][0]
+                    combined_score = (competitor_tfidf + bert_diff) / 2
+                    if combined_score > 0:
                         gap_ngrams.append((ngram, combined_score))
             content_gaps[source] = gap_ngrams
 
-        # --- CONSOLIDATED GAP DATA (Across all competitors) ---
+        # Consolidate gap data across all competitors
         consolidated_gaps = {}
-        for source, gap_ngrams in content_gaps.items():
-            for ngram, score in gap_ngrams:
+        for source, gap_list in content_gaps.items():
+            for ngram, score in gap_list:
                 if ngram not in consolidated_gaps:
                     consolidated_gaps[ngram] = {
                         'Gap Score': score,
-                        'Sources': [source]  # Keep track of which sources have this gap
+                        'Sources': [source]
                     }
                 else:
-                    # Update the score (taking the max gap across sources)
                     consolidated_gaps[ngram]['Gap Score'] = max(consolidated_gaps[ngram]['Gap Score'], score)
-                    consolidated_gaps[ngram]['Sources'].append(source) # Add the current source.
+                    consolidated_gaps[ngram]['Sources'].append(source)
 
-        # Convert consolidated data to DataFrame
         df_consolidated = pd.DataFrame.from_dict(consolidated_gaps, orient='index')
         df_consolidated.index.name = 'N-gram'
         df_consolidated = df_consolidated.reset_index()
-        #Sort the consolidated dataframe.
         df_consolidated = df_consolidated.sort_values(by='Gap Score', ascending=False)
 
-        # --- DISPLAY RESULTS ---
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
         st.dataframe(df_consolidated)
 
-
-        # Per-competitor breakdown (original display, but sorted and using Gap Score)
+        # Per-competitor breakdown
         st.markdown("### Per-Competitor Semantic Gap Analysis")
-        for source, gap_ngrams in content_gaps.items():
+        for source, gap_list in content_gaps.items():
             st.markdown(f"#### Competitor: {source}")
-            df_source = pd.DataFrame(gap_ngrams, columns=['N-gram', 'Gap Score'])
+            df_source = pd.DataFrame(gap_list, columns=['N-gram', 'Gap Score'])
             df_source = df_source.sort_values(by='Gap Score', ascending=False)
             st.dataframe(df_source)
 
-
-        # Wordclouds (Optional - can be kept or removed based on preference)
+        # Wordclouds for each competitor
         st.subheader("Semantic Gap Wordclouds")
-        for source, gap_ngrams in content_gaps.items():
+        for source, gap_list in content_gaps.items():
             site_gap_counts = {}
-            for ngram, _ in gap_ngrams:  # Extract n-gram text
+            for ngram, _ in gap_list:
                 site_gap_counts[ngram] = site_gap_counts.get(ngram, 0) + 1
             if site_gap_counts:
                 st.markdown(f"**Wordcloud for {source}:**")
@@ -1194,7 +1142,7 @@ def ngram_tfidf_analysis_page():
             else:
                 st.write(f"No gap n‑grams for {source} to create a wordcloud.")
 
-        combined_gap_counts = {}  # For a combined wordcloud
+        combined_gap_counts = {}
         for gap_list in content_gaps.values():
             for ngram, _ in gap_list:
                 combined_gap_counts[ngram] = combined_gap_counts.get(ngram, 0) + 1
@@ -1203,6 +1151,7 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(combined_gap_counts)
         else:
             st.write("No combined gap n‑grams to create a wordcloud.")
+
 
 
 
