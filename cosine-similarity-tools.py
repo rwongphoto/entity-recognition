@@ -745,20 +745,29 @@ def displacy_visualization_page():
 
 def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
-    st.markdown("Generate a bar chart from the most frequent named entities across multiple sites.")
-    text_source = st.radio("Select text source:", ('Enter Text', 'Enter URLs'), key="barchart_text_source")
-    text = None
-    urls = None
-    if text_source == 'Enter Text':
+    st.markdown("Generate a bar chart from the most frequent named entities across multiple sources.")
+
+    # Choose how to input content
+    input_method = st.radio(
+        "Select content input method:",
+        options=["Extract from URL", "Paste Content"],
+        key="entity_barchart_input"
+    )
+
+    # Initialize variables for text and URLs
+    text = ""
+    urls = []
+
+    if input_method == "Paste Content":
         text = st.text_area("Enter Text:", key="barchart_text", height=300, value="")
     else:
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
     if st.button("Generate Bar Chart", key="barchart_button"):
         all_text = ""
         entity_texts_by_url: Dict[str, str] = {}
-        entity_counts_per_url: Dict[str, Counter] = {}
-        if text_source == 'Enter Text':
+        if input_method == "Paste Content":
             if not text:
                 st.warning("Please enter the text to proceed.")
                 return
@@ -767,45 +776,45 @@ def named_entity_barchart_page():
             if not urls:
                 st.warning("Please enter at least one URL.")
                 return
-            url_texts = {}
             with st.spinner("Extracting text from URLs..."):
                 for url in urls:
                     extracted_text = extract_text_from_url(url)
                     if extracted_text:
-                        url_texts[url] = extracted_text
+                        entity_texts_by_url[url] = extracted_text
                         all_text += extracted_text + "\n"
                     else:
                         st.warning(f"Couldn't grab the text from {url}...")
                         return
-            entity_texts_by_url = url_texts
+
         with st.spinner("Analyzing entities and generating bar chart..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 st.error("Could not load spaCy model. Aborting.")
                 return
             entities = identify_entities(all_text, nlp_model)
-            # Filter out CARDINAL, PERCENT, and MONEY entities
+            # Filter out unwanted entity types (CARDINAL, PERCENT, MONEY)
             filtered_entities = [
                 (entity, label)
                 for entity, label in entities
-                if label != "CARDINAL" and label != "PERCENT" and label != "MONEY"  # Added MONEY
+                if label not in ["CARDINAL", "PERCENT", "MONEY"]
             ]
             entity_counts = count_entities(filtered_entities)
-            if len(entity_counts) > 0:
+            if entity_counts:
                 display_entity_barchart(entity_counts)
-                if text_source == 'Enter URLs':
+                if input_method == "Extract from URL":
                     st.subheader("List of Entities from each URL:")
                     for url in urls:
-                        text = entity_texts_by_url.get(url)
-                        if text:
+                        text_from_url = entity_texts_by_url.get(url)
+                        if text_from_url:
                             st.write(f"Text from {url}:")
-                            url_entities = identify_entities(text, nlp_model)
+                            url_entities = identify_entities(text_from_url, nlp_model)
                             for entity, label in url_entities:
                                 st.write(f"- {entity} ({label})")
                         else:
                             st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
+
 
 # ------------------------------------
 # New Tool: N-gram TF-IDF Analysis with Comparison Table
