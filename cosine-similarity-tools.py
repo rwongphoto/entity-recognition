@@ -440,7 +440,6 @@ def url_analysis_dashboard_page():
                         total_word_count,  # Total Word Count
                         custom_word_count, # Content Word Count
                         similarity_val,    # Cosine Similarity
-                        flesch_kincaid,    # Flesch-Kincaid Grade Level  <-- ADDED HERE
                         unique_entity_count,  # # of Unique Entities
                         total_nav_links,   # Nav Links
                         total_links,       # Total Links
@@ -448,49 +447,65 @@ def url_analysis_dashboard_page():
                         lists_tables,      # Lists/Tables
                         num_images,        # Images
                         num_videos,        # Videos
-                        
+                        flesch_kincaid     # Flesch-Kincaid Grade Level
                     ])
 
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url] + ["Error"] * 13) #Adjust the "Error" length
+                    data.append([url] + ["Error"] * 13)
 
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
-                "H1 Tag",
+                "H1 Tag",  #<--- This was H1 Tag
                 "Total Word Count",
-                "Custom Word Count (p, li, headers)",
-                "Overall Cosine Similarity Score",
-                "Flesch-Kincaid Grade Level",
+                "Custom Word Count (p, li, headers)", #<--This was the same.
+                "Overall Cosine Similarity Score", #<--This was the same
                 "# of Unique Entities",
                 "# of Header & Footer Links",
                 "Total # of Links",
                 "Schema Markup Types",
                 "Lists/Tables Present",
                 "# of Images",
-                "# of Videos"
-                
+                "# of Videos",
+                "Flesch-Kincaid Grade Level"
             ])
 
             # Reorder and rename columns as required:
             df = df[[
                 "URL",
                 "Meta Title",
+                "H1 Tag",  #<---This needs to be H1 Tag
+                "Total Word Count",
+                "Custom Word Count (p, li, headers)", #<-- Keep the same
+                "Overall Cosine Similarity Score", #<-- Keep the same
+                "# of Unique Entities",
+                "# of Header & Footer Links",
+                "Total # of Links",
+                "Schema Markup Types",
+                "Lists/Tables Present",
+                "# of Images",
+                "# of Videos",
+                "Flesch-Kincaid Grade Level"
+            ]]
+           #Rename columns
+            df.columns = [
+                "URL",
+                "Meta Title",
                 "H1",
                 "Total Word Count",
                 "Content Word Count",
                 "Cosine Similarity",
-                "Flesch-Kincaid Grade Level",
                 "# of Unique Entities",
                 "Nav Links",
                 "Total Links",
                 "Schema Types",
                 "Lists/Tables",
                 "Images",
-                "Videos"
+                "Videos",
+                "Flesch-Kincaid Grade Level"
+            ]
 
-            ]]
 
             # Ensure numeric columns are numeric
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
