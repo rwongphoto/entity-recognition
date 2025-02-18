@@ -1104,9 +1104,11 @@ def ngram_tfidf_analysis_page():
             top_ngrams_competitors[source] = list(top_ngrams.index)
 
         # Content Gap Analysis (COMBINED)
-        content_gaps = {}
+        content_gaps = {}  # {source: [(ngram, score), ...], ...}
+        all_gap_data = [] #This will hold all the data
+
         for source_idx, source in enumerate(valid_competitor_sources):
-            gap_ngrams = []
+            gap_ngrams = []  # List of (ngram, score) tuples for *this* competitor
             for ngram in top_ngrams_competitors[source]:
                 if ngram in df_tfidf_target.columns:
                     # --- TF-IDF Score Difference ---
@@ -1118,21 +1120,18 @@ def ngram_tfidf_analysis_page():
                     ngram_embedding_index = competitor_texts[source_idx].find(ngram)
                     if ngram_embedding_index != -1:
                         ngram_embedding = competitor_embeddings[source_idx]
-
                         competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
                         target_bert_similarity = cosine_similarity(ngram_embedding, target_embedding)[0][0]
                         bert_diff = competitor_bert_similarity - target_bert_similarity
 
                         # --- COMBINED SCORE ---
                         combined_score = (tfidf_diff + bert_diff) / 2
-                        # Consolidated Data (for combined table)
-                        gap_ngrams.append((ngram, combined_score))
+                        all_gap_data.append({'N-gram': ngram, 'Source': source, 'Gap Score': combined_score})
 
 
                 else:  # n-gram not in target content
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
                     ngram_embedding_index = competitor_texts[source_idx].find(ngram)
-
                     if ngram_embedding_index != -1:
                         ngram_embedding = competitor_embeddings[source_idx]
                         competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
@@ -1140,44 +1139,33 @@ def ngram_tfidf_analysis_page():
 
                         # --- COMBINED SCORE ---
                         combined_score = (competitor_tfidf + bert_diff) / 2
-                        # Consolidated Data
-                        gap_ngrams.append((ngram, combined_score))
-            content_gaps[source] = gap_ngrams
+                        all_gap_data.append({'N-gram': ngram, 'Source': source, 'Gap Score': combined_score}) # Append to the main list.
+            content_gaps[source] = gap_ngrams #This can stay to use with word clouds.
 
         # --- CONSOLIDATED GAP DATA (Across all competitors) ---
-        consolidated_gaps = {}
-        for source, gap_ngrams in content_gaps.items():
-            for ngram, score in gap_ngrams:
-                if ngram not in consolidated_gaps:
-                    consolidated_gaps[ngram] = {
-                        'Gap Score': score,
-                        'Sources': [source]  # Keep track of which sources have this gap
-                    }
-                else:
-                    # Update the score (taking the max gap across sources)
-                    consolidated_gaps[ngram]['Gap Score'] = max(consolidated_gaps[ngram]['Gap Score'], score)
-                    consolidated_gaps[ngram]['Sources'].append(source) # Add the current source.
+        #Create dataframe from the all_gap_data
+        df_all_gaps = pd.DataFrame(all_gap_data)
 
-        # Convert consolidated data to DataFrame
-        df_consolidated = pd.DataFrame.from_dict(consolidated_gaps, orient='index')
-        df_consolidated.index.name = 'N-gram'
-        df_consolidated = df_consolidated.reset_index()
-        #Sort the consolidated dataframe.
-        df_consolidated = df_consolidated.sort_values(by='Gap Score', ascending=False)
+        # Pivot the DataFrame to get competitors as columns
+        df_pivot = df_all_gaps.pivot_table(index='N-gram', columns='Source', values='Gap Score')
+
+        # Calculate the overall gap score (e.g., max or mean across competitors)
+        # Using max here makes sense for identifying the *biggest* gaps.  Could also use mean.
+        df_pivot['Overall Gap Score'] = df_pivot.max(axis=1)
+
+        # Sort by the overall gap score
+        df_pivot = df_pivot.sort_values(by='Overall Gap Score', ascending=False)
+
+        # Reset index to make 'N-gram' a regular column again
+        df_pivot = df_pivot.reset_index()
+
+
 
         # --- DISPLAY RESULTS ---
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
-        st.dataframe(df_consolidated)
+        st.dataframe(df_pivot) # Display the pivoted table.
 
-
-        # Per-competitor breakdown (original display, but sorted and using Gap Score)
-        st.markdown("### Per-Competitor Semantic Gap Analysis")
-        for source, gap_ngrams in content_gaps.items():
-            st.markdown(f"#### Competitor: {source}")
-            df_source = pd.DataFrame(gap_ngrams, columns=['N-gram', 'Gap Score'])
-            df_source = df_source.sort_values(by='Gap Score', ascending=False)
-            st.dataframe(df_source)
 
 
         # Wordclouds (Optional - can be kept or removed based on preference)
