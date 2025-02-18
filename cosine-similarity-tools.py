@@ -1268,7 +1268,16 @@ def keyword_clustering_from_gap_page():
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
 
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
-        # Extract competitor content
+        # --- INPUT VALIDATION (Early Exit) ---
+        if not competitor_list:
+            st.warning("Please enter at least one competitor URL or content.")
+            return
+        if (target_source_option == "Extract from URL" and not target_url) or \
+           (target_source_option == "Paste Content" and not target_text):
+            st.warning("Please enter your target URL or content.")
+            return
+
+        # --- EXTRACT COMPETITOR CONTENT ---
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -1283,7 +1292,7 @@ def keyword_clustering_from_gap_page():
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
-        # Extract target content
+        # --- EXTRACT TARGET CONTENT (Conditional) ---
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
             if not target_content:
@@ -1296,15 +1305,16 @@ def keyword_clustering_from_gap_page():
             st.error("No competitor content was extracted.")
             return
 
-        # Calculate TF‑IDF for Competitors
-        with st.spinner("Calculating TF‑IDF scores for competitors..."):
+
+        # Calculate TF-IDF for Competitors
+        with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df)
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
 
-        # Calculate TF‑IDF for Target Content
-        with st.spinner("Calculating TF‑IDF scores for target content..."):
+        # Calculate TF-IDF for Target Content
+        with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(
                 target_tfidf_vector.toarray(),
@@ -1330,14 +1340,15 @@ def keyword_clustering_from_gap_page():
         gap_ngrams = [ngram for ngram, _ in gap_ngrams_with_scores]  # Extract just the n-grams
 
         if not gap_ngrams:
-            st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
+            st.error("No gap n-grams were identified.  Consider adjusting your TF-IDF parameters.")
             return
 
-        # --- Compute BERT Embeddings for Each Gap n‑gram ---
+
+        # --- Compute BERT Embeddings for Each Gap n-gram ---
         tokenizer, model = initialize_bert_model()
         embeddings = []
         valid_gap_ngrams = []  # This will now store the *sorted* n-grams
-        with st.spinner("Computing BERT embeddings for gap n‑grams..."):
+        with st.spinner("Computing BERT embeddings for gap n-grams..."):
             for gram in gap_ngrams: #Iterate through the ordered n-grams
                 emb = get_embedding(gram, model, tokenizer)
                 if emb is not None:
@@ -1345,14 +1356,15 @@ def keyword_clustering_from_gap_page():
                     valid_gap_ngrams.append(gram)
 
         if len(valid_gap_ngrams) == 0:
-            st.error("Could not compute embeddings for any gap n‑grams.")
+            st.error("Could not compute embeddings for any gap n-grams.")
             return
 
         embeddings = np.vstack(embeddings)
 
+
         # --- PERFORM CLUSTERING *BEFORE* PCA ---
         if algorithm == "Kindred Spirit":
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto')
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto')  # Corrected n_init
             cluster_labels = clustering_model.fit_predict(embeddings)
             centers = clustering_model.cluster_centers_  # Corrected attribute name
             rep_keywords = {}
@@ -1378,6 +1390,7 @@ def keyword_clustering_from_gap_page():
                 else:
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
+
 
         # --- NOW do PCA *AFTER* Clustering ---
         with st.spinner("Generating interactive cluster visualization..."):
@@ -1415,6 +1428,7 @@ def keyword_clustering_from_gap_page():
                 st.markdown(f"**Cluster {label}** (Representative: {rep}):")
             for gram in gram_list:
                 st.write(f" - {gram}")
+
 
         # --- Display Top Phrases *AFTER* the Plot and Clusters ---
         st.markdown("### Top Phrases (Ranked by Gap Score):")
