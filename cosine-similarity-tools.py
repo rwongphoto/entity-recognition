@@ -1077,14 +1077,11 @@ def keyword_clustering_from_gap_page():
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
         "Select Clustering Algorithm:", 
-        options=["K-Means", "DBSCAN", "Agglomerative Clustering"],
+        options=["K-Means", "Agglomerative Clustering"],
         key="clustering_algo_gap"
     )
     if algorithm == "K-Means":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
-    elif algorithm == "DBSCAN":
-        eps = st.number_input("Epsilon (eps):", min_value=0.1, value=0.5, step=0.1, key="dbscan_eps_gap")
-        min_samples = st.number_input("Minimum Samples:", min_value=1, value=2, key="dbscan_min_samples_gap")
     elif algorithm == "Agglomerative Clustering":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
     
@@ -1184,20 +1181,6 @@ def keyword_clustering_from_gap_page():
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
-        elif algorithm == "DBSCAN":
-            from sklearn.cluster import DBSCAN
-            clustering_model = DBSCAN(eps=eps, min_samples=min_samples)
-            cluster_labels = clustering_model.fit_predict(embeddings)
-            rep_keywords = {}
-            unique_labels = set(cluster_labels)
-            for label in unique_labels:
-                if label == -1:
-                    continue
-                cluster_grams = [ng for ng, l in zip(valid_gap_ngrams, cluster_labels) if l == label]
-                cluster_embeddings = embeddings[cluster_labels == label]
-                sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-                rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
-                rep_keywords[label] = rep_keyword
         elif algorithm == "Agglomerative Clustering":
             from sklearn.cluster import AgglomerativeClustering
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
