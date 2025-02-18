@@ -106,14 +106,14 @@ def extract_text_from_url(url):
 def extract_relevant_text_from_url(url):
     """
     Extracts text from a URL using Selenium—but only from specific tags:
-    <p>, <ol>, <ul>, <h1>-<h6>, and <table>.
+    <p>, <ol>, <ul>, headers (<h1>-<h6>), and <table>.
+    This function first removes header and footer elements (navigation) from the page.
     """
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        # You can keep your existing user agent or modify it as needed
         user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
                       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
         chrome_options.add_argument(f"user-agent={user_agent}")
@@ -128,7 +128,11 @@ def extract_relevant_text_from_url(url):
         driver.quit()
         soup = BeautifulSoup(page_source, "html.parser")
 
-        # Only extract text from the desired tags
+        # Remove header and footer elements (navigation)
+        for tag in soup.find_all(["header", "footer"]):
+            tag.decompose()
+
+        # Now extract text only from the relevant tags
         tags = []
         tags.extend(soup.find_all("p"))
         tags.extend(soup.find_all("ol"))
