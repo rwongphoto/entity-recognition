@@ -773,8 +773,8 @@ def displacy_visualization_page():
             st.error(f"Error rendering visualization: {e}")
 
 def named_entity_barchart_page():
-    st.header("Entity Frequency Bar Chart")
-    st.markdown("Generate a bar chart and wordcloud from the most frequent named entities across multiple sources.")
+    st.header("Entity Frequency Charts")
+    st.markdown("Visualize the most frequent named entities across multiple sources.")
 
     # Choose the input method and provide instructions
     input_method = st.radio(
@@ -1266,7 +1266,7 @@ def main():
         "Top/Bottom 10 Embeddings",
         "Entity Topic Gap Analysis",
         "Entity Visualizer",
-        "Entity Frequency Bar Chart",
+        "Entity Frequency Charts",
         "Semantic Gap Analyzer",
         "Keyword Clustering"  # New tool added here
     ])
@@ -1285,7 +1285,7 @@ def main():
         entity_analysis_page()
     elif tool == "Entity Visualizer":
         displacy_visualization_page()
-    elif tool == "Entity Frequency Bar Chart":
+    elif tool == "Entity Frequency Charts":
         named_entity_barchart_page()
     elif tool == "Semantic Gap Analyzer":
         ngram_tfidf_analysis_page()
