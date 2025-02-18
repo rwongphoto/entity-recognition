@@ -1026,6 +1026,9 @@ def ngram_tfidf_analysis_page():
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import PCA
 
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.decomposition import PCA
+
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clustering from Semantic Gap Analyzer")
     st.markdown(
@@ -1073,16 +1076,16 @@ def keyword_clustering_from_gap_page():
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
     
-    # Clustering Settings
+    # Clustering Settings with re-labeled options
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
         "Select Clustering Algorithm:", 
-        options=["K-Means", "Agglomerative Clustering"],
+        options=["Kindred", "Affinity Stack"],
         key="clustering_algo_gap"
     )
-    if algorithm == "K-Means":
+    if algorithm == "Kindred":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
-    elif algorithm == "Agglomerative Clustering":
+    elif algorithm == "Affinity Stack":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
     
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
@@ -1166,8 +1169,8 @@ def keyword_clustering_from_gap_page():
         
         embeddings = np.vstack(embeddings)
         
-        # Perform Clustering
-        if algorithm == "K-Means":
+        # Perform Clustering based on the selected algorithm
+        if algorithm == "Kindred":
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
             cluster_labels = clustering_model.fit_predict(embeddings)
@@ -1181,7 +1184,7 @@ def keyword_clustering_from_gap_page():
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
-        elif algorithm == "Agglomerative Clustering":
+        elif algorithm == "Affinity Stack":
             from sklearn.cluster import AgglomerativeClustering
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
             cluster_labels = clustering_model.fit_predict(embeddings)
@@ -1223,6 +1226,7 @@ def keyword_clustering_from_gap_page():
             ax.set_xlabel("PCA Component 1")
             ax.set_ylabel("PCA Component 2")
             st.pyplot(fig)
+
 
 
 # ------------------------------------
