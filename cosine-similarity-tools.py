@@ -1038,7 +1038,7 @@ def keyword_clustering_from_gap_page():
     )
     
     # Competitor input method selection
-    st.subheader("Competitor Content Input")
+    st.subheader("Competitors")
     competitor_source_option = st.radio(
         "Select competitor content source:",
         options=["Extract from URL", "Paste Content"],
@@ -1054,7 +1054,7 @@ def keyword_clustering_from_gap_page():
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
     
     # Target input method selection
-    st.subheader("Target Content Input")
+    st.subheader("Your Site")
     target_source_option = st.radio(
         "Select target content source:",
         options=["Extract from URL", "Paste Content"],
@@ -1062,21 +1062,21 @@ def keyword_clustering_from_gap_page():
         key="target_source_cluster"
     )
     if target_source_option == "Extract from URL":
-        target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
+        target_url = st.text_input("Enter Your URL:", key="target_url", value="")
     else:
-        target_text = st.text_area("Paste your target content:", key="target_content", value="", height=200)
+        target_text = st.text_area("Paste your content:", key="target_content", value="", height=200)
     
     # N-gram Options for Gap Analysis
-    st.subheader("N‑gram Settings")
+    st.subheader("Word Count Settings")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
-    top_n = st.slider("Number of Top n‑grams to Consider per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
+    top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
     
     # Clustering Settings with re-labeled options
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
-        "Select Clustering Algorithm:", 
+        "Select Clustering Type:", 
         options=["Kindred", "Affinity Stack"],
         key="clustering_algo_gap"
     )
