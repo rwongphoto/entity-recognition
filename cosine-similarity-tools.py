@@ -974,7 +974,48 @@ def ngram_tfidf_analysis_page():
                     if competitor_score > target_score:
                         gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: {target_score:.3f})")
                 else:
-                    competitor_score = df_tfidf_competitors.loc[source, ngra
+                    competitor_score = df_tfidf_competitors.loc[source, ngram]
+                    gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
+            content_gaps[source] = gap_ngrams
+        
+        st.markdown("### Content Gap Analysis")
+        st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
+        all_data = {}
+        for source, gap_ngrams in content_gaps.items():
+            all_data[source] = gap_ngrams
+            while len(all_data[source]) < top_n:
+                all_data[source].append("")
+        df_display = pd.DataFrame(all_data)
+        st.dataframe(df_display)
+        
+        # Create a Wordcloud for each competitor site
+        st.subheader("Gap n‑grams Wordcloud per Competitor")
+        for source, gap_ngrams in content_gaps.items():
+            # Build frequency dictionary for this competitor site
+            site_gap_counts = {}
+            for gap in gap_ngrams:
+                if gap:  # Ensure non-empty string
+                    # Extract only the n-gram text (before the " (")
+                    ngram_text = gap.split(" (")[0]
+                    site_gap_counts[ngram_text] = site_gap_counts.get(ngram_text, 0) + 1
+            if site_gap_counts:
+                st.markdown(f"**Wordcloud for {source}:**")
+                display_entity_wordcloud(site_gap_counts)
+            else:
+                st.write(f"No gap n‑grams for {source} to create a wordcloud.")
+        
+        # Create a combined Wordcloud for all competitors
+        combined_gap_counts = {}
+        for gap_list in content_gaps.values():
+            for gap in gap_list:
+                if gap:
+                    ngram_text = gap.split(" (")[0]
+                    combined_gap_counts[ngram_text] = combined_gap_counts.get(ngram_text, 0) + 1
+        if combined_gap_counts:
+            st.subheader("Combined Gap n‑grams Wordcloud for All Competitors")
+            display_entity_wordcloud(combined_gap_counts)
+        else:
+            st.write("No combined gap n‑grams to create a wordcloud.")
 
 
 
