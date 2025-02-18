@@ -1357,7 +1357,7 @@ def keyword_clustering_from_gap_page():
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
             cluster_labels = clustering_model.fit_predict(embeddings)
-            centers = clustering_model.cluster_centers
+            centers = clustering_model.cluster_centers_  # Corrected attribute name
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
@@ -1386,7 +1386,7 @@ def keyword_clustering_from_gap_page():
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
-        
+
         st.markdown("### Keyword Clusters:")
         for label, gram_list in clusters.items():
             if label == -1:
