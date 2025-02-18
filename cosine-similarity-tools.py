@@ -836,9 +836,9 @@ def named_entity_barchart_page():
             ]
             entity_counts = count_entities(filtered_entities)
             if entity_counts:
-                st.subheader("Most Common Entity Gaps")
+                st.subheader("Total Entity Counts")
                 display_entity_barchart(entity_counts)
-                st.subheader("Topic Gap Wordcloud")
+                st.subheader("Entity Wordcloud")
                 display_entity_wordcloud(entity_counts)
                 if input_method == "Extract from URL":
                     st.subheader("List of Entities from each URL:")
