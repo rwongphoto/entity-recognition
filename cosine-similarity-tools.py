@@ -743,9 +743,28 @@ def displacy_visualization_page():
         except Exception as e:
             st.error(f"Error rendering visualization: {e}")
 
+from wordcloud import WordCloud
+
+def display_entity_wordcloud(entity_counts):
+    """
+    Generate and display a wordcloud from the entity frequency counts.
+    Here, we aggregate counts by entity text only.
+    """
+    # Aggregate counts by entity text (ignoring labels)
+    aggregated = {}
+    for (entity, label), count in entity_counts.items():
+        aggregated[entity] = aggregated.get(entity, 0) + count
+
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(aggregated)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    plt.tight_layout()
+    st.pyplot(fig)
+
 def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
-    st.markdown("Generate a bar chart from the most frequent named entities across multiple sources.")
+    st.markdown("Generate a bar chart and wordcloud from the most frequent named entities across multiple sources.")
 
     # Choose the input method and provide instructions
     input_method = st.radio(
@@ -754,7 +773,6 @@ def named_entity_barchart_page():
         key="entity_barchart_input"
     )
 
-    # For pasted content, instruct users on how to input the text.
     if input_method == "Paste Content":
         st.markdown(
             "Please paste your content in the text area below. "
@@ -769,7 +787,7 @@ def named_entity_barchart_page():
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
-    if st.button("Generate Bar Chart", key="barchart_button"):
+    if st.button("Generate Visualizations", key="barchart_button"):
         all_text = ""
         entity_texts_by_url: Dict[str, str] = {}
         if input_method == "Paste Content":
@@ -791,7 +809,7 @@ def named_entity_barchart_page():
                         st.warning(f"Couldn't grab the text from {url}...")
                         return
 
-        with st.spinner("Analyzing entities and generating bar chart..."):
+        with st.spinner("Analyzing entities and generating visualizations..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 st.error("Could not load spaCy model. Aborting.")
@@ -805,7 +823,10 @@ def named_entity_barchart_page():
             ]
             entity_counts = count_entities(filtered_entities)
             if entity_counts:
+                st.subheader("Entity Frequency Bar Chart")
                 display_entity_barchart(entity_counts)
+                st.subheader("Entity Wordcloud")
+                display_entity_wordcloud(entity_counts)
                 if input_method == "Extract from URL":
                     st.subheader("List of Entities from each URL:")
                     for url in urls:
@@ -819,6 +840,7 @@ def named_entity_barchart_page():
                             st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
+
 
 
 
