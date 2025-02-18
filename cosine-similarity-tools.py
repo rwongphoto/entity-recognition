@@ -1031,8 +1031,8 @@ def keyword_clustering_from_gap_page():
     st.markdown(
         """
         This tool combines semantic gap analysis with keyword clustering.
-        First, it extracts key phrases where your competitors outperform your target.
-        Then, it computes BERT embeddings for these gap phrases and clusters them based on their semantic similarity.
+        First, it identifies key phrases where your competitors outperform your target.
+        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
         The resulting clusters (and their representative keywords) are displayed below.
         """
     )
@@ -1077,10 +1077,10 @@ def keyword_clustering_from_gap_page():
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
         "Select Clustering Type:", 
-        options=["Kindred", "Affinity Stack"],
+        options=["Kindred Spirit", "Affinity Stack"],
         key="clustering_algo_gap"
     )
-    if algorithm == "Kindred":
+    if algorithm == "Kindred Spirit":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
     elif algorithm == "Affinity Stack":
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
@@ -1146,7 +1146,7 @@ def keyword_clustering_from_gap_page():
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
         
-        st.markdown("### Identified Gap n‑grams:")
+        st.markdown("### Top Phrases:")
         st.write(gap_ngrams)
         
         # Compute BERT Embeddings for Each Gap n‑gram
