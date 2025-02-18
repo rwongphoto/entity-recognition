@@ -1003,12 +1003,14 @@ def ngram_tfidf_analysis_page():
 
 
     if st.button("Analyze Content Gaps", key="content_gap_button"):
-        if competitor_source_option == "Extract from URL" and not competitor_list:
-            st.warning("Please enter at least one competitor URL.")
+        if not competitor_list:
+            st.warning("Please enter at least one competitor URL or content.")
             return
-        if target_source_option == "Extract from URL" and not target_url:
-            st.warning("Please enter your target URL.")
+        if (target_source_option == "Extract from URL" and not target_url) or \
+           (target_source_option == "Paste Content" and not target_text):
+            st.warning("Please enter your target URL or content.")
             return
+
 
         # --- PREPARE NLP (FOR LEMMATIZATION AND POS TAGGING) ---
         nlp_model = load_spacy_model()
@@ -1129,7 +1131,7 @@ def ngram_tfidf_analysis_page():
                         # You can adjust the weights here
                         combined_score = (tfidf_diff + bert_diff) / 2
 
-                        gap_ngrams.append(f"{ngram} (Combined: {combined_score:.3f}, TF-IDF Diff: {tfidf_diff:.3f}, BERT Diff: {bert_diff:.3f})")
+                        gap_ngrams.append(f"{ngram} (Gap Score: {combined_score:.3f})") # Simplified output
 
                 else:  # n-gram not in target content (TF-IDF difference is just the competitor score)
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
@@ -1143,7 +1145,7 @@ def ngram_tfidf_analysis_page():
 
                         # --- COMBINED SCORE ---
                         combined_score = (competitor_tfidf + bert_diff) / 2
-                        gap_ngrams.append(f"{ngram} (Combined: {combined_score:.3f}, TF-IDF: {competitor_tfidf:.3f}, BERT Diff: {bert_diff:.3f})")
+                        gap_ngrams.append(f"{ngram} (Gap Score: {combined_score:.3f})") # Simplified output
 
             content_gaps[source] = gap_ngrams
 
