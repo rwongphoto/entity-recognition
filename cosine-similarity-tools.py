@@ -22,6 +22,8 @@ import spacy
 from collections import Counter
 from typing import List, Tuple, Dict
 
+from wordcloud import WordCloud
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -213,6 +215,27 @@ def display_entity_barchart(entity_counts, top_n=30):
     plt.tight_layout()
     st.pyplot(fig)
 
+def display_entity_wordcloud(entity_counts):
+    """
+    Generate and display a wordcloud from the given frequency counts.
+    The keys can be tuples (e.g., (entity, label)) or simple strings.
+    """
+    aggregated = {}
+    for key, count in entity_counts.items():
+        # If key is a tuple, extract the entity text; otherwise, use the key as is.
+        if isinstance(key, tuple):
+            k = key[0]
+        else:
+            k = key
+        aggregated[k] = aggregated.get(k, 0) + count
+
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(aggregated)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    plt.tight_layout()
+    st.pyplot(fig)
+
 
 # ------------------------------------
 # Cosine Similarity Functions
@@ -293,7 +316,6 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 # ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
-
 
 
 def url_analysis_dashboard_page():
@@ -686,12 +708,18 @@ def entity_analysis_page():
                     all_entities.extend(filtered_entities)
                     for entity, label in set(filtered_entities):
                         url_entity_counts[(entity, label)] += 1
+            # Only consider entities found in more than one source.
             filtered_url_entity_counts = Counter({k: v for k, v in url_entity_counts.items() if v >= 2})
             if url_entity_counts:
                 st.markdown("### Overall Entity Counts (Found in more than one source)")
                 for (entity, label), count in filtered_url_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
+                # Display bar chart
                 display_entity_barchart(filtered_url_entity_counts)
+                # Display wordcloud
+                st.subheader("Entity Wordcloud")
+                display_entity_wordcloud(filtered_url_entity_counts)
+                
                 st.markdown("### Entities from Exclude Content")
                 if exclude_text:
                     exclude_doc = nlp_model(exclude_text)
@@ -711,6 +739,7 @@ def entity_analysis_page():
                         st.write("No relevant entities found.")
             else:
                 st.warning("No relevant entities found.")
+
 
 
 def displacy_visualization_page():
@@ -742,25 +771,6 @@ def displacy_visualization_page():
             st.components.v1.html(html, height=600, scrolling=True)
         except Exception as e:
             st.error(f"Error rendering visualization: {e}")
-
-from wordcloud import WordCloud
-
-def display_entity_wordcloud(entity_counts):
-    """
-    Generate and display a wordcloud from the entity frequency counts.
-    Here, we aggregate counts by entity text only.
-    """
-    # Aggregate counts by entity text (ignoring labels)
-    aggregated = {}
-    for (entity, label), count in entity_counts.items():
-        aggregated[entity] = aggregated.get(entity, 0) + count
-
-    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(aggregated)
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.imshow(wordcloud, interpolation='bilinear')
-    ax.axis('off')
-    plt.tight_layout()
-    st.pyplot(fig)
 
 def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
