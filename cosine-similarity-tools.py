@@ -162,6 +162,16 @@ def count_videos(_soup):
     
     return video_count + iframe_videos
 
+def preprocess_text(text, nlp_model):
+    """
+    Preprocesses text by tokenizing with spaCy and returning a lemmatized version.
+    Punctuation and extra spaces are removed.
+    """
+    doc = nlp_model(text)
+    lemmatized_tokens = [token.lemma_ for token in doc if not token.is_punct and not token.is_space]
+    return " ".join(lemmatized_tokens)
+
+
 def get_embedding(text, model, tokenizer):
     # tokenizer.pad_token = tokenizer.unk_token  # This line is no longer necessary
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
@@ -1041,7 +1051,7 @@ def ngram_tfidf_analysis_page():
             st.warning("Please enter your target URL.")
             return
 
-        # Extract competitor texts using our custom function
+        # Extract competitor texts using our custom extraction function
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -1051,12 +1061,12 @@ def ngram_tfidf_analysis_page():
                 else:
                     text = source
                 if text:
-                    competitor_texts.append(text)
                     valid_competitor_sources.append(source)
+                    competitor_texts.append(text)
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
-        # Extract target content using the custom function if needed
+        # Extract target content using custom extraction if needed
         if target_source_option == "Extract from URL":
             target_content = extract_relevant_text_from_url(target_url)
             if not target_content:
@@ -1064,6 +1074,11 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
+
+        # Load spaCy model and preprocess (lemmatize) all texts
+        nlp_model = load_spacy_model()
+        competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
+        target_content = preprocess_text(target_content, nlp_model)
 
         if not competitor_texts:
             st.error("No competitor content was extracted.")
@@ -1098,14 +1113,14 @@ def ngram_tfidf_analysis_page():
         with st.spinner("Calculating BERT embedding for target content..."):
             target_embedding = get_embedding(target_content, model, tokenizer)
 
-        # Calculate BERT embeddings for competitor texts (new block)
+        # Calculate BERT embeddings for competitor texts
         competitor_embeddings = []
         with st.spinner("Calculating BERT embeddings for competitors..."):
             for text in competitor_texts:
                 emb = get_embedding(text, model, tokenizer)
                 competitor_embeddings.append(emb)
 
-        # --- GAP ANALYSIS: Only include n-grams with positive gap scores ---
+        # GAP ANALYSIS: Only include n-grams with positive gap scores
         content_gaps = {}
         for idx, source in enumerate(valid_competitor_sources):
             gap_ngrams = []
@@ -1139,7 +1154,6 @@ def ngram_tfidf_analysis_page():
                 else:
                     consolidated_gaps[ngram]['Gap Score'] = max(consolidated_gaps[ngram]['Gap Score'], score)
                     consolidated_gaps[ngram]['Sources'].append(source)
-
         df_consolidated = pd.DataFrame.from_dict(consolidated_gaps, orient='index')
         df_consolidated.index.name = 'N-gram'
         df_consolidated = df_consolidated.reset_index()
@@ -1178,6 +1192,7 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(combined_gap_counts)
         else:
             st.write("No combined gap n‑grams to create a wordcloud.")
+
 
 
 
@@ -1252,7 +1267,7 @@ def keyword_clustering_from_gap_page():
             st.warning("Please enter your target URL or content.")
             return
 
-        # Extract competitor content using our custom function
+        # Extract competitor content using custom function
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -1262,12 +1277,12 @@ def keyword_clustering_from_gap_page():
                 else:
                     text = source
                 if text:
-                    competitor_texts.append(text)
                     valid_competitor_sources.append(source)
+                    competitor_texts.append(text)
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
-        # Extract target content using custom function if needed
+        # Extract target content using custom function
         if target_source_option == "Extract from URL":
             target_content = extract_relevant_text_from_url(target_url)
             if not target_content:
@@ -1275,6 +1290,11 @@ def keyword_clustering_from_gap_page():
                 return
         else:
             target_content = target_text
+
+        # Load spaCy model and preprocess (lemmatize) texts
+        nlp_model = load_spacy_model()
+        competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
+        target_content = preprocess_text(target_content, nlp_model)
 
         if not competitor_texts:
             st.error("No competitor content was extracted.")
@@ -1416,6 +1436,7 @@ def keyword_clustering_from_gap_page():
                 yaxis_title="Competitive Pressure: High vs. Low"
             )
             st.plotly_chart(fig)
+
 
 
 
