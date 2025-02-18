@@ -180,16 +180,21 @@ def identify_entities(text, nlp_model):
     return entities
 
 
-def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:  # Add nlp_model
-    """Counts named entities, applying lemmatization."""
+def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
+    """Counts named entities, applying lemmatization, and ensuring uniqueness per source."""
     entity_counts = Counter()
+    seen_entities = set()  # Keep track of entities seen *within this source*
+
     for entity, label in entities:
         entity = entity.replace('\n', ' ').replace('\r', '')
-        if len(entity) > 2:  # Removed label != "CARDINAL" check here.  Filtering is done earlier.
-            # Lemmatize the entity
+        if len(entity) > 2:
             doc = nlp_model(entity)
             lemma = " ".join([token.lemma_ for token in doc])
-            entity_counts[(lemma, label)] += 1  # Use lemma instead of original entity
+
+            # Check if this lemmatized entity (and label) has been seen in *this source*
+            if (lemma, label) not in seen_entities:
+                entity_counts[(lemma, label)] += 1
+                seen_entities.add((lemma, label)) # Add to seen entities for *this source*
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=30):
@@ -735,7 +740,14 @@ def entity_analysis_page():
                 target_text = extract_text_from_url(target_input) if target_input else ""
             else:
                 target_text = target_input
-            target_entities_set = {(ent.text.lower(), ent.label_) for ent in nlp_model(target_text).ents} if target_text else set()
+
+            # Get target entities and apply filtering and lemmatization UP FRONT
+            target_entities = identify_entities(target_text, nlp_model) if target_text else []
+            filtered_target_entities = [(entity, label) for entity, label in target_entities
+                                         if label not in exclude_types]
+            target_entity_counts = count_entities(filtered_target_entities, nlp_model)
+            # Convert to a set of (lemma, label) for efficient lookup later
+            target_entities_set = set(target_entity_counts.keys())
 
 
             # --- Process Exclude Site (Optional) ---
@@ -746,8 +758,9 @@ def entity_analysis_page():
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_text).ents} if exclude_text else set()
 
             # --- Process Competitors ---
-            all_competitor_entities = []
+            all_competitor_entities = []  # Store (lemma, label) tuples
             entity_counts_per_source = {}
+
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
                     text = extract_text_from_url(source)
@@ -758,33 +771,30 @@ def entity_analysis_page():
                     # Filter entities by type and exclude list
                     filtered_entities = [(entity, label) for entity, label in entities
                                          if label not in exclude_types and entity.lower() not in exclude_entities_set]
-                    entity_counts_per_source[source] = count_entities(filtered_entities, nlp_model) # Pass nlp_model
-                    all_competitor_entities.extend(filtered_entities)
 
-            # Count competitor entities (lemmatized)
-            competitor_entity_counts = count_entities(all_competitor_entities, nlp_model)
+                    # Count entities, ensuring uniqueness *per source*
+                    source_counts = count_entities(filtered_entities, nlp_model)
+                    entity_counts_per_source[source] = source_counts
 
-            # ---  Gap Analysis: Competitors vs. Target ---
+                    # Add the lemmatized entities to the overall list
+                    for (lemma, label) in source_counts:
+                        all_competitor_entities.append((lemma, label))
+
+            # --- Gap and Unique Entity Analysis (using sets for efficiency) ---
+
+            # Convert competitor entities to a Counter for easy counting
+            competitor_entity_counts = Counter(all_competitor_entities)
+
             gap_entities = Counter()
-            unique_target_entities = Counter()
-
-            for (entity, label), count in competitor_entity_counts.items():
-                if (entity.lower(), label) not in target_entities_set:
+            for (entity, label), count in competitor_entity_counts.items():  # Iterate over (lemma, label)
+                if (entity, label) not in target_entities_set:  # Check against the *set*
                     gap_entities[(entity, label)] = count
 
-            # ---  Unique Target Entities ---
-            target_entities = identify_entities(target_text, nlp_model)
-            filtered_target_entities = [(entity, label) for entity, label in target_entities if label not in exclude_types] #Apply filter
-            target_entity_counts = count_entities(filtered_target_entities, nlp_model)
+            unique_target_entities = Counter()
+            for (entity, label), count in target_entity_counts.items(): #Iterate through target entities.
+                if (entity,label) not in competitor_entity_counts:
+                    unique_target_entities[(entity,label)] = count
 
-            for (entity, label), count in target_entity_counts.items():
-                found_in_competitor = False
-                for comp_entity, _ in all_competitor_entities:  # Check against *original*, not lemmatized
-                    if entity.lower() == comp_entity.lower():
-                        found_in_competitor = True
-                        break
-                if not found_in_competitor:
-                    unique_target_entities[(entity, label)] = count
 
 
             # --- Display Results ---
@@ -805,7 +815,7 @@ def entity_analysis_page():
             else:
                 st.write("No unique entities found on the target site.")
 
-            if exclude_text: # Keep the display of exclude entities.
+            if exclude_text:  # Keep the display of exclude entities.
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
                 exclude_doc = nlp_model(exclude_text)
                 exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
@@ -813,12 +823,13 @@ def entity_analysis_page():
                 for (entity, label), count in exclude_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
 
+
             st.markdown("### Entities Per Competitor Source")  # Keep per-source breakdown
             for source, entity_counts_local in entity_counts_per_source.items():
                 st.markdown(f"#### Source: {source}")
                 if entity_counts_local:
                     for (entity, label), count in entity_counts_local.most_common(50):
-                        st.write(f"- {entity} ({label}): {count}")
+                        st.write(f"- {entity} ({label}): {count}")  # Show lemma
                 else:
                     st.write("No relevant entities found.")
 
