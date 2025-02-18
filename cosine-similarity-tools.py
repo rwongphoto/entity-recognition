@@ -103,6 +103,47 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
+def extract_relevant_text_from_url(url):
+    """
+    Extracts text from a URL using Selenium—but only from specific tags:
+    <p>, <ol>, <ul>, <h1>-<h6>, and <table>.
+    """
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        # You can keep your existing user agent or modify it as needed
+        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        chrome_options.add_argument(f"user-agent={user_agent}")
+
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(url)
+
+        # Wait for the page to load
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
+        page_source = driver.page_source
+        driver.quit()
+        soup = BeautifulSoup(page_source, "html.parser")
+
+        # Only extract text from the desired tags
+        tags = []
+        tags.extend(soup.find_all("p"))
+        tags.extend(soup.find_all("ol"))
+        tags.extend(soup.find_all("ul"))
+        for header in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+            tags.extend(soup.find_all(header))
+        tags.extend(soup.find_all("table"))
+
+        texts = [tag.get_text(separator=" ", strip=True) for tag in tags]
+        return " ".join(texts)
+    except Exception as e:
+        st.error(f"Error extracting relevant content from {url}: {e}")
+        return None
+
+
 @st.cache_data
 def count_videos(_soup):
     """Counts the number of video elements and embedded videos on the page."""
@@ -996,18 +1037,13 @@ def ngram_tfidf_analysis_page():
             st.warning("Please enter your target URL.")
             return
 
-        # Prepare NLP model for lemmatization/processing
-        nlp_model = load_spacy_model()
-        if not nlp_model:
-            return
-
-        # Extract competitor texts
+        # Extract competitor texts using our custom function
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
-                    text = extract_text_from_url(source)
+                    text = extract_relevant_text_from_url(source)
                 else:
                     text = source
                 if text:
@@ -1016,9 +1052,9 @@ def ngram_tfidf_analysis_page():
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
-        # Extract target content
+        # Extract target content using the custom function if needed
         if target_source_option == "Extract from URL":
-            target_content = extract_text_from_url(target_url)
+            target_content = extract_relevant_text_from_url(target_url)
             if not target_content:
                 st.warning(f"Could not extract content from target URL: {target_url}")
                 return
@@ -1045,12 +1081,7 @@ def ngram_tfidf_analysis_page():
                 columns=feature_names
             )
 
-        # Calculate BERT embeddings for target content
-        tokenizer, model = initialize_bert_model()
-        with st.spinner("Calculating BERT embedding for target content..."):
-            target_embedding = get_embedding(target_content, model, tokenizer)
-
-        # For each competitor, get their top n-grams
+        # Get top n-grams for each competitor
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -1058,18 +1089,20 @@ def ngram_tfidf_analysis_page():
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
 
-        # Calculate BERT embeddings for competitor texts (store in order)
+        # Calculate BERT embedding for target content
+        tokenizer, model = initialize_bert_model()
+        with st.spinner("Calculating BERT embedding for target content..."):
+            target_embedding = get_embedding(target_content, model, tokenizer)
+
+        # Calculate BERT embeddings for competitor texts (new block)
         competitor_embeddings = []
         with st.spinner("Calculating BERT embeddings for competitors..."):
             for text in competitor_texts:
                 emb = get_embedding(text, model, tokenizer)
                 competitor_embeddings.append(emb)
 
-        # --- GAP ANALYSIS ---
-        # We'll compute a combined score (TF-IDF diff + BERT diff) for each n-gram.
-        # Only n-grams with a positive combined gap score will be kept.
+        # --- GAP ANALYSIS: Only include n-grams with positive gap scores ---
         content_gaps = {}
-        # Use enumerate so we have an index for competitor_texts and embeddings
         for idx, source in enumerate(valid_competitor_sources):
             gap_ngrams = []
             for ngram in top_ngrams_competitors[source]:
@@ -1077,23 +1110,16 @@ def ngram_tfidf_analysis_page():
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
                     target_tfidf = df_tfidf_target.iloc[0][ngram]
                     tfidf_diff = competitor_tfidf - target_tfidf
-
-                    # Only process if there is a positive TF-IDF gap
                     if tfidf_diff <= 0:
                         continue
-
-                    # For BERT, use the entire competitor text's embedding (since extracting per n-gram is tricky)
-                    # Here, we'll simply compare the cosine similarity of the competitor text and target text.
                     competitor_bert_similarity = cosine_similarity(competitor_embeddings[idx], competitor_embeddings[idx])[0][0]
                     target_bert_similarity = cosine_similarity(competitor_embeddings[idx], target_embedding)[0][0]
                     bert_diff = competitor_bert_similarity - target_bert_similarity
-
                     combined_score = (tfidf_diff + bert_diff) / 2
                     if combined_score > 0:
                         gap_ngrams.append((ngram, combined_score))
-                else:  # n-gram not present in target content
+                else:
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
-                    # In this case, target score is implicitly 0
                     bert_diff = cosine_similarity(competitor_embeddings[idx], competitor_embeddings[idx])[0][0]
                     combined_score = (competitor_tfidf + bert_diff) / 2
                     if combined_score > 0:
@@ -1105,10 +1131,7 @@ def ngram_tfidf_analysis_page():
         for source, gap_list in content_gaps.items():
             for ngram, score in gap_list:
                 if ngram not in consolidated_gaps:
-                    consolidated_gaps[ngram] = {
-                        'Gap Score': score,
-                        'Sources': [source]
-                    }
+                    consolidated_gaps[ngram] = {'Gap Score': score, 'Sources': [source]}
                 else:
                     consolidated_gaps[ngram]['Gap Score'] = max(consolidated_gaps[ngram]['Gap Score'], score)
                     consolidated_gaps[ngram]['Sources'].append(source)
@@ -1156,6 +1179,8 @@ def ngram_tfidf_analysis_page():
 
 
 
+
+
 # ------------------------------------
 # New Tool: Keyword Clustering
 # ------------------------------------
@@ -1165,11 +1190,12 @@ def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
         """
-    The Keyword Clusters tool is a powerful way to identify and prioritize content opportunities based on a semantic comparison of your website's content with that of your competitors. It goes beyond simple keyword research by using advanced natural language processing (NLP) and machine learning to reveal hidden topic gaps.
+        This tool combines semantic gap analysis with keyword clustering.
+        First, it identifies key phrases where your competitors outperform your target.
+        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
+        The resulting clusters (and their representative keywords) are displayed below.
         """
     )
-
-    # Competitor input method selection
     st.subheader("Competitors")
     competitor_source_option = st.radio(
         "Select competitor content source:",
@@ -1185,7 +1211,6 @@ def keyword_clustering_from_gap_page():
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
 
-    # Target input method selection
     st.subheader("Your Site")
     target_source_option = st.radio(
         "Select target content source:",
@@ -1198,14 +1223,12 @@ def keyword_clustering_from_gap_page():
     else:
         target_text = st.text_area("Paste your content:", key="target_content", value="", height=200)
 
-    # N-gram Options for Gap Analysis
     st.subheader("Word Count Settings")
-    n_value = st.selectbox("Select # of Words in Phrase:", options=[1, 2, 3, 4, 5], index=1, key="ngram_n")
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5], index=1, key="ngram_n")
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
 
-    # Clustering Settings with re-labeled options
     st.subheader("Clustering Settings")
     algorithm = st.selectbox(
         "Select Clustering Type:",
@@ -1218,22 +1241,20 @@ def keyword_clustering_from_gap_page():
         n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
 
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
-        # --- INPUT VALIDATION (Early Exit) ---
         if not competitor_list:
             st.warning("Please enter at least one competitor URL or content.")
             return
-        if (target_source_option == "Extract from URL" and not target_url) or \
-           (target_source_option == "Paste Content" and not target_text):
+        if (target_source_option == "Extract from URL" and not target_url) or (target_source_option == "Paste Content" and not target_text):
             st.warning("Please enter your target URL or content.")
             return
 
-        # --- EXTRACT COMPETITOR CONTENT ---
+        # Extract competitor content using our custom function
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
-                    text = extract_text_from_url(source)
+                    text = extract_relevant_text_from_url(source)
                 else:
                     text = source
                 if text:
@@ -1242,9 +1263,9 @@ def keyword_clustering_from_gap_page():
                 else:
                     st.warning(f"Could not extract content from: {source}")
 
-        # --- EXTRACT TARGET CONTENT (Conditional) ---
+        # Extract target content using custom function if needed
         if target_source_option == "Extract from URL":
-            target_content = extract_text_from_url(target_url)
+            target_content = extract_relevant_text_from_url(target_url)
             if not target_content:
                 st.error("Could not extract content from the target URL.")
                 return
@@ -1254,7 +1275,6 @@ def keyword_clustering_from_gap_page():
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-
 
         # Calculate TF-IDF for Competitors
         with st.spinner("Calculating TF-IDF scores for competitors..."):
@@ -1272,68 +1292,81 @@ def keyword_clustering_from_gap_page():
                 columns=feature_names
             )
 
-        # --- MODIFIED GAP N-GRAM IDENTIFICATION AND RANKING ---
-        gap_ngrams_with_scores = []  # Store (ngram, score) tuples
+        # Identify Top N-grams for Competitors
+        top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
-            for ngram in top_ngrams.index:
-                comp_score = df_tfidf_competitors.loc[source, ngram]
-                target_score = df_tfidf_target.iloc[0][ngram] if ngram in df_tfidf_target.columns else 0.0
-                gap_score = comp_score - target_score  # Calculate the gap
-                if gap_score > 0:  # Only include n-grams where competitor outperforms target
-                    gap_ngrams_with_scores.append((ngram, gap_score))
+            top_ngrams_competitors[source] = list(top_ngrams.index)
 
-        # Sort the gap n-grams by score in descending order
+        # Calculate BERT embeddings for competitor texts
+        tokenizer, model = initialize_bert_model()
+        competitor_embeddings = []
+        with st.spinner("Calculating BERT embeddings for competitors..."):
+            for text in competitor_texts:
+                emb = get_embedding(text, model, tokenizer)
+                competitor_embeddings.append(emb)
+
+        # Gap Analysis: Use TF-IDF differences to compute gap scores, only include positive gaps.
+        gap_ngrams_with_scores = []
+        for idx, source in enumerate(valid_competitor_sources):
+            for ngram in top_ngrams_competitors[source]:
+                if ngram in df_tfidf_target.columns:
+                    competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
+                    target_tfidf = df_tfidf_target.iloc[0][ngram]
+                    gap_score = competitor_tfidf - target_tfidf
+                    if gap_score > 0:
+                        gap_ngrams_with_scores.append((ngram, gap_score))
+                else:
+                    competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
+                    if competitor_tfidf > 0:
+                        gap_ngrams_with_scores.append((ngram, competitor_tfidf))
         gap_ngrams_with_scores.sort(key=lambda x: x[1], reverse=True)
-        gap_ngrams = [ngram for ngram, _ in gap_ngrams_with_scores]  # Extract just the n-grams
+        gap_ngrams = [ngram for ngram, score in gap_ngrams_with_scores]
 
         if not gap_ngrams:
-            st.error("No gap n-grams were identified.  Consider adjusting your TF-IDF parameters.")
+            st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
             return
 
+        st.markdown("### Top Phrases:")
+        st.write(gap_ngrams)
 
-        # --- Compute BERT Embeddings for Each Gap n-gram ---
-        tokenizer, model = initialize_bert_model()
-        embeddings = []
-        valid_gap_ngrams = []  # This will now store the *sorted* n-grams
+        # Compute BERT Embeddings for each gap n-gram (in sorted order)
+        valid_gap_ngrams = []
+        gap_embeddings = []
         with st.spinner("Computing BERT embeddings for gap n-grams..."):
-            for gram in gap_ngrams: #Iterate through the ordered n-grams
+            for gram in gap_ngrams:
                 emb = get_embedding(gram, model, tokenizer)
                 if emb is not None:
-                    embeddings.append(emb.squeeze())
+                    gap_embeddings.append(emb.squeeze())
                     valid_gap_ngrams.append(gram)
-
         if len(valid_gap_ngrams) == 0:
             st.error("Could not compute embeddings for any gap n-grams.")
             return
+        gap_embeddings = np.vstack(gap_embeddings)
 
-        embeddings = np.vstack(embeddings)
-
-
-        # --- PERFORM CLUSTERING *BEFORE* PCA ---
+        # Perform Clustering
         if algorithm == "Kindred Spirit":
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto')  # Corrected n_init
-            cluster_labels = clustering_model.fit_predict(embeddings)
-            centers = clustering_model.cluster_centers_  # Corrected attribute name
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+            cluster_labels = clustering_model.fit_predict(gap_embeddings)
+            centers = clustering_model.cluster_centers_
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
                 if not cluster_grams:
                     continue
-                cluster_embeddings = embeddings[cluster_labels == i]
+                cluster_embeddings = gap_embeddings[cluster_labels == i]
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
-
         elif algorithm == "Affinity Stack":
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
-            cluster_labels = clustering_model.fit_predict(embeddings)
+            cluster_labels = clustering_model.fit_predict(gap_embeddings)
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
-                cluster_embeddings = embeddings[cluster_labels == i]
+                cluster_embeddings = gap_embeddings[cluster_labels == i]
                 if len(cluster_embeddings) > 1:
                     sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
                     rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
@@ -1341,30 +1374,13 @@ def keyword_clustering_from_gap_page():
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
 
+        # Display Gap Scores Table
+        df_gap = pd.DataFrame(gap_ngrams_with_scores, columns=['N-gram', 'Gap Score'])
+        df_gap = df_gap.sort_values(by='Gap Score', ascending=False)
+        st.markdown("### Gap Scores for Top Phrases:")
+        st.dataframe(df_gap)
 
-        # --- NOW do PCA *AFTER* Clustering ---
-        with st.spinner("Generating interactive cluster visualization..."):
-            pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(embeddings)  # Fit PCA on the *original* embeddings
-
-            # Create a DataFrame for Plotly
-            df = pd.DataFrame({
-                'x': embeddings_2d[:, 0],
-                'y': embeddings_2d[:, 1],
-                'Keyword': valid_gap_ngrams,
-                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]  # Use cluster_labels HERE
-            })
-
-            fig = px.scatter(df, x='x', y='y', color='Cluster', hover_data=['Keyword'],
-                             title="Semantic Opportunity Clusters")
-            fig.update_layout(
-                xaxis_title="Topic Focus: Broad vs. Niche",
-                yaxis_title="Competitive Pressure: High vs. Low"
-            )
-            # --- DISPLAY PLOTLY CHART *FIRST* ---
-            st.plotly_chart(fig)
-
-        # --- Display the Clusters (Table) ---
+        # Display Clusters
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
@@ -1379,11 +1395,25 @@ def keyword_clustering_from_gap_page():
             for gram in gram_list:
                 st.write(f" - {gram}")
 
+        # Interactive Visualization using PCA and Plotly
+        with st.spinner("Generating interactive cluster visualization..."):
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(gap_embeddings)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Keyword': valid_gap_ngrams,
+                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', hover_data=['Keyword'],
+                             title="Semantic Opportunity Clusters")
+            fig.update_layout(
+                xaxis_title="Topic Focus: Broad vs. Niche",
+                yaxis_title="Competitive Pressure: High vs. Low"
+            )
+            st.plotly_chart(fig)
 
-        # --- Display Top Phrases *AFTER* the Plot and Clusters ---
-        st.markdown("### Top Phrases (Ranked by Gap Score):")
-        for ngram, score in gap_ngrams_with_scores:
-            st.write(f"- {ngram} (Gap Score: {score:.3f})")
+
 
 
 
