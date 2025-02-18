@@ -1316,8 +1316,8 @@ def keyword_clustering_from_gap_page():
                 columns=feature_names
             )
 
-        # Identify Gap n‑grams
-        gap_ngrams = set()
+        # --- MODIFIED GAP N-GRAM IDENTIFICATION AND RANKING ---
+        gap_ngrams_with_scores = []  # Store (ngram, score) tuples
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
@@ -1325,22 +1325,32 @@ def keyword_clustering_from_gap_page():
             for ngram in top_ngrams.index:
                 comp_score = df_tfidf_competitors.loc[source, ngram]
                 target_score = df_tfidf_target.iloc[0][ngram] if ngram in df_tfidf_target.columns else 0.0
-                if comp_score > target_score:
-                    gap_ngrams.add(ngram)
-        gap_ngrams = list(gap_ngrams)
+                gap_score = comp_score - target_score  # Calculate the gap
+                if gap_score > 0:  # Only include n-grams where competitor outperforms target
+                    gap_ngrams_with_scores.append((ngram, gap_score))
+
+        # Sort the gap n-grams by score in descending order
+        gap_ngrams_with_scores.sort(key=lambda x: x[1], reverse=True)
+        gap_ngrams = [ngram for ngram, _ in gap_ngrams_with_scores]  # Extract just the n-grams
+
         if not gap_ngrams:
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
 
-        st.markdown("### Top Phrases:")
-        st.write(gap_ngrams)
+        st.markdown("### Top Phrases (Ranked by Gap Score):") #Improved Labelling
+        # st.write(gap_ngrams) # Replaced with a loop to display with scores
+        for ngram, score in gap_ngrams_with_scores:
+            st.write(f"- {ngram} (Gap Score: {score:.3f})")
+
+        # --- END MODIFIED SECTION ---
+
 
         # Compute BERT Embeddings for Each Gap n‑gram
         tokenizer, model = initialize_bert_model()
         embeddings = []
-        valid_gap_ngrams = []
+        valid_gap_ngrams = []  # This will now store the *sorted* n-grams
         with st.spinner("Computing BERT embeddings for gap n‑grams..."):
-            for gram in gap_ngrams:
+            for gram in gap_ngrams: #Iterate through the ordered n-grams
                 emb = get_embedding(gram, model, tokenizer)
                 if emb is not None:
                     embeddings.append(emb.squeeze())
@@ -1357,7 +1367,7 @@ def keyword_clustering_from_gap_page():
             from sklearn.cluster import KMeans
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
             cluster_labels = clustering_model.fit_predict(embeddings)
-            centers = clustering_model.cluster_centers_  # Corrected attribute name
+            centers = clustering_model.cluster_centers_
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
