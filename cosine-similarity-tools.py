@@ -747,20 +747,25 @@ def named_entity_barchart_page():
     st.header("Entity Frequency Bar Chart")
     st.markdown("Generate a bar chart from the most frequent named entities across multiple sources.")
 
-    # Choose how to input content
+    # Choose the input method and provide instructions
     input_method = st.radio(
         "Select content input method:",
         options=["Extract from URL", "Paste Content"],
         key="entity_barchart_input"
     )
 
-    # Initialize variables for text and URLs
-    text = ""
-    urls = []
-
+    # For pasted content, instruct users on how to input the text.
     if input_method == "Paste Content":
+        st.markdown(
+            "Please paste your content in the text area below. "
+            "If you have multiple sources, separate each content block with the delimiter `---`."
+        )
         text = st.text_area("Enter Text:", key="barchart_text", height=300, value="")
     else:
+        st.markdown(
+            "Please enter one or more URLs (one per line) from which to extract content. "
+            "The app will fetch and combine the text from each URL."
+        )
         urls_input = st.text_area("Enter URLs (one per line):", key="barchart_url", value="")
         urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
 
@@ -792,7 +797,7 @@ def named_entity_barchart_page():
                 st.error("Could not load spaCy model. Aborting.")
                 return
             entities = identify_entities(all_text, nlp_model)
-            # Filter out unwanted entity types (CARDINAL, PERCENT, MONEY)
+            # Filter out unwanted entity types
             filtered_entities = [
                 (entity, label)
                 for entity, label in entities
@@ -814,6 +819,7 @@ def named_entity_barchart_page():
                             st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
+
 
 
 # ------------------------------------
