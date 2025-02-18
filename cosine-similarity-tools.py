@@ -1338,14 +1338,7 @@ def keyword_clustering_from_gap_page():
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
 
-        st.markdown("### Top Phrases (Ranked by Gap Score):")
-        for ngram, score in gap_ngrams_with_scores:
-            st.write(f"- {ngram} (Gap Score: {score:.3f})")
-
-        # --- END MODIFIED SECTION ---
-
-
-        # Compute BERT Embeddings for Each Gap n‑gram
+        # --- Compute BERT Embeddings for Each Gap n‑gram ---
         tokenizer, model = initialize_bert_model()
         embeddings = []
         valid_gap_ngrams = []  # This will now store the *sorted* n-grams
@@ -1364,7 +1357,7 @@ def keyword_clustering_from_gap_page():
 
         # --- PERFORM CLUSTERING *BEFORE* PCA ---
         if algorithm == "Kindred Spirit":
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto') #Added n_init
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto')
             cluster_labels = clustering_model.fit_predict(embeddings)
             centers = clustering_model.cluster_centers_  # Corrected attribute name
             rep_keywords = {}
@@ -1391,22 +1384,6 @@ def keyword_clustering_from_gap_page():
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
 
-        # Display the Clusters (using the table format)
-        clusters = {}
-        for gram, label in zip(valid_gap_ngrams, cluster_labels):
-            clusters.setdefault(label, []).append(gram)
-
-        st.markdown("### Keyword Clusters:")
-        for label, gram_list in clusters.items():
-            if label == -1:
-                st.markdown("**Noise:**")
-            else:
-                rep = rep_keywords.get(label, "N/A")
-                st.markdown(f"**Cluster {label}** (Representative: {rep}):")
-            for gram in gram_list:
-                st.write(f" - {gram}")
-
-
         # --- NOW do PCA *AFTER* Clustering ---
         with st.spinner("Generating interactive cluster visualization..."):
             pca = PCA(n_components=2)
@@ -1426,7 +1403,28 @@ def keyword_clustering_from_gap_page():
                 xaxis_title="Topic Focus: Broad vs. Niche",
                 yaxis_title="Competitive Pressure: High vs. Low"
             )
+            # --- DISPLAY PLOTLY CHART *FIRST* ---
             st.plotly_chart(fig)
+
+        # --- Display the Clusters (Table) ---
+        clusters = {}
+        for gram, label in zip(valid_gap_ngrams, cluster_labels):
+            clusters.setdefault(label, []).append(gram)
+
+        st.markdown("### Keyword Clusters:")
+        for label, gram_list in clusters.items():
+            if label == -1:
+                st.markdown("**Noise:**")
+            else:
+                rep = rep_keywords.get(label, "N/A")
+                st.markdown(f"**Cluster {label}** (Representative: {rep}):")
+            for gram in gram_list:
+                st.write(f" - {gram}")
+
+        # --- Display Top Phrases *AFTER* the Plot and Clusters ---
+        st.markdown("### Top Phrases (Ranked by Gap Score):")
+        for ngram, score in gap_ngrams_with_scores:
+            st.write(f"- {ngram} (Gap Score: {score:.3f})")
 
 
 
