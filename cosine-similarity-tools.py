@@ -27,6 +27,7 @@ from wordcloud import WordCloud
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer, ENGLISH_STOP_WORDS
 from sklearn.decomposition import PCA
 import plotly.express as px  # Import plotly express
+from sklearn.cluster import KMeans, AgglomerativeClustering  # Import clustering algorithms here
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -1337,8 +1338,7 @@ def keyword_clustering_from_gap_page():
             st.error("No gap n‑grams were identified. Consider adjusting your TF‑IDF parameters.")
             return
 
-        st.markdown("### Top Phrases (Ranked by Gap Score):") #Improved Labelling
-        # st.write(gap_ngrams) # Replaced with a loop to display with scores
+        st.markdown("### Top Phrases (Ranked by Gap Score):")
         for ngram, score in gap_ngrams_with_scores:
             st.write(f"- {ngram} (Gap Score: {score:.3f})")
 
@@ -1362,12 +1362,11 @@ def keyword_clustering_from_gap_page():
 
         embeddings = np.vstack(embeddings)
 
-        # Perform Clustering based on the selected algorithm
+        # --- PERFORM CLUSTERING *BEFORE* PCA ---
         if algorithm == "Kindred Spirit":
-            from sklearn.cluster import KMeans
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42)
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init = 'auto') #Added n_init
             cluster_labels = clustering_model.fit_predict(embeddings)
-            centers = clustering_model.cluster_centers_
+            centers = clustering_model.cluster_centers_  # Corrected attribute name
             rep_keywords = {}
             for i in range(n_clusters):
                 cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
@@ -1377,8 +1376,8 @@ def keyword_clustering_from_gap_page():
                 distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
                 rep_keyword = cluster_grams[np.argmin(distances)]
                 rep_keywords[i] = rep_keyword
+
         elif algorithm == "Affinity Stack":
-            from sklearn.cluster import AgglomerativeClustering
             clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
             cluster_labels = clustering_model.fit_predict(embeddings)
             rep_keywords = {}
@@ -1392,7 +1391,7 @@ def keyword_clustering_from_gap_page():
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
 
-        # Display the Clusters (using the table format from before)
+        # Display the Clusters (using the table format)
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
@@ -1408,26 +1407,26 @@ def keyword_clustering_from_gap_page():
                 st.write(f" - {gram}")
 
 
-        # --- Interactive Scatter Plot with Plotly ---
+        # --- NOW do PCA *AFTER* Clustering ---
         with st.spinner("Generating interactive cluster visualization..."):
             pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(embeddings)
+            embeddings_2d = pca.fit_transform(embeddings)  # Fit PCA on the *original* embeddings
 
             # Create a DataFrame for Plotly
             df = pd.DataFrame({
                 'x': embeddings_2d[:, 0],
                 'y': embeddings_2d[:, 1],
                 'Keyword': valid_gap_ngrams,
-                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]  # String labels for Plotly
+                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]  # Use cluster_labels HERE
             })
 
             fig = px.scatter(df, x='x', y='y', color='Cluster', hover_data=['Keyword'],
                              title="Semantic Opportunity Clusters")
             fig.update_layout(
-                xaxis_title="Topic Focus: Broad vs. Niche",  # Optional: Add axis labels
-                yaxis_title="Competitive Pressure: High vs. Low"  # Optional
+                xaxis_title="Topic Focus: Broad vs. Niche",
+                yaxis_title="Competitive Pressure: High vs. Low"
             )
-            st.plotly_chart(fig) # Display with Streamlit
+            st.plotly_chart(fig)
 
 
 
