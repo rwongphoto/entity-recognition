@@ -1011,11 +1011,10 @@ def ngram_tfidf_analysis_page():
             st.warning("Please enter your target URL or content.")
             return
 
-
         # --- PREPARE NLP (FOR LEMMATIZATION AND POS TAGGING) ---
         nlp_model = load_spacy_model()
         if not nlp_model:
-            return #Error loading Spacy
+            return
 
         # Extract competitor texts
         competitor_texts = []
@@ -1036,7 +1035,7 @@ def ngram_tfidf_analysis_page():
                             continue  # Skip stop words unless they are important parts of speech
                         processed_tokens.append(token.lemma_)
                     processed_text = " ".join(processed_tokens)
-                    competitor_texts.append(processed_text) # Append *processed* text
+                    competitor_texts.append(processed_text)
                     valid_competitor_sources.append(source)
                 else:
                     st.warning(f"Could not extract content from: {source}")
@@ -1057,38 +1056,37 @@ def ngram_tfidf_analysis_page():
             if token.lemma_.lower() in stop_words and token.pos_ not in ("NOUN", "VERB", "ADJ", "ADV"):
                 continue
             processed_target_tokens.append(token.lemma_)
-        target_content = " ".join(processed_target_tokens) #Use processed text.
+        target_content = " ".join(processed_target_tokens)
 
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
 
         # --- BERT EMBEDDING CALCULATIONS (FOR COMBINED APPROACH) ---
-        tokenizer, model = initialize_bert_model()  # Load BERT model
+        tokenizer, model = initialize_bert_model()
 
         # Calculate BERT embeddings for competitor texts
         competitor_embeddings = []
         with st.spinner("Calculating BERT embeddings for competitors..."):
             for text in competitor_texts:
-                embedding = get_embedding(text, model, tokenizer)  # Get embedding for the *processed* text
+                embedding = get_embedding(text, model, tokenizer)
                 competitor_embeddings.append(embedding)
 
         # Calculate BERT embedding for target content
         with st.spinner("Calculating BERT embedding for target content..."):
-            target_embedding = get_embedding(target_content, model, tokenizer)  # Get embedding for the *processed* text
+            target_embedding = get_embedding(target_content, model, tokenizer)
 
         # --- TF-IDF CALCULATIONS (USING PROCESSED TEXT) ---
-
         # Calculate TF-IDF for competitors
         with st.spinner("Calculating TF-IDF scores for competitors..."):
-            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words=stop_words)  # Use custom stop words
-            tfidf_matrix = vectorizer.fit_transform(competitor_texts) # Use *processed* competitor texts
+            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words=stop_words)
+            tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
 
         # Calculate TF-IDF for target content
         with st.spinner("Calculating TF-IDF scores for target content..."):
-            target_tfidf_vector = vectorizer.transform([target_content]) # Use *processed* target content
+            target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(
                 target_tfidf_vector.toarray(),
                 index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
@@ -1117,74 +1115,87 @@ def ngram_tfidf_analysis_page():
                     tfidf_diff = competitor_tfidf - target_tfidf
 
                     # --- BERT Cosine Similarity Difference ---
-                    # Find the embedding for this n-gram in the *current competitor's* embeddings
-                    ngram_embedding_index = competitor_texts[source_idx].find(ngram) # Find the ngram
-                    if ngram_embedding_index != -1: # Check if found
+                    ngram_embedding_index = competitor_texts[source_idx].find(ngram)
+                    if ngram_embedding_index != -1:
                         ngram_embedding = competitor_embeddings[source_idx]
 
-                        #Calculate cosine similarity
                         competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
                         target_bert_similarity = cosine_similarity(ngram_embedding, target_embedding)[0][0]
                         bert_diff = competitor_bert_similarity - target_bert_similarity
 
-                        # --- COMBINED SCORE (Example: simple average) ---
-                        # You can adjust the weights here
+                        # --- COMBINED SCORE ---
                         combined_score = (tfidf_diff + bert_diff) / 2
+                        # Consolidated Data (for combined table)
+                        gap_ngrams.append((ngram, combined_score))
 
-                        gap_ngrams.append(f"{ngram} (Gap Score: {combined_score:.3f})") # Simplified output
 
-                else:  # n-gram not in target content (TF-IDF difference is just the competitor score)
+                else:  # n-gram not in target content
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
-
-                    # --- BERT Cosine Similarity Difference (Handle missing n-gram in target) ---
                     ngram_embedding_index = competitor_texts[source_idx].find(ngram)
+
                     if ngram_embedding_index != -1:
                         ngram_embedding = competitor_embeddings[source_idx]
                         competitor_bert_similarity = cosine_similarity(ngram_embedding, competitor_embeddings[source_idx])[0][0]
-                        bert_diff = competitor_bert_similarity  #  Target similarity is implicitly 0
+                        bert_diff = competitor_bert_similarity
 
                         # --- COMBINED SCORE ---
                         combined_score = (competitor_tfidf + bert_diff) / 2
-                        gap_ngrams.append(f"{ngram} (Gap Score: {combined_score:.3f})") # Simplified output
-
+                        # Consolidated Data
+                        gap_ngrams.append((ngram, combined_score))
             content_gaps[source] = gap_ngrams
 
-        # --- DISPLAY RESULTS ---
-
-        st.markdown("### Semantic Gap Analysis")
-        st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
-        all_data = {}
+        # --- CONSOLIDATED GAP DATA (Across all competitors) ---
+        consolidated_gaps = {}
         for source, gap_ngrams in content_gaps.items():
-            all_data[source] = gap_ngrams
-            while len(all_data[source]) < top_n:
-                all_data[source].append("")
-        df_display = pd.DataFrame(all_data)
-        st.dataframe(df_display)
+            for ngram, score in gap_ngrams:
+                if ngram not in consolidated_gaps:
+                    consolidated_gaps[ngram] = {
+                        'Gap Score': score,
+                        'Sources': [source]  # Keep track of which sources have this gap
+                    }
+                else:
+                    # Update the score (taking the max gap across sources)
+                    consolidated_gaps[ngram]['Gap Score'] = max(consolidated_gaps[ngram]['Gap Score'], score)
+                    consolidated_gaps[ngram]['Sources'].append(source) # Add the current source.
 
-        # ... (Rest of your display logic: Wordclouds, etc. - can be adapted to use combined scores) ...
-        # Create a Wordcloud for each competitor site
+        # Convert consolidated data to DataFrame
+        df_consolidated = pd.DataFrame.from_dict(consolidated_gaps, orient='index')
+        df_consolidated.index.name = 'N-gram'
+        df_consolidated = df_consolidated.reset_index()
+        #Sort the consolidated dataframe.
+        df_consolidated = df_consolidated.sort_values(by='Gap Score', ascending=False)
+
+        # --- DISPLAY RESULTS ---
+        st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
+        st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
+        st.dataframe(df_consolidated)
+
+
+        # Per-competitor breakdown (original display, but sorted and using Gap Score)
+        st.markdown("### Per-Competitor Semantic Gap Analysis")
+        for source, gap_ngrams in content_gaps.items():
+            st.markdown(f"#### Competitor: {source}")
+            df_source = pd.DataFrame(gap_ngrams, columns=['N-gram', 'Gap Score'])
+            df_source = df_source.sort_values(by='Gap Score', ascending=False)
+            st.dataframe(df_source)
+
+
+        # Wordclouds (Optional - can be kept or removed based on preference)
         st.subheader("Semantic Gap Wordclouds")
         for source, gap_ngrams in content_gaps.items():
-            # Build frequency dictionary for this competitor site
             site_gap_counts = {}
-            for gap in gap_ngrams:
-                if gap:  # Ensure non-empty string
-                    # Extract only the n-gram text (before the " (")
-                    ngram_text = gap.split(" (")[0]
-                    site_gap_counts[ngram_text] = site_gap_counts.get(ngram_text, 0) + 1
+            for ngram, _ in gap_ngrams:  # Extract n-gram text
+                site_gap_counts[ngram] = site_gap_counts.get(ngram, 0) + 1
             if site_gap_counts:
                 st.markdown(f"**Wordcloud for {source}:**")
                 display_entity_wordcloud(site_gap_counts)
             else:
                 st.write(f"No gap n‑grams for {source} to create a wordcloud.")
 
-        # Create a combined Wordcloud for all competitors
-        combined_gap_counts = {}
+        combined_gap_counts = {}  # For a combined wordcloud
         for gap_list in content_gaps.values():
-            for gap in gap_list:
-                if gap:
-                    ngram_text = gap.split(" (")[0]
-                    combined_gap_counts[ngram_text] = combined_gap_counts.get(ngram_text, 0) + 1
+            for ngram, _ in gap_list:
+                combined_gap_counts[ngram] = combined_gap_counts.get(ngram, 0) + 1
         if combined_gap_counts:
             st.subheader("Combined Semantic Gap Wordcloud for All Sites")
             display_entity_wordcloud(combined_gap_counts)
