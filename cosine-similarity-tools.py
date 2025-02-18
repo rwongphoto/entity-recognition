@@ -457,10 +457,10 @@ def url_analysis_dashboard_page():
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
-                "H1 Tag",  #<--- This was H1 Tag
+                "H1 Tag",
                 "Total Word Count",
-                "Custom Word Count (p, li, headers)", #<--This was the same.
-                "Overall Cosine Similarity Score", #<--This was the same
+                "Custom Word Count (p, li, headers)",
+                "Overall Cosine Similarity Score",
                 "# of Unique Entities",
                 "# of Header & Footer Links",
                 "Total # of Links",
@@ -472,13 +472,15 @@ def url_analysis_dashboard_page():
             ])
 
             # Reorder and rename columns as required:
+            # Step 1: Reorder, keeping original names
             df = df[[
                 "URL",
                 "Meta Title",
-                "H1 Tag",  #<---This needs to be H1 Tag
+                "H1 Tag",
                 "Total Word Count",
-                "Custom Word Count (p, li, headers)", #<-- Keep the same
-                "Overall Cosine Similarity Score", #<-- Keep the same
+                "Custom Word Count (p, li, headers)",
+                "Overall Cosine Similarity Score",
+                "Flesch-Kincaid Grade Level",  # Moved here
                 "# of Unique Entities",
                 "# of Header & Footer Links",
                 "Total # of Links",
@@ -486,9 +488,8 @@ def url_analysis_dashboard_page():
                 "Lists/Tables Present",
                 "# of Images",
                 "# of Videos",
-                "Flesch-Kincaid Grade Level"
             ]]
-           #Rename columns
+            # Step 2: Rename
             df.columns = [
                 "URL",
                 "Meta Title",
@@ -496,6 +497,7 @@ def url_analysis_dashboard_page():
                 "Total Word Count",
                 "Content Word Count",
                 "Cosine Similarity",
+                "Grade Level",  # Shortened name
                 "# of Unique Entities",
                 "Nav Links",
                 "Total Links",
@@ -503,13 +505,12 @@ def url_analysis_dashboard_page():
                 "Lists/Tables",
                 "Images",
                 "Videos",
-                "Flesch-Kincaid Grade Level"
             ]
 
 
             # Ensure numeric columns are numeric
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
-            df["Flesch-Kincaid Grade Level"] = pd.to_numeric(df["Flesch-Kincaid Grade Level"], errors="coerce")
+            df["Grade Level"] = pd.to_numeric(df["Grade Level"], errors="coerce") #Renamed column
 
             st.dataframe(df)
 
