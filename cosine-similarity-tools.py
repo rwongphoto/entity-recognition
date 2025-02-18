@@ -977,7 +977,7 @@ def ngram_tfidf_analysis_page():
                     gap_ngrams.append(f"{ngram} (Competitor: {competitor_score:.3f}, Target: 0.000)")
             content_gaps[source] = gap_ngrams
         
-        st.markdown("### Content Gap Analysis")
+        st.markdown("### Semantic Gap Analysis")
         st.markdown(f"**Target:** {target_url if target_source_option=='Extract from URL' else 'Pasted Target Content'}")
         all_data = {}
         for source, gap_ngrams in content_gaps.items():
@@ -988,7 +988,7 @@ def ngram_tfidf_analysis_page():
         st.dataframe(df_display)
         
         # Create a Wordcloud for each competitor site
-        st.subheader("Gap n‑grams Wordcloud per Competitor")
+        st.subheader("Semantic Gap Wordclouds")
         for source, gap_ngrams in content_gaps.items():
             # Build frequency dictionary for this competitor site
             site_gap_counts = {}
@@ -1011,7 +1011,7 @@ def ngram_tfidf_analysis_page():
                     ngram_text = gap.split(" (")[0]
                     combined_gap_counts[ngram_text] = combined_gap_counts.get(ngram_text, 0) + 1
         if combined_gap_counts:
-            st.subheader("Combined Gap n‑grams Wordcloud for All Competitors")
+            st.subheader("Combined Semantic Gap Wordcloud for All Sites")
             display_entity_wordcloud(combined_gap_counts)
         else:
             st.write("No combined gap n‑grams to create a wordcloud.")
