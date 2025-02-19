@@ -340,18 +340,23 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
+
     urls_input = st.text_area("Enter URLs (one per line):", key="dashboard_urls", value="")
     urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
     search_term = st.text_input("Enter Search Term (for Cosine Similarity):", key="dashboard_search_term", value="")
+
     if st.button("Analyze URLs", key="dashboard_button"):
         if not urls:
             st.warning("Please enter at least one URL.")
             return
+
         with st.spinner("Analyzing URLs..."):
             nlp_model = load_spacy_model()
             model = initialize_sentence_transformer()
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model)
+
             for i, url in enumerate(urls):
                 try:
                     chrome_options = Options()
@@ -365,26 +370,34 @@ def url_analysis_dashboard_page():
                     driver.get(url)
                     page_source = driver.page_source
                     soup = BeautifulSoup(page_source, "html.parser")
-                    meta_title = driver.title
+                    meta_title = driver.title  # Get meta title using Selenium
                     driver.quit()
+
                     content_soup = BeautifulSoup(page_source, "html.parser")
                     if content_soup.find("body"):
-                        body = content_soup.find("body")
-                        for tag in body.find_all(["header", "footer"]):
-                            tag.decompose()
-                        total_text = body.get_text(separator="\n", strip=True)
+                         body = content_soup.find("body")
+                         for tag in body.find_all(["header", "footer"]):
+                             tag.decompose()
+                         total_text = body.get_text(separator="\n", strip=True)
                     else:
                         total_text = ""
+
                     total_word_count = len(total_text.split())
+
                     custom_elements = body.find_all(["p", "li", "h1", "h2", "h3", "h4", "h5", "h6"]) if body else []
                     custom_words = []
                     for el in custom_elements:
                         custom_words.extend(el.get_text().split())
+
+                    #Also include tables
                     for table in body.find_all("table"):
                         for row in table.find_all("tr"):
                             for cell in row.find_all(["td", "th"]):
                                 custom_words.extend(cell.get_text().split())
-                    custom_word_count = len(custom_words)
+
+                    # Ensure custom_word_count is never greater than total_word_count
+                    custom_word_count = min(len(custom_words), total_word_count)
+
                     h1_tag = soup.find("h1").get_text(strip=True) if soup.find("h1") else "None"
                     header = soup.find("header")
                     footer = soup.find("footer")
@@ -392,6 +405,7 @@ def url_analysis_dashboard_page():
                     footer_links = len(footer.find_all("a", href=True)) if footer else 0
                     total_nav_links = header_links + footer_links
                     total_links = len(soup.find_all("a", href=True))
+
                     schema_types = set()
                     ld_json_scripts = soup.find_all("script", type="application/ld+json")
                     for script in ld_json_scripts:
@@ -407,8 +421,10 @@ def url_analysis_dashboard_page():
                                     if "@type" in data_json:
                                         schema_types.add(data_json["@type"])
                         except Exception:
-                            continue
+                            continue  # Handle JSON parsing errors
+
                     schema_markup = ", ".join(schema_types) if schema_types else "None"
+
                     lists_tables = (
                         f"OL: {'Yes' if body.find('ol') else 'No'} | "
                         f"UL: {'Yes' if body.find('ul') else 'No'} | "
@@ -420,6 +436,8 @@ def url_analysis_dashboard_page():
                     entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
                     unique_entity_count = len(set([ent[0] for ent in entities]))
                     flesch_kincaid = textstat.flesch_kincaid_grade(total_text) if total_text else None
+
+
                     data.append([
                         url,
                         meta_title,
@@ -436,9 +454,11 @@ def url_analysis_dashboard_page():
                         num_videos,
                         flesch_kincaid
                     ])
+
                 except Exception as e:
                     st.error(f"Error processing URL {url}: {e}")
-                    data.append([url] + ["Error"] * 13)
+                    data.append([url] + ["Error"] * 13)  # Append error placeholders
+
             df = pd.DataFrame(data, columns=[
                 "URL",
                 "Meta Title",
@@ -455,6 +475,8 @@ def url_analysis_dashboard_page():
                 "# of Videos",
                 "Flesch-Kincaid Grade Level"
             ])
+
+            # Reorder for better presentation and rename columns
             df = df[[
                 "URL",
                 "Meta Title",
@@ -470,7 +492,9 @@ def url_analysis_dashboard_page():
                 "Lists/Tables Present",
                 "# of Images",
                 "# of Videos",
+
             ]]
+
             df.columns = [
                 "URL",
                 "Meta Title",
@@ -487,8 +511,12 @@ def url_analysis_dashboard_page():
                 "Images",
                 "Videos",
             ]
+
+            # Convert columns to numeric where applicable
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
             df["Grade Level"] = pd.to_numeric(df["Grade Level"], errors="coerce")
+
+
             st.dataframe(df)
 
 def cosine_similarity_competitor_analysis_page():
