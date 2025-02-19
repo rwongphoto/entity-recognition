@@ -1453,8 +1453,9 @@ def keyword_clustering_from_gap_page():
                 'Keyword': valid_gap_ngrams,
                 'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
             })
-            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', hover_data=['Keyword'],
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword', hover_data=['Keyword'],
                              title="Semantic Opportunity Clusters")
+            fig.update_traces(textposition='top center')
             fig.update_layout(
                 xaxis_title="Topic Focus: Broad vs. Niche",
                 yaxis_title="Competitive Pressure: High vs. Low"
