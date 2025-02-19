@@ -107,6 +107,7 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
+@st.cache_data(ttl=86400)
 def extract_relevant_text_from_url(url):
     try:
         enforce_rate_limit()
