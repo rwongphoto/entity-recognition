@@ -98,12 +98,20 @@ def extract_text_from_url(url):
         text = body.get_text(separator='\n', strip=True)
         return text
     except (TimeoutException, WebDriverException) as e:
-        st.error(f"Selenium error fetching {url}: {e}")
+        error_str = str(e)
+        if "HTTPConnectionPool" in error_str or "timed out" in error_str:
+            st.error(f"Timeout error fetching {url}: {error_str}. Please check your network connection or increase the timeout setting.")
+        else:
+            st.error(f"Selenium error fetching {url}: {error_str}")
         return None
     except Exception as e:
-        st.error(f"Unexpected error fetching {url}: {e}")
+        error_str = str(e)
+        if "HTTPConnectionPool" in error_str or "timed out" in error_str:
+            st.error(f"HTTP Connection Timeout while fetching {url}: {error_str}. Please check your network connection or increase the timeout setting.")
+        else:
+            st.error(f"Unexpected error fetching {url}: {error_str}")
         return None
-
+        
 @st.cache_data(ttl=86400)
 def extract_relevant_text_from_url(url):
     try:
@@ -134,7 +142,11 @@ def extract_relevant_text_from_url(url):
         texts = [tag.get_text(separator=" ", strip=True) for tag in tags]
         return " ".join(texts)
     except Exception as e:
-        st.error(f"Error extracting relevant content from {url}: {e}")
+        error_str = str(e)
+        if "HTTPConnectionPool" in error_str or "timed out" in error_str:
+            st.error(f"HTTP Connection Timeout while extracting relevant content from {url}: {error_str}. Please check your network connection or increase the timeout setting.")
+        else:
+            st.error(f"Error extracting relevant content from {url}: {error_str}")
         return None
 
 @st.cache_data
