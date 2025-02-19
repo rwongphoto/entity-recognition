@@ -1024,28 +1024,29 @@ def ngram_tfidf_analysis_page():
                 st.markdown(f"#### Competitor: {source}")
                 st.dataframe(df_source)
         
-        # Display a combined wordcloud for all gap n-grams
+        # --- Updated: Use Gap Scores as Weights in the Wordcloud ---
         st.subheader("Combined Semantic Gap Wordcloud")
-        gap_counts = {}
+        gap_scores = {}
         for source, ngram, score in norm_candidates:
-            gap_counts[ngram] = gap_counts.get(ngram, 0) + 1
-        if gap_counts:
-            display_entity_wordcloud(gap_counts)
+            gap_scores[ngram] = gap_scores.get(ngram, 0) + score
+        if gap_scores:
+            display_entity_wordcloud(gap_scores)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
         
-        # Display a wordcloud for each competitor
+        # Display a wordcloud for each competitor using gap score weights
         st.subheader("Per-Competitor Gap Wordclouds")
         for source in valid_competitor_sources:
-            comp_gap_counts = {}
+            comp_gap_scores = {}
             for s, ngram, score in norm_candidates:
                 if s == source:
-                    comp_gap_counts[ngram] = comp_gap_counts.get(ngram, 0) + 1
-            if comp_gap_counts:
+                    comp_gap_scores[ngram] = comp_gap_scores.get(ngram, 0) + score
+            if comp_gap_scores:
                 st.markdown(f"**Wordcloud for Competitor: {source}**")
-                display_entity_wordcloud(comp_gap_counts)
+                display_entity_wordcloud(comp_gap_scores)
             else:
                 st.write(f"No gap n-grams for competitor: {source}")
+
 
 
 # ------------------------------------
