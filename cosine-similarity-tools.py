@@ -3,9 +3,20 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
-from PIL import Image
-import cairosvg
 import json
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
+import spacy
+from collections import Counter
+from typing import List, Tuple, Dict
+import textstat
+
+from wordcloud import WordCloud
+from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
+from sklearn.decomposition import PCA
+import plotly.express as px
+from sklearn.cluster import KMeans, AgglomerativeClustering
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -14,21 +25,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
-
-import matplotlib.pyplot as plt
-import pandas as pd
-import spacy
-from collections import Counter
-from typing import List, Tuple, Dict
-import textstat  # Import the textstat library
-
-from wordcloud import WordCloud
-from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
-from sklearn.decomposition import PCA
-import plotly.express as px  # Import plotly express
-from sklearn.cluster import KMeans, AgglomerativeClustering
-
-import time
 
 # Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
@@ -40,14 +36,10 @@ from sentence_transformers import SentenceTransformer
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
 
 # Global rate limiting variables
-REQUEST_INTERVAL = 2.0  # Minimum seconds between requests
+REQUEST_INTERVAL = 2.0
 last_request_time = 0
 
 def enforce_rate_limit():
-    """
-    Ensures that at least REQUEST_INTERVAL seconds have passed since
-    the last request. If not, it sleeps for the remaining time.
-    """
     global last_request_time
     now = time.time()
     elapsed = now - last_request_time
@@ -60,7 +52,6 @@ nlp = None
 
 @st.cache_resource
 def load_spacy_model():
-    """Loads the spaCy model (only once)."""
     global nlp
     if nlp is None:
         try:
@@ -78,19 +69,16 @@ def load_spacy_model():
 
 @st.cache_resource
 def initialize_sentence_transformer():
-    """Loads and returns a SentenceTransformer model (only once)."""
     model = SentenceTransformer('all-MiniLM-L6-v2')
     return model
 
 def get_embedding(text, model):
-    """Gets embedding for a given text using the SentenceTransformer model."""
     return model.encode(text)
 
 @st.cache_data(ttl=86400)
 def extract_text_from_url(url):
-    """Extracts text from a URL using Selenium (with JS rendering) while excluding header and footer."""
     try:
-        enforce_rate_limit()  # Enforce rate limiting before making the request
+        enforce_rate_limit()
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
@@ -120,11 +108,6 @@ def extract_text_from_url(url):
         return None
 
 def extract_relevant_text_from_url(url):
-    """
-    Extracts text from a URL using Selenium but only from relevant tags:
-    <p>, <ol>, <ul>, headers (<h1>-<h6>), and <table>.
-    Removes header and footer elements first.
-    """
     try:
         enforce_rate_limit()
         chrome_options = Options()
@@ -158,7 +141,6 @@ def extract_relevant_text_from_url(url):
 
 @st.cache_data
 def count_videos(_soup):
-    """Counts the number of video elements and embedded videos on the page."""
     video_count = len(_soup.find_all("video"))
     iframe_videos = len([
         iframe for iframe in _soup.find_all("iframe")
@@ -167,16 +149,11 @@ def count_videos(_soup):
     return video_count + iframe_videos
 
 def preprocess_text(text, nlp_model):
-    """
-    Preprocesses text by tokenizing with spaCy and returning a lemmatized version.
-    Punctuation and extra spaces are removed.
-    """
     doc = nlp_model(text)
     lemmatized_tokens = [token.lemma_ for token in doc if not token.is_punct and not token.is_space]
     return " ".join(lemmatized_tokens)
 
 def create_navigation_menu(logo_url):
-    """Creates a top navigation menu."""
     menu_options = {
         "Home": "https://theseoconsultant.ai/",
         "About": "https://theseoconsultant.ai/about/",
@@ -225,13 +202,11 @@ def create_navigation_menu(logo_url):
     st.markdown(menu_html, unsafe_allow_html=True)
 
 def identify_entities(text, nlp_model):
-    """Identifies named entities in the text."""
     doc = nlp_model(text)
     entities = [(ent.text, ent.label_) for ent in doc.ents]
     return entities
 
 def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
-    """Counts named entities (with lemmatization) and ensures uniqueness per source."""
     entity_counts = Counter()
     seen_entities = set()
     for entity, label in entities:
@@ -245,7 +220,6 @@ def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=30):
-    """Displays a bar chart of the top N most frequent entities (excluding CARDINAL)."""
     filtered_entity_counts = {
         (entity, label): count
         for (entity, label), count in entity_counts.items()
@@ -269,9 +243,6 @@ def display_entity_barchart(entity_counts, top_n=30):
     st.pyplot(fig)
 
 def display_entity_wordcloud(entity_counts):
-    """
-    Generates and displays a wordcloud from the given frequency counts.
-    """
     aggregated = {}
     for key, count in entity_counts.items():
         k = key[0] if isinstance(key, tuple) else key
@@ -288,7 +259,6 @@ def display_entity_wordcloud(entity_counts):
 # ------------------------------------
 
 def calculate_overall_similarity(urls, search_term, model):
-    """Calculates the overall cosine similarity score for a list of URLs against a search term."""
     search_term_embedding = get_embedding(search_term, model)
     results = []
     for url in urls:
@@ -302,7 +272,6 @@ def calculate_overall_similarity(urls, search_term, model):
     return results
 
 def calculate_similarity(text, search_term, model):
-    """Calculates similarity scores for each sentence in the text against the search term."""
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
     sentence_embeddings = [get_embedding(sentence, model) for sentence in sentences]
@@ -311,7 +280,6 @@ def calculate_similarity(text, search_term, model):
     return sentences, similarities
 
 def rank_sentences_by_similarity(text, search_term):
-    """Ranks sentences by cosine similarity to a search term using SentenceTransformer embeddings."""
     model = initialize_sentence_transformer()
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -325,7 +293,6 @@ def rank_sentences_by_similarity(text, search_term):
     return list(zip(sentences, normalized_similarities))
 
 def highlight_text(text, search_term):
-    """Highlights text based on similarity to the search term using HTML/CSS."""
     sentences_with_similarity = rank_sentences_by_similarity(text, search_term)
     highlighted_text = ""
     for sentence, similarity in sentences_with_similarity:
@@ -334,7 +301,6 @@ def highlight_text(text, search_term):
     return highlighted_text
 
 def rank_sections_by_similarity_bert(text, search_term, top_n=10):
-    """Ranks content sections by cosine similarity to a search term using SentenceTransformer embeddings."""
     model = initialize_sentence_transformer()
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [s.strip() for s in sentences if s.strip()]
@@ -939,7 +905,6 @@ def ngram_tfidf_analysis_page():
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
-        # Compute candidate n-gram scores using both TF-IDF difference and semantic (ST) difference.
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
             for ngram in top_ngrams_competitors[source]:
@@ -963,14 +928,12 @@ def ngram_tfidf_analysis_page():
         if not candidate_scores:
             st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
             return
-        # Normalize the TF-IDF and semantic differences.
         tfidf_vals = [item[1] for item in candidate_scores]
         bert_vals = [item[2] for item in candidate_scores]
         min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
         min_bert, max_bert = min(bert_vals), max(bert_vals)
         epsilon = 1e-8
-        # Hard-coded TF-IDF weight (0.6) and semantic weight (0.4)
-        tfidf_weight = 0.6
+        tfidf_weight = 0.6  # Hard-coded weight
         norm_candidates = []
         for ngram, tfidf_diff, bert_diff in candidate_scores:
             norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
@@ -1003,7 +966,248 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(gap_counts)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
-        # Keyword Clustering on the identified gap n-grams.
+        gap_ngrams = [ngram for ngram, score in norm_candidates]
+        if not gap_ngrams:
+            st.error("No valid gap n-grams for clustering.")
+            return
+        valid_gap_ngrams = []
+        gap_embeddings = []
+        with st.spinner("Computing SentenceTransformer embeddings for gap n-grams..."):
+            for gram in gap_ngrams:
+                emb = get_embedding(gram, model)
+                if emb is not None:
+                    gap_embeddings.append(emb)
+                    valid_gap_ngrams.append(gram)
+        if len(valid_gap_ngrams) == 0:
+            st.error("Could not compute embeddings for any gap n-grams.")
+            return
+        gap_embeddings = np.vstack(gap_embeddings)
+        if algorithm == "Kindred Spirit":
+            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+            cluster_labels = clustering_model.fit_predict(gap_embeddings)
+            centers = clustering_model.cluster_centers_
+            rep_keywords = {}
+            for i in range(n_clusters):
+                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+                if not cluster_grams:
+                    continue
+                cluster_embeddings = gap_embeddings[cluster_labels == i]
+                distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
+                rep_keyword = cluster_grams[np.argmin(distances)]
+                rep_keywords[i] = rep_keyword
+        elif algorithm == "Affinity Stack":
+            clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+            cluster_labels = clustering_model.fit_predict(gap_embeddings)
+            rep_keywords = {}
+            for i in range(n_clusters):
+                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+                cluster_embeddings = gap_embeddings[cluster_labels == i]
+                if len(cluster_embeddings) > 1:
+                    sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+                    rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+                else:
+                    rep_keyword = cluster_grams[0]
+                rep_keywords[i] = rep_keyword
+        df_gap = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
+        st.markdown("### Gap Scores for Top Phrases:")
+        st.dataframe(df_gap)
+        clusters = {}
+        for gram, label in zip(valid_gap_ngrams, cluster_labels):
+            clusters.setdefault(label, []).append(gram)
+        st.markdown("### Keyword Clusters:")
+        for label, gram_list in clusters.items():
+            rep = rep_keywords.get(label, "N/A")
+            st.markdown(f"**Cluster {label}** (Representative: {rep}):")
+            for gram in gram_list:
+                st.write(f" - {gram}")
+        with st.spinner("Generating interactive cluster visualization..."):
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(gap_embeddings)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Keyword': valid_gap_ngrams,
+                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword', hover_data=['Keyword'],
+                             title="Semantic Opportunity Clusters")
+            fig.update_traces(textposition='top center')
+            fig.update_layout(
+                xaxis_title="Topic Focus: Broad vs. Niche",
+                yaxis_title="Competitive Pressure: High vs. Low"
+            )
+            st.plotly_chart(fig)
+
+def keyword_clustering_from_gap_page():
+    st.header("Keyword Clusters")
+    st.markdown(
+        """
+        This tool combines semantic gap analysis with keyword clustering.
+        First, it identifies key phrases where your competitors outperform your target.
+        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
+        The resulting clusters (and their representative keywords) are displayed below.
+        """
+    )
+    st.subheader("Competitors")
+    competitor_source_option = st.radio(
+        "Select competitor content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="comp_source"
+    )
+    if competitor_source_option == "Extract from URL":
+        competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="comp_urls", value="")
+        competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
+    else:
+        st.markdown("Paste competitor content below. Separate each block with `---`.")
+        competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
+        competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
+    st.subheader("Your Site")
+    target_source_option = st.radio(
+        "Select target content source:",
+        options=["Extract from URL", "Paste Content"],
+        index=0,
+        key="target_source_cluster"
+    )
+    if target_source_option == "Extract from URL":
+        target_url = st.text_input("Enter Your URL:", key="target_url", value="")
+    else:
+        target_text = st.text_area("Paste your content:", key="target_content", value="", height=200)
+    st.subheader("Word Count Settings")
+    n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5], index=1, key="ngram_n")
+    min_df = st.number_input("Minimum Frequency:", value=1, min_value=1, key="min_df_gap")
+    max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
+    top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
+    st.subheader("Clustering Settings")
+    algorithm = st.selectbox(
+        "Select Clustering Type:",
+        options=["Kindred Spirit", "Affinity Stack"],
+        key="clustering_algo_gap"
+    )
+    if algorithm == "Kindred Spirit":
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
+    elif algorithm == "Affinity Stack":
+        n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
+    if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
+        if not competitor_list:
+            st.warning("Please enter at least one competitor URL or content.")
+            return
+        if (target_source_option == "Extract from URL" and not target_url) or (target_source_option == "Paste Content" and not target_text):
+            st.warning("Please enter your target URL or content.")
+            return
+        competitor_texts = []
+        valid_competitor_sources = []
+        with st.spinner("Extracting competitor content..."):
+            for source in competitor_list:
+                if competitor_source_option == "Extract from URL":
+                    text = extract_relevant_text_from_url(source)
+                else:
+                    text = source
+                if text:
+                    valid_competitor_sources.append(source)
+                    competitor_texts.append(text)
+                else:
+                    st.warning(f"Could not extract content from: {source}")
+        if target_source_option == "Extract from URL":
+            target_content = extract_relevant_text_from_url(target_url)
+            if not target_content:
+                st.error("Could not extract content from the target URL.")
+                return
+        else:
+            target_content = target_text
+        nlp_model = load_spacy_model()
+        competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
+        target_content = preprocess_text(target_content, nlp_model)
+        if not competitor_texts:
+            st.error("No competitor content was extracted.")
+            return
+        with st.spinner("Calculating TF-IDF scores for competitors..."):
+            vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english")
+            tfidf_matrix = vectorizer.fit_transform(competitor_texts)
+            feature_names = vectorizer.get_feature_names_out()
+            df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
+        with st.spinner("Calculating TF-IDF scores for target content..."):
+            target_tfidf_vector = vectorizer.transform([target_content])
+            df_tfidf_target = pd.DataFrame(
+                target_tfidf_vector.toarray(),
+                index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
+                columns=feature_names
+            )
+        top_ngrams_competitors = {}
+        for source in valid_competitor_sources:
+            row = df_tfidf_competitors.loc[source]
+            sorted_row = row.sort_values(ascending=False)
+            top_ngrams = sorted_row.head(top_n)
+            top_ngrams_competitors[source] = list(top_ngrams.index)
+        model = initialize_sentence_transformer()
+        competitor_embeddings = []
+        with st.spinner("Calculating SentenceTransformer embeddings for competitors..."):
+            for text in competitor_texts:
+                emb = get_embedding(text, model)
+                competitor_embeddings.append(emb)
+        with st.spinner("Calculating SentenceTransformer embedding for target content..."):
+            target_embedding = get_embedding(target_content, model)
+        candidate_scores = []
+        for idx, source in enumerate(valid_competitor_sources):
+            for ngram in top_ngrams_competitors[source]:
+                if ngram in df_tfidf_target.columns:
+                    competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
+                    target_tfidf = df_tfidf_target.iloc[0][ngram]
+                    tfidf_diff = competitor_tfidf - target_tfidf
+                    if tfidf_diff <= 0:
+                        continue
+                    ngram_embedding = get_embedding(ngram, model)
+                    competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
+                    target_similarity = cosine_similarity([ngram_embedding], [target_embedding])[0][0]
+                    bert_diff = competitor_similarity - target_similarity
+                    candidate_scores.append((ngram, tfidf_diff, bert_diff))
+                else:
+                    competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
+                    ngram_embedding = get_embedding(ngram, model)
+                    competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
+                    bert_diff = competitor_similarity
+                    candidate_scores.append((ngram, competitor_tfidf, bert_diff))
+        if not candidate_scores:
+            st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
+            return
+        tfidf_vals = [item[1] for item in candidate_scores]
+        bert_vals = [item[2] for item in candidate_scores]
+        min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
+        min_bert, max_bert = min(bert_vals), max(bert_vals)
+        epsilon = 1e-8
+        tfidf_weight = 0.6  # Hard-coded TF-IDF weight
+        norm_candidates = []
+        for ngram, tfidf_diff, bert_diff in candidate_scores:
+            norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
+            norm_bert = (bert_diff - min_bert) / (max_bert - min_bert + epsilon)
+            combined_score = tfidf_weight * norm_tfidf + (1 - tfidf_weight) * norm_bert
+            if combined_score > 0:
+                norm_candidates.append((ngram, combined_score))
+        norm_candidates.sort(key=lambda x: x[1], reverse=True)
+        st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
+        df_consolidated = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score'])
+        st.dataframe(df_consolidated)
+        st.markdown("### Per-Competitor Semantic Gap Analysis")
+        for source, gap_list in top_ngrams_competitors.items():
+            candidate_list = []
+            for ngram in gap_list:
+                for cand in norm_candidates:
+                    if cand[0] == ngram:
+                        candidate_list.append(cand)
+                        break
+            if candidate_list:
+                df_source = pd.DataFrame(candidate_list, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
+                st.markdown(f"#### Competitor: {source}")
+                st.dataframe(df_source)
+        st.subheader("Semantic Gap Wordclouds")
+        gap_counts = {}
+        for ngram, score in norm_candidates:
+            gap_counts[ngram] = gap_counts.get(ngram, 0) + 1
+        if gap_counts:
+            st.markdown("**Combined Semantic Gap Wordcloud for All Sites:**")
+            display_entity_wordcloud(gap_counts)
+        else:
+            st.write("No combined gap n-grams to create a wordcloud.")
         gap_ngrams = [ngram for ngram, score in norm_candidates]
         if not gap_ngrams:
             st.error("No valid gap n-grams for clustering.")
@@ -1136,6 +1340,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
