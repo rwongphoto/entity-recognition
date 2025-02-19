@@ -1443,34 +1443,23 @@ def keyword_clustering_from_gap_page():
             for gram in gram_list:
                 st.write(f" - {gram}")
 
-        # Interactive Visualization using PCA and Plotly with labels
-with st.spinner("Generating interactive cluster visualization..."):
-    pca = PCA(n_components=2)
-    embeddings_2d = pca.fit_transform(gap_embeddings)
-    df_plot = pd.DataFrame({
-        'x': embeddings_2d[:, 0],
-        'y': embeddings_2d[:, 1],
-        'Keyword': valid_gap_ngrams,
-        'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
-    })
-    # Add the text parameter to display the keywords as labels
-    fig = px.scatter(
-        df_plot,
-        x='x',
-        y='y',
-        color='Cluster',
-        text='Keyword',
-        hover_data=['Keyword'],
-        title="Semantic Opportunity Clusters"
-    )
-    # Update the trace to position the text labels as desired
-    fig.update_traces(textposition='top center')
-    fig.update_layout(
-        xaxis_title="Topic Focus: Broad vs. Niche",
-        yaxis_title="Competitive Pressure: High vs. Low"
-    )
-    st.plotly_chart(fig)
-
+        # Interactive Visualization using PCA and Plotly
+        with st.spinner("Generating interactive cluster visualization..."):
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(gap_embeddings)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Keyword': valid_gap_ngrams,
+                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', hover_data=['Keyword'],
+                             title="Semantic Opportunity Clusters")
+            fig.update_layout(
+                xaxis_title="Topic Focus: Broad vs. Niche",
+                yaxis_title="Competitive Pressure: High vs. Low"
+            )
+            st.plotly_chart(fig)
 
 
 
@@ -1550,6 +1539,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
