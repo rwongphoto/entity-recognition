@@ -29,6 +29,39 @@ from sklearn.decomposition import PCA
 import plotly.express as px  # Import plotly express
 from sklearn.cluster import KMeans, AgglomerativeClustering  # Import clustering algorithms here
 
+import time  # Import the time module
+from functools import wraps # Import wraps
+
+
+# ------------------------------------
+# Rate Limiting Decorator
+# ------------------------------------
+
+def rate_limited(max_per_second):
+    """Decorator to limit the rate of function calls.
+    
+    Args:
+        max_per_second: The maximum number of times the function can be called
+                        per second.
+    """
+    min_interval = 1.0 / max_per_second
+
+    def decorate(func):
+        last_time_called = [0.0]  # Using a list to make it mutable
+
+        @wraps(func)  # Preserve original function metadata
+        def rate_limited_function(*args, **kwargs):
+            elapsed = time.monotonic() - last_time_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            ret = func(*args, **kwargs)
+            last_time_called[0] = time.monotonic()
+            return ret
+        return rate_limited_function
+    return decorate
+
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -63,6 +96,7 @@ def initialize_bert_model():
     return tokenizer, model
 
 @st.cache_data(ttl=86400)
+@rate_limited(1)  # Limit to 1 call per second
 def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
     and excluding header and footer content. Returns the body text."""
@@ -103,6 +137,7 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
+@rate_limited(1) # Limit calls to this to one per second
 def extract_relevant_text_from_url(url):
     """
     Extracts text from a URL using Selenium—but only from specific tags:
@@ -698,7 +733,7 @@ def cosine_similarity_content_heatmap_page():
 def top_bottom_embeddings_page():
     st.header("Top 10 & Bottom 10 Embeddings")
     st.markdown("Assess and consider re-writing the bottom 10 embeddings.")
-    url = st.text_input("Enter URL (Optional):", key="tb_url", value="")
+    url = st.text_input("    key="tb_url", value="")
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="", disabled=use_url)
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="")
@@ -1373,7 +1408,7 @@ def keyword_clustering_from_gap_page():
         # Perform Clustering
         if algorithm == "Kindred Spirit":
             clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-            cluster_labels = clustering_model.fit_predict(gap_embeddings)
+                        cluster_labels = clustering_model.fit_predict(gap_embeddings)
             centers = clustering_model.cluster_centers_
             rep_keywords = {}
             for i in range(n_clusters):
