@@ -29,11 +29,29 @@ from sklearn.decomposition import PCA
 import plotly.express as px  # Import plotly express
 from sklearn.cluster import KMeans, AgglomerativeClustering  # Import clustering algorithms here
 
+import time
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
 
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
+
+# Global rate limiting variables
+REQUEST_INTERVAL = 2.0  # Minimum seconds between requests
+last_request_time = 0
+
+def enforce_rate_limit():
+    """
+    Ensures that at least REQUEST_INTERVAL seconds have passed since
+    the last request. If not, it sleeps for the remaining time.
+    """
+    global last_request_time
+    now = time.time()
+    elapsed = now - last_request_time
+    if elapsed < REQUEST_INTERVAL:
+        time.sleep(REQUEST_INTERVAL - elapsed)
+    last_request_time = time.time()
 
 # Global spaCy model variable
 nlp = None
@@ -67,6 +85,8 @@ def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
     and excluding header and footer content. Returns the body text."""
     try:
+        enforce_rate_limit()  # Enforce rate limiting before making the request
+
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
@@ -103,6 +123,7 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
+
 def extract_relevant_text_from_url(url):
     """
     Extracts text from a URL using Selenium—but only from specific tags:
@@ -110,6 +131,8 @@ def extract_relevant_text_from_url(url):
     This function first removes header and footer elements (navigation) from the page.
     """
     try:
+        enforce_rate_limit()  # Enforce rate limiting before making the request
+
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
@@ -146,6 +169,7 @@ def extract_relevant_text_from_url(url):
     except Exception as e:
         st.error(f"Error extracting relevant content from {url}: {e}")
         return None
+
 
 
 @st.cache_data
