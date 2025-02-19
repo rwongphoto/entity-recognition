@@ -800,18 +800,21 @@ def named_entity_barchart_page():
                 st.subheader("Entity Wordcloud")
                 display_entity_wordcloud(entity_counts)
                 if input_method == "Extract from URL":
-                    st.subheader("List of Entities from each URL:")
+                    st.subheader("List of Entities from each URL (with counts):")
                     for url in urls:
                         text_from_url = entity_texts_by_url.get(url)
                         if text_from_url:
-                            st.write(f"Text from {url}:")
+                            st.write(f"**Text from {url}:**")
                             url_entities = identify_entities(text_from_url, nlp_model)
-                            for entity, label in url_entities:
-                                st.write(f"- {entity} ({label})")
+                            # Count every occurrence for this URL
+                            url_entity_counts = count_entities_total(url_entities, nlp_model)
+                            for (entity, label), count in url_entity_counts.most_common():
+                                st.write(f"- {entity} ({label}): {count}")
                         else:
                             st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
+
 
 # ------------------------------------
 # Semantic Gap Analyzer (without clustering)
