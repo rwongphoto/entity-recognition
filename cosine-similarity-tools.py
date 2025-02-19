@@ -63,10 +63,9 @@ def initialize_bert_model():
     return tokenizer, model
 
 @st.cache_data(ttl=86400)
-def extract_text_from_url(url, delay=2):  # Add delay parameter, default 2 seconds
+def extract_text_from_url(url):
     """Extracts text from a URL using Selenium, handling JavaScript rendering,
-    and excluding header and footer content. Returns the body text.
-    Now includes rate limiting with a delay."""
+    and excluding header and footer content. Returns the body text."""
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -95,7 +94,6 @@ def extract_text_from_url(url, delay=2):  # Add delay parameter, default 2 secon
             tag.decompose()
 
         text = body.get_text(separator='\n', strip=True)
-        time.sleep(delay)  # Add the delay *after* fetching and processing
         return text
 
     except (TimeoutException, WebDriverException) as e:
@@ -105,10 +103,11 @@ def extract_text_from_url(url, delay=2):  # Add delay parameter, default 2 secon
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
-def extract_relevant_text_from_url(url, delay=2):  # Add delay parameter
+def extract_relevant_text_from_url(url):
     """
-    Extracts text from a URL using Selenium, but only from specific tags.
-    Includes rate-limiting.
+    Extracts text from a URL using Selenium—but only from specific tags:
+    <p>, <ol>, <ul>, headers (<h1>-<h6>), and <table>.
+    This function first removes header and footer elements (navigation) from the page.
     """
     try:
         chrome_options = Options()
@@ -143,7 +142,6 @@ def extract_relevant_text_from_url(url, delay=2):  # Add delay parameter
         tags.extend(soup.find_all("table"))
 
         texts = [tag.get_text(separator=" ", strip=True) for tag in tags]
-        time.sleep(delay)  # Add the delay *after* fetching and processing
         return " ".join(texts)
     except Exception as e:
         st.error(f"Error extracting relevant content from {url}: {e}")
@@ -316,7 +314,7 @@ def calculate_overall_similarity(urls, search_term, model, tokenizer):
     search_term_embedding = get_embedding(search_term, model, tokenizer)
     results = []
     for url in urls:
-        text = extract_text_from_url(url, delay=2)
+        text = extract_text_from_url(url)
         if text:
             text_embedding = get_embedding(text, model, tokenizer)
             similarity = cosine_similarity(text_embedding, search_term_embedding)[0][0]
@@ -654,7 +652,7 @@ def cosine_similarity_every_embedding_page():
         if use_url:
             if url:
                 with st.spinner(f"Extracting and analyzing text from {url}..."):
-                    text = extract_text_from_url(url, delay=2)
+                    text = extract_text_from_url(url)
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return
@@ -682,7 +680,7 @@ def cosine_similarity_content_heatmap_page():
         if use_url:
             if url:
                 with st.spinner(f"Extracting and analyzing text from {url}..."):
-                    text = extract_text_from_url(url, delay=2)
+                    text = extract_text_from_url(url)
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return
@@ -709,7 +707,7 @@ def top_bottom_embeddings_page():
         if use_url:
             if url:
                 with st.spinner(f"Extracting and analyzing text from {url}..."):
-                    text = extract_text_from_url(url, delay=2)
+                    text = extract_text_from_url(url)
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return
@@ -892,7 +890,7 @@ def displacy_visualization_page():
         if use_url:
             if url:
                 with st.spinner("Extracting text from URL..."):
-                    text = extract_text_from_url(url, delay=2)
+                    text = extract_text_from_url(url)
                     if not text:
                         st.error("Could not extract text from the URL.")
                         return
@@ -951,7 +949,7 @@ def named_entity_barchart_page():
                 return
             with st.spinner("Extracting text from URLs..."):
                 for url in urls:
-                    extracted_text = extract_text_from_url(url, delay=2)
+                    extracted_text = extract_text_from_url(url)
                     if extracted_text:
                         entity_texts_by_url[url] = extracted_text
                         all_text += extracted_text + "\n"
@@ -1059,7 +1057,7 @@ def ngram_tfidf_analysis_page():
         with st.spinner("Extracting competitor content..."):
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
-                    text = extract_relevant_text_from_url(source, delay=2)
+                    text = extract_relevant_text_from_url(source)
                 else:
                     text = source
                 if text:
@@ -1275,7 +1273,7 @@ def keyword_clustering_from_gap_page():
         with st.spinner("Extracting competitor content..."):
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
-                    text = extract_relevant_text_from_url(source, delay=2)
+                    text = extract_relevant_text_from_url(source)
                 else:
                     text = source
                 if text:
