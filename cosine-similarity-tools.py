@@ -733,7 +733,7 @@ def cosine_similarity_content_heatmap_page():
 def top_bottom_embeddings_page():
     st.header("Top 10 & Bottom 10 Embeddings")
     st.markdown("Assess and consider re-writing the bottom 10 embeddings.")
-    url = st.text_input("    key="tb_url", value="")
+    url = st.text_input("Enter URL (Optional):", key="tb_url", value="")  # Added label, cleaned key
     use_url = st.checkbox("Use URL for Text Input", key="tb_use_url")
     text = st.text_area("Enter your text:", key="top_bottom_text", height=300, value="", disabled=use_url)
     search_term = st.text_input("Enter your search term:", key="top_bottom_search", value="")
@@ -746,10 +746,10 @@ def top_bottom_embeddings_page():
                     if not text:
                         st.error(f"Could not extract text from {url}. Please check the URL.")
                         return
-            else:
-                st.error("Please enter either text or a URL.")
+            else:  # Added this else block
+                st.error("Please enter either text or a URL.")  # Consistent error message
                 return
-        elif not text:
+        elif not text: #added not text
             st.error("Please enter either text or a URL.")
             return
         tokenizer, model = initialize_bert_model()
