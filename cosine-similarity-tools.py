@@ -1405,33 +1405,33 @@ def keyword_clustering_from_gap_page():
             return
         gap_embeddings = np.vstack(gap_embeddings)
 
-        # Perform Clustering
-        if algorithm == "Kindred Spirit":
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-                        cluster_labels = clustering_model.fit_predict(gap_embeddings)
-            centers = clustering_model.cluster_centers_
-            rep_keywords = {}
-            for i in range(n_clusters):
-                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
-                if not cluster_grams:
-                    continue
-                cluster_embeddings = gap_embeddings[cluster_labels == i]
-                distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
-                rep_keyword = cluster_grams[np.argmin(distances)]
-                rep_keywords[i] = rep_keyword
-        elif algorithm == "Affinity Stack":
-            clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
-            cluster_labels = clustering_model.fit_predict(gap_embeddings)
-            rep_keywords = {}
-            for i in range(n_clusters):
-                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
-                cluster_embeddings = gap_embeddings[cluster_labels == i]
-                if len(cluster_embeddings) > 1:
-                    sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-                    rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
-                else:
-                    rep_keyword = cluster_grams[0]
-                rep_keywords[i] = rep_keyword
+# Perform Clustering
+if algorithm == "Kindred Spirit":
+        clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+        cluster_labels = clustering_model.fit_predict(gap_embeddings)  # Corrected indentation
+        centers = clustering_model.cluster_centers_
+        rep_keywords = {}
+        for i in range(n_clusters):
+        cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+        if not cluster_grams:
+            continue
+        cluster_embeddings = gap_embeddings[cluster_labels == i]
+        distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
+        rep_keyword = cluster_grams[np.argmin(distances)]
+        rep_keywords[i] = rep_keyword
+elif algorithm == "Affinity Stack":
+        clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+        cluster_labels = clustering_model.fit_predict(gap_embeddings)
+        rep_keywords = {}
+        for i in range(n_clusters):
+        cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
+        cluster_embeddings = gap_embeddings[cluster_labels == i]
+        if len(cluster_embeddings) > 1:
+            sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+            rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+        else:
+            rep_keyword = cluster_grams[0]
+        rep_keywords[i] = rep_keyword
 
         # Display Gap Scores Table
         df_gap = pd.DataFrame(gap_ngrams_with_scores, columns=['N-gram', 'Gap Score'])
