@@ -32,10 +32,8 @@ from sentence_transformers import SentenceTransformer
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
-
 logo_url = "https://theseoconsultant.ai/wp-content/uploads/2024/12/cropped-theseoconsultant-logo-2.jpg"
 
-# Global rate limiting variables
 REQUEST_INTERVAL = 2.0
 last_request_time = 0
 
@@ -47,7 +45,6 @@ def enforce_rate_limit():
         time.sleep(REQUEST_INTERVAL - elapsed)
     last_request_time = time.time()
 
-# Global spaCy model variable
 nlp = None
 
 @st.cache_resource
@@ -107,7 +104,6 @@ def extract_text_from_url(url):
         st.error(f"Unexpected error fetching {url}: {e}")
         return None
 
-@st.cache_data(ttl=86400)
 def extract_relevant_text_from_url(url):
     try:
         enforce_rate_limit()
@@ -207,6 +203,7 @@ def identify_entities(text, nlp_model):
     entities = [(ent.text, ent.label_) for ent in doc.ents]
     return entities
 
+# ORIGINAL count_entities (for unique counts per source)
 def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
     entity_counts = Counter()
     seen_entities = set()
@@ -218,6 +215,17 @@ def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
             if (lemma, label) not in seen_entities:
                 entity_counts[(lemma, label)] += 1
                 seen_entities.add((lemma, label))
+    return entity_counts
+
+# New function to count every occurrence
+def count_entities_total(entities: List[Tuple[str, str]], nlp_model) -> Counter:
+    entity_counts = Counter()
+    for entity, label in entities:
+        entity = entity.replace('\n', ' ').replace('\r', '')
+        if len(entity) > 2:
+            doc = nlp_model(entity)
+            lemma = " ".join([token.lemma_ for token in doc])
+            entity_counts[(lemma, label)] += 1
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=30):
@@ -258,7 +266,6 @@ def display_entity_wordcloud(entity_counts):
 # ------------------------------------
 # Cosine Similarity Functions
 # ------------------------------------
-
 def calculate_overall_similarity(urls, search_term, model):
     search_term_embedding = get_embedding(search_term, model)
     results = []
@@ -317,7 +324,6 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 # ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
-
 def url_analysis_dashboard_page():
     st.header("URL Analysis Dashboard")
     st.markdown("Analyze multiple URLs and gather key SEO metrics.")
@@ -746,7 +752,7 @@ def displacy_visualization_page():
 
 def named_entity_barchart_page():
     st.header("Entity Frequency Charts")
-    st.markdown("Visualize the most frequent named entities across multiple sources.")
+    st.markdown("Visualize the most frequent named entities across multiple sources. This tool counts the total number of occurrences for each entity.")
     input_method = st.radio(
         "Select content input method:",
         options=["Extract from URL", "Paste Content"],
@@ -786,7 +792,7 @@ def named_entity_barchart_page():
                 return
             entities = identify_entities(all_text, nlp_model)
             filtered_entities = [(entity, label) for entity, label in entities if label not in ["CARDINAL", "PERCENT", "MONEY"]]
-            entity_counts = count_entities(filtered_entities, nlp_model)
+            entity_counts = count_entities_total(filtered_entities, nlp_model)
             if entity_counts:
                 st.subheader("Total Entity Counts")
                 display_entity_barchart(entity_counts)
@@ -807,22 +813,16 @@ def named_entity_barchart_page():
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
 # ------------------------------------
-# New Tool: N-gram TF-IDF Analysis with Comparison Table
+# Semantic Gap Analyzer (without clustering)
 # ------------------------------------
-
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
     st.markdown("""
-        Uncover hidden opportunities by comparing your website's content to your top competitors. 
+        Uncover hidden opportunities by comparing your website's content to your top competitors.
         Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.
     """)
     st.subheader("Competitors")
-    competitor_source_option = st.radio(
-        "Select content source:",
-        options=["Extract from URL", "Paste Content"],
-        index=0,
-        key="competitor_source"
-    )
+    competitor_source_option = st.radio("Select content source:", options=["Extract from URL", "Paste Content"], index=0, key="competitor_source")
     if competitor_source_option == "Extract from URL":
         competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="competitor_urls", value="")
         competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
@@ -831,12 +831,7 @@ def ngram_tfidf_analysis_page():
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
     st.subheader("Your Site")
-    target_source_option = st.radio(
-        "Select content source:",
-        options=["Extract from URL", "Paste Content"],
-        index=0,
-        key="target_source"
-    )
+    target_source_option = st.radio("Select content source:", options=["Extract from URL", "Paste Content"], index=0, key="target_source")
     if target_source_option == "Extract from URL":
         target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
     else:
@@ -847,6 +842,7 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
+    
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
@@ -854,6 +850,7 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
+        # Extract competitor and target content
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -874,6 +871,7 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
+        
         nlp_model = load_spacy_model()
         competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
         target_content = preprocess_text(target_content, nlp_model)
@@ -887,11 +885,8 @@ def ngram_tfidf_analysis_page():
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
-            df_tfidf_target = pd.DataFrame(
-                target_tfidf_vector.toarray(),
-                index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
-                columns=feature_names
-            )
+            df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
+        # Get top n-grams for each competitor
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -906,6 +901,7 @@ def ngram_tfidf_analysis_page():
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
+        # Compute candidate n-gram gap scores (TF-IDF difference and semantic difference)
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
             for ngram in top_ngrams_competitors[source]:
@@ -967,95 +963,21 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(gap_counts)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
-        gap_ngrams = [ngram for ngram, score in norm_candidates]
-        if not gap_ngrams:
-            st.error("No valid gap n-grams for clustering.")
-            return
-        valid_gap_ngrams = []
-        gap_embeddings = []
-        with st.spinner("Computing SentenceTransformer embeddings for gap n-grams..."):
-            for gram in gap_ngrams:
-                emb = get_embedding(gram, model)
-                if emb is not None:
-                    gap_embeddings.append(emb)
-                    valid_gap_ngrams.append(gram)
-        if len(valid_gap_ngrams) == 0:
-            st.error("Could not compute embeddings for any gap n-grams.")
-            return
-        gap_embeddings = np.vstack(gap_embeddings)
-        if algorithm == "Kindred Spirit":
-            clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-            cluster_labels = clustering_model.fit_predict(gap_embeddings)
-            centers = clustering_model.cluster_centers_
-            rep_keywords = {}
-            for i in range(n_clusters):
-                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
-                if not cluster_grams:
-                    continue
-                cluster_embeddings = gap_embeddings[cluster_labels == i]
-                distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
-                rep_keyword = cluster_grams[np.argmin(distances)]
-                rep_keywords[i] = rep_keyword
-        elif algorithm == "Affinity Stack":
-            clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
-            cluster_labels = clustering_model.fit_predict(gap_embeddings)
-            rep_keywords = {}
-            for i in range(n_clusters):
-                cluster_grams = [ng for ng, label in zip(valid_gap_ngrams, cluster_labels) if label == i]
-                cluster_embeddings = gap_embeddings[cluster_labels == i]
-                if len(cluster_embeddings) > 1:
-                    sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
-                    rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
-                else:
-                    rep_keyword = cluster_grams[0]
-                rep_keywords[i] = rep_keyword
-        df_gap = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
-        st.markdown("### Gap Scores for Top Phrases:")
-        st.dataframe(df_gap)
-        clusters = {}
-        for gram, label in zip(valid_gap_ngrams, cluster_labels):
-            clusters.setdefault(label, []).append(gram)
-        st.markdown("### Keyword Clusters:")
-        for label, gram_list in clusters.items():
-            rep = rep_keywords.get(label, "N/A")
-            st.markdown(f"**Cluster {label}** (Representative: {rep}):")
-            for gram in gram_list:
-                st.write(f" - {gram}")
-        with st.spinner("Generating interactive cluster visualization..."):
-            pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(gap_embeddings)
-            df_plot = pd.DataFrame({
-                'x': embeddings_2d[:, 0],
-                'y': embeddings_2d[:, 1],
-                'Keyword': valid_gap_ngrams,
-                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
-            })
-            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword', hover_data=['Keyword'],
-                             title="Semantic Opportunity Clusters")
-            fig.update_traces(textposition='top center')
-            fig.update_layout(
-                xaxis_title="Topic Focus: Broad vs. Niche",
-                yaxis_title="Competitive Pressure: High vs. Low"
-            )
-            st.plotly_chart(fig)
 
+# ------------------------------------
+# Keyword Clustering Tool (with clustering)
+# ------------------------------------
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
         """
         This tool combines semantic gap analysis with keyword clustering.
         First, it identifies key phrases where your competitors outperform your target.
-        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
-        The resulting clusters (and their representative keywords) are displayed below.
+        Then, it clusters these gap phrases based on their semantic similarity and displays an interactive visualization.
         """
     )
     st.subheader("Competitors")
-    competitor_source_option = st.radio(
-        "Select competitor content source:",
-        options=["Extract from URL", "Paste Content"],
-        index=0,
-        key="comp_source"
-    )
+    competitor_source_option = st.radio("Select competitor content source:", options=["Extract from URL", "Paste Content"], index=0, key="comp_source")
     if competitor_source_option == "Extract from URL":
         competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="comp_urls", value="")
         competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
@@ -1064,12 +986,7 @@ def keyword_clustering_from_gap_page():
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_content", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
     st.subheader("Your Site")
-    target_source_option = st.radio(
-        "Select target content source:",
-        options=["Extract from URL", "Paste Content"],
-        index=0,
-        key="target_source_cluster"
-    )
+    target_source_option = st.radio("Select target content source:", options=["Extract from URL", "Paste Content"], index=0, key="target_source_cluster")
     if target_source_option == "Extract from URL":
         target_url = st.text_input("Enter Your URL:", key="target_url", value="")
     else:
@@ -1080,15 +997,9 @@ def keyword_clustering_from_gap_page():
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1, key="max_df_gap")
     top_n = st.slider("Max # of Results per Competitor:", min_value=1, max_value=50, value=10, key="top_n_gap")
     st.subheader("Clustering Settings")
-    algorithm = st.selectbox(
-        "Select Clustering Type:",
-        options=["Kindred Spirit", "Affinity Stack"],
-        key="clustering_algo_gap"
-    )
-    if algorithm == "Kindred Spirit":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="kmeans_clusters_gap")
-    elif algorithm == "Affinity Stack":
-        n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="agg_clusters_gap")
+    algorithm = st.selectbox("Select Clustering Type:", options=["Kindred Spirit", "Affinity Stack"], key="clustering_algo_gap")
+    n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="clusters_num")
+    
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
         if not competitor_list:
             st.warning("Please enter at least one competitor URL or content.")
@@ -1129,11 +1040,7 @@ def keyword_clustering_from_gap_page():
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
-            df_tfidf_target = pd.DataFrame(
-                target_tfidf_vector.toarray(),
-                index=[target_url if target_source_option=="Extract from URL" else "Target Content"],
-                columns=feature_names
-            )
+            df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -1141,13 +1048,13 @@ def keyword_clustering_from_gap_page():
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
         model = initialize_sentence_transformer()
+        with st.spinner("Calculating SentenceTransformer embedding for target content..."):
+            target_embedding = get_embedding(target_content, model)
         competitor_embeddings = []
         with st.spinner("Calculating SentenceTransformer embeddings for competitors..."):
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
-        with st.spinner("Calculating SentenceTransformer embedding for target content..."):
-            target_embedding = get_embedding(target_content, model)
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
             for ngram in top_ngrams_competitors[source]:
@@ -1209,6 +1116,7 @@ def keyword_clustering_from_gap_page():
             display_entity_wordcloud(gap_counts)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
+        # ----- Clustering (Keyword Clustering) begins here -----
         gap_ngrams = [ngram for ngram, score in norm_candidates]
         if not gap_ngrams:
             st.error("No valid gap n-grams for clustering.")
@@ -1284,7 +1192,6 @@ def keyword_clustering_from_gap_page():
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
-
 def main():
     st.set_page_config(
         page_title="Semantic Search SEO Analysis Tools | The SEO Consultant.ai",
