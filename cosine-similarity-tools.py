@@ -851,7 +851,6 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-        # Extract competitor and target content
         competitor_texts = []
         valid_competitor_sources = []
         with st.spinner("Extracting competitor content..."):
@@ -887,40 +886,28 @@ def ngram_tfidf_analysis_page():
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
-        # Get top n-grams for each competitor
-        top_ngrams_competitors = {}
-        for source in valid_competitor_sources:
+        candidate_scores = []
+        for idx, source in enumerate(valid_competitor_sources):
             row = df_tfidf_competitors.loc[source]
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
-            top_ngrams_competitors[source] = list(top_ngrams.index)
-        model = initialize_sentence_transformer()
-        with st.spinner("Calculating SentenceTransformer embedding for target content..."):
-            target_embedding = get_embedding(target_content, model)
-        competitor_embeddings = []
-        with st.spinner("Calculating SentenceTransformer embeddings for competitors..."):
-            for text in competitor_texts:
-                emb = get_embedding(text, model)
-                competitor_embeddings.append(emb)
-        # Compute candidate n-gram gap scores (TF-IDF difference and semantic difference)
-        candidate_scores = []
-        for idx, source in enumerate(valid_competitor_sources):
-            for ngram in top_ngrams_competitors[source]:
+            for ngram in top_ngrams.index:
                 if ngram in df_tfidf_target.columns:
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
                     target_tfidf = df_tfidf_target.iloc[0][ngram]
                     tfidf_diff = competitor_tfidf - target_tfidf
                     if tfidf_diff <= 0:
                         continue
-                    ngram_embedding = get_embedding(ngram, model)
-                    competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
-                    target_similarity = cosine_similarity([ngram_embedding], [target_embedding])[0][0]
+                    ngram_embedding = get_embedding(ngram, initialize_sentence_transformer())
+                    # For Semantic Gap Analyzer, we only calculate gap scores (no clustering)
+                    competitor_similarity = cosine_similarity([ngram_embedding], [get_embedding(source, initialize_sentence_transformer())])[0][0]
+                    target_similarity = cosine_similarity([ngram_embedding], [get_embedding(target_content, initialize_sentence_transformer())])[0][0]
                     bert_diff = competitor_similarity - target_similarity
                     candidate_scores.append((ngram, tfidf_diff, bert_diff))
                 else:
                     competitor_tfidf = df_tfidf_competitors.loc[source, ngram]
-                    ngram_embedding = get_embedding(ngram, model)
-                    competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
+                    ngram_embedding = get_embedding(ngram, initialize_sentence_transformer())
+                    competitor_similarity = cosine_similarity([ngram_embedding], [get_embedding(source, initialize_sentence_transformer())])[0][0]
                     bert_diff = competitor_similarity
                     candidate_scores.append((ngram, competitor_tfidf, bert_diff))
         if not candidate_scores:
@@ -931,7 +918,7 @@ def ngram_tfidf_analysis_page():
         min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
         min_bert, max_bert = min(bert_vals), max(bert_vals)
         epsilon = 1e-8
-        tfidf_weight = 0.6  # Hard-coded weight
+        tfidf_weight = 0.6  # Hard-coded TF-IDF weight
         norm_candidates = []
         for ngram, tfidf_diff, bert_diff in candidate_scores:
             norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
@@ -943,27 +930,6 @@ def ngram_tfidf_analysis_page():
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         df_consolidated = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score'])
         st.dataframe(df_consolidated)
-        st.markdown("### Per-Competitor Semantic Gap Analysis")
-        for source, gap_list in top_ngrams_competitors.items():
-            candidate_list = []
-            for ngram in gap_list:
-                for cand in norm_candidates:
-                    if cand[0] == ngram:
-                        candidate_list.append(cand)
-                        break
-            if candidate_list:
-                df_source = pd.DataFrame(candidate_list, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
-                st.markdown(f"#### Competitor: {source}")
-                st.dataframe(df_source)
-        st.subheader("Semantic Gap Wordclouds")
-        gap_counts = {}
-        for ngram, score in norm_candidates:
-            gap_counts[ngram] = gap_counts.get(ngram, 0) + 1
-        if gap_counts:
-            st.markdown("**Combined Semantic Gap Wordcloud for All Sites:**")
-            display_entity_wordcloud(gap_counts)
-        else:
-            st.write("No combined gap n-grams to create a wordcloud.")
 
 # ------------------------------------
 # Keyword Clustering Tool (with clustering)
@@ -974,7 +940,8 @@ def keyword_clustering_from_gap_page():
         """
         This tool combines semantic gap analysis with keyword clustering.
         First, it identifies key phrases where your competitors outperform your target.
-        Then, it clusters these gap phrases based on their semantic similarity and displays an interactive visualization.
+        Then, it clusters these gap phrases based on their semantic similarity.
+        The interactive Plotly chart is displayed at the top, followed by the detailed cluster listings.
         """
     )
     st.subheader("Competitors")
@@ -1042,6 +1009,7 @@ def keyword_clustering_from_gap_page():
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
+        # For each competitor, get its top n-grams
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
             row = df_tfidf_competitors.loc[source]
@@ -1093,31 +1061,8 @@ def keyword_clustering_from_gap_page():
             if combined_score > 0:
                 norm_candidates.append((ngram, combined_score))
         norm_candidates.sort(key=lambda x: x[1], reverse=True)
-        st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
-        df_consolidated = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score'])
-        st.dataframe(df_consolidated)
-        st.markdown("### Per-Competitor Semantic Gap Analysis")
-        for source, gap_list in top_ngrams_competitors.items():
-            candidate_list = []
-            for ngram in gap_list:
-                for cand in norm_candidates:
-                    if cand[0] == ngram:
-                        candidate_list.append(cand)
-                        break
-            if candidate_list:
-                df_source = pd.DataFrame(candidate_list, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
-                st.markdown(f"#### Competitor: {source}")
-                st.dataframe(df_source)
-        st.subheader("Semantic Gap Wordclouds")
-        gap_counts = {}
-        for ngram, score in norm_candidates:
-            gap_counts[ngram] = gap_counts.get(ngram, 0) + 1
-        if gap_counts:
-            st.markdown("**Combined Semantic Gap Wordcloud for All Sites:**")
-            display_entity_wordcloud(gap_counts)
-        else:
-            st.write("No combined gap n-grams to create a wordcloud.")
-        # ----- Clustering (Keyword Clustering) begins here -----
+        
+        # ----- Clustering & Visualization -----
         gap_ngrams = [ngram for ngram, score in norm_candidates]
         if not gap_ngrams:
             st.error("No valid gap n-grams for clustering.")
@@ -1160,35 +1105,36 @@ def keyword_clustering_from_gap_page():
                 else:
                     rep_keyword = cluster_grams[0]
                 rep_keywords[i] = rep_keyword
-        df_gap = pd.DataFrame(norm_candidates, columns=['N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
-        st.markdown("### Gap Scores for Top Phrases:")
-        st.dataframe(df_gap)
+
+        # --- Display the interactive Plotly chart at the top ---
+        st.markdown("### Interactive Cluster Visualization")
+        pca = PCA(n_components=2)
+        embeddings_2d = pca.fit_transform(gap_embeddings)
+        df_plot = pd.DataFrame({
+            'x': embeddings_2d[:, 0],
+            'y': embeddings_2d[:, 1],
+            'Keyword': valid_gap_ngrams,
+            'Cluster': [f"Cluster {label}" for label in cluster_labels]
+        })
+        fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword', hover_data=['Keyword'],
+                         title="Semantic Opportunity Clusters")
+        fig.update_traces(textposition='top center')
+        fig.update_layout(
+            xaxis_title="Topic Focus: Broad vs. Niche",
+            yaxis_title="Competitive Pressure: High vs. Low"
+        )
+        st.plotly_chart(fig)
+        
+        # --- Display the detailed clusters ---
+        st.markdown("### Keyword Clusters")
         clusters = {}
         for gram, label in zip(valid_gap_ngrams, cluster_labels):
             clusters.setdefault(label, []).append(gram)
-        st.markdown("### Keyword Clusters:")
         for label, gram_list in clusters.items():
             rep = rep_keywords.get(label, "N/A")
             st.markdown(f"**Cluster {label}** (Representative: {rep}):")
             for gram in gram_list:
                 st.write(f" - {gram}")
-        with st.spinner("Generating interactive cluster visualization..."):
-            pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(gap_embeddings)
-            df_plot = pd.DataFrame({
-                'x': embeddings_2d[:, 0],
-                'y': embeddings_2d[:, 1],
-                'Keyword': valid_gap_ngrams,
-                'Cluster': [f"Cluster {label}" if label != -1 else "Noise" for label in cluster_labels]
-            })
-            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword', hover_data=['Keyword'],
-                             title="Semantic Opportunity Clusters")
-            fig.update_traces(textposition='top center')
-            fig.update_layout(
-                xaxis_title="Topic Focus: Broad vs. Niche",
-                yaxis_title="Competitive Pressure: High vs. Low"
-            )
-            st.plotly_chart(fig)
 
 # ------------------------------------
 # Main Streamlit App
