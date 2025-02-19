@@ -940,8 +940,8 @@ def keyword_clustering_from_gap_page():
         """
         This tool combines semantic gap analysis with keyword clustering.
         First, it identifies key phrases where your competitors outperform your target.
-        Then, it clusters these gap phrases based on their semantic similarity.
-        The interactive Plotly chart is displayed at the top, followed by the detailed cluster listings.
+        Then, it uses machine learning for these gap phrases and clusters them based on their semantic similarity.
+        The resulting clusters (and their representative keywords) are displayed below.
         """
     )
     st.subheader("Competitors")
