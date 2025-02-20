@@ -1271,9 +1271,9 @@ def paa_extraction_clustering_page():
             return
 
         # Define user_agent once to use throughout
-        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/115.0.0.0 Safari/537.36")
+        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
+                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+                      
         
         # --- Helper function to extract PAA questions for a given query ---
         # This function clicks on each PAA element recursively up to max_depth times.
@@ -1313,8 +1313,8 @@ def paa_extraction_clustering_page():
             return paa_set
         
         st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 10 times)
-        paa_questions = get_paa(search_query, max_depth=10)
+        # Extract PAA questions (clicking each element recursively up to 20 times)
+        paa_questions = get_paa(search_query, max_depth=20)
         
         st.info("Autocomplete suggestions...")
         # Scrape autocomplete suggestions using Google's unofficial endpoint
