@@ -1424,10 +1424,10 @@ def paa_extraction_clustering_page():
 @st.cache_resource()
 def train_intent_classifier(brands_list=None):
     """Trains a search intent classifier on a small, built-in dataset,
-    optionally incorporating brand detection."""
-
+    optionally incorporating brand detection.
+    """
     data = {
-     "query": [
+        "query": [
             "buy cheap shoes online",
             "what is the best seo tool",
             "nike shoes price",
@@ -1448,11 +1448,10 @@ def train_intent_classifier(brands_list=None):
             "theseoconsultant.ai",
             "find a local plumber",
             "emergency plumber 24/7",
-            "Nike Air Max", # Brand + product
-            "Adidas Ultraboost", #Brand + product
-            "Samsung Galaxy S23", # Brand + Product
-            "iPhone 15 Pro" #Brand + Product
-
+            "Nike Air Max",
+            "Adidas Ultraboost",
+            "Samsung Galaxy S23",
+            "iPhone 15 Pro"
         ],
         "intent": [
             "Transactional",
@@ -1493,39 +1492,24 @@ def train_intent_classifier(brands_list=None):
 
     df_train['processed_query'] = df_train['query'].apply(preprocess)
 
-    # --- Brand Detection (Re-added) ---
-    if brands_list:  # Only add brand detection if brands are provided
-        def detect_brand(query, brands):
-            for brand in brands:
-                if brand in query:
-                    return brand
-            return 'Other'
 
-        df_train['brand'] = df_train['processed_query'].apply(detect_brand, brands=brands_list)
-    else:
-        df_train['brand'] = 'Other'  # Default value if no brands are specified
-
-
+    # Split data
     X = df_train['processed_query']
     y = df_train['intent']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # --- Pipeline with ColumnTransformer (Re-added) ---
-    if brands_list:
-        model = Pipeline([
-            ('tfidf', TfidfVectorizer()),
-            ('clf', MultinomialNB())
-        ])
-    else:  # If no brands, just use the text
-         model = Pipeline([
+    # --- Simplified Pipeline - NO ColumnTransformer ---
+    model = Pipeline([
         ('tfidf', TfidfVectorizer()),
         ('clf', MultinomialNB())
-        ])
+    ])
 
+
+    # Train the model
     model.fit(X_train, y_train)
     accuracy = model.score(X_test, y_test)
-    st.write(f"Classifier Training Complete. Test Set Accuracy: {accuracy:.4f}")
-    st.write("Note: Accuracy is based on the built-in training data, and will be low due to the limited dataset. Provide your own training data for better results.")
+    st.write(f"Classifier Training Complete.  Test Set Accuracy: {accuracy:.4f}")
+    st.write("Note:  Accuracy is based on the *built-in* training data, and will be low due to the limited dataset.  Provide your own training data for better results.")
     return model
 
 
@@ -1541,17 +1525,16 @@ def google_ads_search_term_analyzer_page():
         """
     )
 
-    # --- User Input for Brands ---
+    # User Input for Brands
     brands_input = st.text_input("Enter a comma-separated list of brands (optional):", value="nike, adidas, samsung, iphone, google, facebook")
     brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
-    # --- Brand Filter Selection (Radio Buttons) ---
+     # --- Brand Filter Selection (Radio Buttons) ---
     brand_filter_option = st.radio(
         "Filter by Brand:",
         options=["All"] + brands_list,  # Include an "All" option
         index=0  # Default to "All"
     )
-
 
     # Load the pre-trained classifier, now passing brands_list again
     intent_classifier = train_intent_classifier(brands_list=brands_list)
@@ -1560,8 +1543,10 @@ def google_ads_search_term_analyzer_page():
 
     if uploaded_file is not None:
         try:
+            # Read the Excel file, skipping the first two rows.
             df = pd.read_excel(uploaded_file, skiprows=2)
 
+            # *** KEY CHANGE: RENAME COLUMNS ***
             df = df.rename(columns={
                 "Search term": "Search term",
                 "Match type": "Match type",
@@ -1578,12 +1563,14 @@ def google_ads_search_term_analyzer_page():
                 "Cost / conv.": "Cost per Conversion"
             })
 
+           # Input Validation (check for required columns - this part is correct and unchanged)
             required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
                 return
 
+            # Convert numeric columns, handling errors (correct and unchanged)
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
                 try:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -1616,14 +1603,19 @@ def google_ads_search_term_analyzer_page():
                 lemmatizer = WordNetLemmatizer()
 
                 def preprocess(text):
+                    # Ensure input is a string
+                    text = str(text)
                     tokens = word_tokenize(text.lower())
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     return " ".join(tokens)
 
-                df['processed_query'] = df['Search term'].apply(preprocess)
+                df['processed_query'] = df['Search term'].apply(preprocess) #APPLY PREPROCESS
 
+                # --- Predict Intent ---  Pass only the processed text column
                 df["Intent"] = intent_classifier.predict(df['processed_query'])
 
+
+                # Aggregate performance data
                 intent_summary = df.groupby("Intent").agg({
                     "Clicks": "sum",
                     "Impressions": "sum",
@@ -1643,10 +1635,13 @@ def google_ads_search_term_analyzer_page():
                 n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
                 min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
 
+                # --- N-gram Extraction and Aggregation ---
                 stop_words = set(stopwords.words('english'))
                 lemmatizer = WordNetLemmatizer()
 
                 def extract_ngrams(text, n):
+                  # Ensure input is a string.
+                    text = str(text)
                     tokens = word_tokenize(text.lower())
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     ngrams_list = list(nltk.ngrams(tokens, n))
@@ -1659,19 +1654,23 @@ def google_ads_search_term_analyzer_page():
                 ngram_counts = Counter(all_ngrams)
                 filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
 
-                if filtered_ngrams:
+                if filtered_ngrams:  # Only proceed if there are n-grams after filtering
+
                     df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
 
+                    # Create a mapping from search term to n-grams
                     search_term_to_ngrams = {}
                     for term in df["Search term"]:
                         search_term_to_ngrams[term] = extract_ngrams(term, n_value)
 
-                    ngram_performance = {}
+
+                    # Aggregate performance data based on n-grams
+                    ngram_performance = {}  # Use N-gram as key
 
                     for index, row in df.iterrows():
-                         search_term = row["Search term"]
-                         for ngram in search_term_to_ngrams[search_term]:
-                            if ngram in filtered_ngrams:
+                        search_term = row["Search term"]
+                        for ngram in search_term_to_ngrams[search_term]:  # Iterate through n-grams of THIS search term
+                            if ngram in filtered_ngrams:  # Only consider frequent n-grams
 
                                 if ngram not in ngram_performance:
                                         ngram_performance[ngram] = {
@@ -1685,20 +1684,23 @@ def google_ads_search_term_analyzer_page():
                                 ngram_performance[ngram]["Cost"] += row["Cost"]
                                 ngram_performance[ngram]["Conversions"] += row["Conversions"]
 
+
+
+                    # Convert aggregated data to DataFrame
                     df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
                     df_ngram_performance.index.name = "N-gram"
-                    df_ngram_performance = df_ngram_performance.reset_index()
+                    df_ngram_performance = df_ngram_performance.reset_index()  # Make N-gram a regular column
 
                     df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
                     df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
                     df_ngram_performance["Cost per Conversion"] = df_ngram_performance["Cost"] / df_ngram_performance["Conversions"]
 
+
                     st.dataframe(df_ngram_performance)
 
                 else:
                     st.warning("No n-grams found with the specified minimum frequency.")
-
-        except Exception as e:
+        except Exception as e: #THIS WAS MODIFIED
             st.error(f"An error occurred while processing the Excel file: {e}")
 
           
