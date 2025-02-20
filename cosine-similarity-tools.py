@@ -1426,6 +1426,7 @@ def paa_extraction_clustering_page():
             if recommended:
                 dendro_labels = [q for q, sim in recommended]
                 dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+                import plotly.figure_factory as ff  # Import INSIDE the function where it's used.
                 dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
                 dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))
                 st.plotly_chart(dendro)
