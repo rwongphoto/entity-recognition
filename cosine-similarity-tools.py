@@ -1374,53 +1374,42 @@ def paa_extraction_clustering_page():
 
         with st.spinner("I'm researching... Please wait, this may take a few moments."):
             # --- Level 1: Initial Query ---
-            paa_questions_l1, related_searches_l1 = get_paa_and_related(_driver, search_query, _request_count=request_count)
+            # Call with driver (NOT _driver)
+            paa_questions_l1, related_searches_l1 = get_paa_and_related(driver, search_query, _request_count=request_count)
             autocomplete_suggestions_l1 = get_autocomplete_suggestions(search_query)
-            # Combine level 1 results.
             combined_questions_l1 = [search_query] + paa_questions_l1 + autocomplete_suggestions_l1 + related_searches_l1
-
 
             # --- Level 2: Related Searches of Initial Query ---
             paa_questions_l2 = []
-            combined_questions_l2 = set() # Use a set for level 2 to avoid duplicates
-            for related_query_l1 in related_searches_l1[:MAX_RELATED_SEARCHES]: #Limit as before
-                paa_l2, _ = get_paa_and_related(driver, related_query_l1, _request_count=request_count)  # Only need PAA
+            combined_questions_l2 = set()
+            for related_query_l1 in related_searches_l1[:MAX_RELATED_SEARCHES]:
+                paa_l2, _ = get_paa_and_related(driver, related_query_l1, _request_count=request_count)  # driver, not _driver
                 paa_questions_l2.extend(paa_l2)
-                combined_questions_l2.update(paa_l2) # Only add the PAA questions
+                combined_questions_l2.update(paa_l2)
 
             # --- Level 3: PAA of Level 2 PAA ---
             paa_questions_l3 = []
-            combined_questions_l3 = set()  # Use a set to avoid duplicates.
-            for paa_question_l2 in list(combined_questions_l2)[:MAX_RELATED_SEARCHES]:  # Limit, iterate on *PAA questions* from L2
-                paa_l3, _ = get_paa_and_related(driver, paa_question_l2, _request_count=request_count) # Only need PAA
+            combined_questions_l3 = set()
+            for paa_question_l2 in list(combined_questions_l2)[:MAX_RELATED_SEARCHES]:
+                paa_l3, _ = get_paa_and_related(driver, paa_question_l2, _request_count=request_count)  # driver, not _driver
                 paa_questions_l3.extend(paa_l3)
                 combined_questions_l3.update(paa_l3)
 
-
             # --- Combine and Deduplicate ---
-            # Combine all levels.  Include the original query.
             combined_questions = list(dict.fromkeys([search_query] + combined_questions_l1 + list(combined_questions_l2) + list(combined_questions_l3)))
 
             # --- Similarity Analysis ---
             st.info("Analyzing similarity...")
             query_embedding = get_embedding(search_query, model)
-            question_similarities = []
-
-            # Calculate similarities *for all* combined questions.
-            for q in combined_questions:
-                q_embedding = get_embedding(q, model)
-                sim = cosine_similarity([query_embedding], [q_embedding])[0][0]
-                question_similarities.append((q, sim))
-
+            question_similarities = [(q, cosine_similarity([query_embedding], [get_embedding(q, model)])[0][0]) for q in combined_questions]
 
             if not question_similarities:
                 st.warning("No questions/suggestions were extracted to analyze.")
                 return
 
+
             avg_sim = np.mean([sim for _, sim in question_similarities])
             st.write(f"Average Similarity Score: {avg_sim:.4f}")
-
-            # Recommended are now *all* questions above average, from all levels.
             recommended = sorted([(q, sim) for q, sim in question_similarities if sim >= avg_sim], key=lambda x: x[1], reverse=True)
 
             # --- Visualization ---
@@ -1429,6 +1418,8 @@ def paa_extraction_clustering_page():
                 dendro_labels = [q for q, sim in recommended]
                 try:
                   dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+                  import plotly.figure_factory as ff  # Local import is fine here
+                  import scipy.cluster.hierarchy as sch
                   dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels, linkagefun=lambda x: sch.linkage(x, 'complete'))
                   dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))  # Dynamic height
                   st.plotly_chart(dendro)
