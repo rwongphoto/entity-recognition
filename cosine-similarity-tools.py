@@ -29,6 +29,16 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 # Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
 
+#NEW IMPORTS
+import requests
+#from google.ads.googleads.client import GoogleAdsClient #Commented out because this needs configuration and keys, which are user specific.
+#from google.ads.googleads.errors import GoogleAdsException #Commented out, see above comment
+from io import StringIO #For CSV upload
+import nltk
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
 #NEW IMPORTS FOR CLASSIFIER (Place these at the top of your file with other imports)
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
