@@ -1259,8 +1259,13 @@ def paa_extraction_clustering_page():
     st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
-        You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
+        This tool builds a three-level topic cluster around a main search query.
+        Level 1 is your original query.
+        Level 2 consists of the related searches (as extracted from the original query).
+        Level 3 is obtained by performing an additional search on each related search—extracting its PAA and related searches.
+        
+        For example: 
+        Peter Lik > Peter Lik For Sale > Are Peter Lik Photos Worth Anything?
         """
     )
     
@@ -1270,7 +1275,7 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        # Define user_agent once to use throughout
+        # Define user_agent to use in all Selenium drivers.
         user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
                       "Chrome/115.0.0.0 Safari/537.36")
@@ -1292,7 +1297,7 @@ def paa_extraction_clustering_page():
                 if depth > max_depth:
                     return
                 try:
-                    # Use a CSS selector for PAA questions; update as needed
+                    # Attempt to locate PAA questions.
                     elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
                     if not elements:
                         elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
@@ -1312,94 +1317,132 @@ def paa_extraction_clustering_page():
             driver.quit()
             return paa_set
         
-        st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 10 times)
-        paa_questions = get_paa(search_query, max_depth=10)
+        # --- Function to extract related searches from a given query ---
+        def get_related(query):
+            related = []
+            try:
+                chrome_options = Options()
+                chrome_options.add_argument("--headless")
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument(f"user-agent={user_agent}")
+                driver = webdriver.Chrome(options=chrome_options)
+                driver.get("https://www.google.com/search?q=" + query)
+                time.sleep(3)
+                # The selector here may need to be updated based on Google's DOM.
+                elements = driver.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
+                for el in elements:
+                    text = el.text.strip()
+                    if text:
+                        related.append(text)
+                driver.quit()
+            except Exception as e:
+                st.error(f"Error extracting related searches for query '{query}': {e}")
+            return related
         
-        st.info("Autocomplete suggestions...")
-        # Scrape autocomplete suggestions using Google's unofficial endpoint
-        import requests
-        autocomplete_url = "http://suggestqueries.google.com/complete/search"
-        params = {"client": "chrome", "q": search_query}
-        try:
-            response = requests.get(autocomplete_url, params=params)
-            if response.status_code == 200:
-                suggestions = response.json()[1]
-            else:
-                suggestions = []
-        except Exception as e:
-            st.error(f"Error fetching autocomplete suggestions: {e}")
-            suggestions = []
+        # --- Function to get additional (level 3) queries from a given level 2 query ---
+        def get_additional(query):
+            # For the additional search, we extract both PAA and related searches.
+            paa_results = get_paa(query, max_depth=4)
+            related_results = get_related(query)
+            return list(paa_results.union(set(related_results)))
         
-        st.info("Related searches...")
-        # Reinitialize a driver to extract related searches from the original query page
-        related_searches = []
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
-            driver2 = webdriver.Chrome(options=chrome_options)
-            driver2.get("https://www.google.com/search?q=" + search_query)
-            time.sleep(3)
-            # Related searches often appear in <p> tags with a specific class (update selector as needed)
-            related_elements = driver2.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
-            for el in related_elements:
-                text = el.text.strip()
-                if text:
-                    related_searches.append(text)
-            driver2.quit()
-        except Exception as e:
-            st.error(f"Error extracting related searches: {e}")
-        
-        # Combine all extracted questions: PAA + autocomplete suggestions + related searches
-        combined_questions = list(paa_questions) + suggestions + related_searches
-        
-        st.info("Analyzing similarity...")
-        # Compute cosine similarity using your SentenceTransformer model
-        model = initialize_sentence_transformer()
-        query_embedding = get_embedding(search_query, model)
-        question_similarities = []
-        for q in combined_questions:
-            q_embedding = get_embedding(q, model)
-            sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
-            question_similarities.append((q, sim))
-        
-        if not question_similarities:
-            st.warning("No questions were extracted to analyze.")
+        st.info("Extracting related searches for the original query...")
+        # Extract related searches from the original query (Level 2 candidates).
+        original_related = get_related(search_query)
+        if not original_related:
+            st.warning("No related searches found for the original query.")
             return
         
-        # Compute average similarity and filter recommendations (include average and above)
-        avg_sim = np.mean([sim for _, sim in question_similarities])
-        st.write(f"Average Similarity Score: {avg_sim:.4f}")
-        recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
-        recommended.sort(key=lambda x: x[1], reverse=True)
+        # Compute similarity (cosine) for each level 2 candidate relative to the original query.
+        model = initialize_sentence_transformer()
+        query_embedding = get_embedding(search_query, model)
+        level2_nodes = []
+        for rs in original_related:
+            rs_embedding = get_embedding(rs, model)
+            sim = cosine_similarity([rs_embedding], [query_embedding])[0][0]
+            level2_nodes.append({"text": rs, "similarity": sim})
         
-        # --- Visualization: Horizontal Dendrogram Tree ---
-        st.subheader("Recommended Questions Tree")
-        if recommended:
-            # Build a list of recommended questions only (do not include the original search query)
-            rec_texts = [q for q, sim in recommended]
-            dendro_labels = rec_texts
-            dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
-            
-            import plotly.figure_factory as ff
-            # Orientation 'left' produces a horizontal dendrogram tree with leaves on the left side
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
-            dendro.update_layout(width=800, height=600)
-            st.plotly_chart(dendro)
-        else:
-            st.info("No recommended questions to visualize.")
+        # For each level 2 node, perform an additional search to extract level 3 queries.
+        level3_nodes = []  # List of dicts: { "parent": level2_text, "text": additional_query, "similarity": sim }
+        for node in level2_nodes:
+            additional = get_additional(node["text"])
+            for add_q in additional:
+                add_embedding = get_embedding(add_q, model)
+                sim = cosine_similarity([add_embedding], [query_embedding])[0][0]
+                level3_nodes.append({"parent": node["text"], "text": add_q, "similarity": sim})
         
-        # --- Results ---
-        st.subheader("Recommended Questions (Average and Above)")
-        for q, sim in recommended:
-            st.write(f"{q} (Similarity: {sim:.4f})")
+        # Build a DataFrame for hierarchical visualization.
+        # Each row represents a branch: Level 1 is the original query, Level 2 is a related search,
+        # and Level 3 is an additional query extracted from that related search.
+        rows = []
+        # For each level 2 node, if it has children, add rows for each.
+        for node in level2_nodes:
+            # Filter level3 nodes for this parent.
+            children = [n for n in level3_nodes if n["parent"] == node["text"]]
+            if children:
+                for child in children:
+                    rows.append({
+                        "level1": search_query,
+                        "level2": node["text"],
+                        "level3": child["text"],
+                        "similarity": child["similarity"]  # You might also combine node["similarity"] if desired.
+                    })
+            else:
+                # If no level3 nodes, add the level 2 node with level3 empty.
+                rows.append({
+                    "level1": search_query,
+                    "level2": node["text"],
+                    "level3": "",
+                    "similarity": node["similarity"]
+                })
         
-        st.subheader("All Commonly Asked Questions")
-        for q in combined_questions:
-            st.write(f"- {q}")
+        if not rows:
+            st.warning("No additional queries were found from related searches.")
+            return
+        
+        df_tree = pd.DataFrame(rows)
+        
+        st.subheader("Hierarchical Topic Cluster")
+        # Use Plotly Express to create a treemap (which shows hierarchy clearly).
+        # (A treemap is a great alternative to a dendrogram when forcing a 3-level hierarchy.)
+        fig = px.treemap(
+            df_tree,
+            path=["level1", "level2", "level3"],
+            values="similarity",
+            color="similarity",
+            color_continuous_scale='RdBu',
+            title="Topic Cluster Treemap"
+        )
+        st.plotly_chart(fig)
+        
+        # Additionally, display the tree data.
+        st.subheader("Level 2 (Related Searches)")
+        for node in level2_nodes:
+            st.write(f"- {node['text']} (Similarity: {node['similarity']:.4f})")
+        
+        st.subheader("Level 3 (Additional Queries from Related Searches)")
+        for row in rows:
+            if row["level3"]:
+                st.write(f"{row['level2']} > {row['level3']} (Similarity: {row['similarity']:.4f})")
+        
+        st.subheader("All Extracted Queries")
+        # Combine original PAA, autocomplete suggestions, and related searches from the original query
+        # (this is from your existing logic)
+        autocomplete = []
+        try:
+            autocomplete_url = "http://suggestqueries.google.com/complete/search"
+            params = {"client": "chrome", "q": search_query}
+            response = requests.get(autocomplete_url, params=params)
+            if response.status_code == 200:
+                autocomplete = response.json()[1]
+        except Exception as e:
+            st.error(f"Error fetching autocomplete suggestions: {e}")
+        # Also extract PAA from the original query (if desired)
+        paa_original = get_paa(search_query, max_depth=10)
+        combined_original = list(paa_original) + autocomplete + original_related
+        st.write(combined_original)
+
 
 
           
