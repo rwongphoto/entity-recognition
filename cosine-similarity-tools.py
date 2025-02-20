@@ -1386,17 +1386,17 @@ def paa_extraction_clustering_page():
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
         
-        # --- Visualization: Hierarchical Dendrogram Tree ---
+        # --- Visualization: Horizontal Dendrogram Tree ---
         st.subheader("Recommended Questions Tree")
         if recommended:
-            # Build a list with the original query at the beginning, then recommended questions
+            # Build a list of recommended questions only (remove the original search query)
             rec_texts = [q for q, sim in recommended]
-            dendro_labels = [search_query] + rec_texts
+            dendro_labels = rec_texts
             dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
             
             import plotly.figure_factory as ff
-            # Orientation 'top' produces a horizontal dendrogram tree
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='top', labels=dendro_labels)
+            # Orientation 'left' produces a horizontal dendrogram with leaves on the left side
+            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
             dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
         else:
@@ -1410,6 +1410,7 @@ def paa_extraction_clustering_page():
         st.subheader("All Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
+
 
 
 
