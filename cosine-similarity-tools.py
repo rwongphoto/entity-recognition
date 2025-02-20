@@ -29,6 +29,10 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 # Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
 
+import plotly.figure_factory as ff  # Import here
+import scipy.cluster.hierarchy as sch # Import scipy
+from scipy.spatial.distance import pdist
+
 # --- Configuration ---
 GOOGLE_SEARCH_URL = "https://www.google.com/search?q="
 AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search?client=firefox&q="
@@ -352,7 +356,7 @@ def extract_related_searches(soup):
     return related_searches
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_paa_and_related(_driver, query, _request_count=None):
+def get_paa_and_related(driver, query, _request_count=None):
     """Gets PAA and related searches, with caching and request counting."""
 
     if _request_count is None:
@@ -366,7 +370,7 @@ def get_paa_and_related(_driver, query, _request_count=None):
     print(f"Fetching data for: {query} (Request #{_request_count['count']})")
 
     search_url = f"{GOOGLE_SEARCH_URL}{query.replace(' ', '+')}"
-    page_source = fetch_page_selenium(_driver, search_url)
+    page_source = fetch_page_selenium(driver, search_url)
 
     if page_source:
         soup = BeautifulSoup(page_source, "html.parser")
@@ -1366,6 +1370,7 @@ def paa_extraction_clustering_page():
         if not search_query:
             st.warning("Please enter a search query.")
             return
+
         # --- Initialize ---
         driver = initialize_selenium_driver()
         model = initialize_sentence_transformer()
@@ -1425,13 +1430,22 @@ def paa_extraction_clustering_page():
             st.subheader("Recommended Questions Tree")
             if recommended:
                 dendro_labels = [q for q, sim in recommended]
-                dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
-                import plotly.figure_factory as ff  # Import INSIDE the function where it's used.
-                dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
-                dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))
-                st.plotly_chart(dendro)
+                try:  # Add a try-except block here
+                    dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+                    dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels, linkagefun=lambda x: sch.linkage(x, 'complete'))
+                    dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))
+                    st.plotly_chart(dendro)
+
+                except ValueError as ve:
+                    st.error(f"Error creating dendrogram: {ve}.  This often happens if all embeddings are identical.  Try a different query.")
+                    print(f"ValueError: {ve}")  # Log to console as well
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
+                    print(f"Unexpected Error: {e}")
             else:
                 st.info("No recommended questions to visualize.")
+
+
             # --- Results ---
             st.subheader("Recommended Questions (Average and Above)")
             for q, sim in recommended:
