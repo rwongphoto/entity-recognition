@@ -1531,7 +1531,7 @@ def google_ads_search_term_analyzer_page():
         """
     )
 
-    # --- User Input for Brands - KEPT for consistency, but not directly used in classification
+     # --- User Input for Brands - KEPT for consistency, but not directly used in classification
     brands_input = st.text_input("Enter a comma-separated list of brands:", value="nike, adidas, samsung, iphone, google, facebook")  #Default values
     brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
@@ -1556,15 +1556,12 @@ def google_ads_search_term_analyzer_page():
                 # and telling it to skip "bad" lines (lines with incorrect # of columns).
                 df = pd.read_csv(csvfile, sep=dialect.delimiter, skiprows=2, header=0, engine='python', on_bad_lines='skip') # KEY CHANGES HERE
 
-            except csv.Error as e:  # Specifically catch csv.Error
+            except csv.Error as e: # Specifically catch csv.Error
                 st.error(f"CSV Parsing Error: {e}.  Please check your CSV file's format. It might have an unusual delimiter, inconsistent formatting, or be too small.")
-                return  # Stop if CSV parsing fails
-
+                return # Stop if CSV parsing fails
             except Exception as e: #Catch all other exceptions
                 st.error(f"An unexpected error occurred during CSV processing: {e}")
                 return
-
-
 
             # --- Input Validation and Data Cleaning --- (REST OF YOUR FUNCTION - NO CHANGES NEEDED HERE)
             required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
