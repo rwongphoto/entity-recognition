@@ -335,88 +335,6 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     return top_sections, bottom_sections
 
 # ------------------------------------
-# People Also Asked Helper (Global)
-# ------------------------------------
-def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
-    """
-    Extracts People Also Asked (PAA) questions for a given query.
-    In addition to recursively clicking PAA questions (up to max_depth),
-    if related_depth is below max_related_depth, it will also extract related
-    search queries from the original results page and extract their PAA questions.
-    
-    Parameters:
-        query (str): The search query.
-        max_depth (int): Maximum recursion depth for PAA clicks.
-        related_depth (int): Current depth level for related search extraction.
-        max_related_depth (int): Maximum allowed related search depth.
-        
-    Returns:
-        set: A set of PAA question strings.
-    """
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.common.by import By
-    import time
-
-    # Configure headless Chrome options.
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
-    chrome_options.add_argument(f"user-agent={user_agent}")
-
-    # Start a driver for the main query.
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.get("https://www.google.com/search?q=" + query)
-    time.sleep(3)  # Allow the page to load
-
-    paa_set = set()
-
-    def extract_paa_recursive(depth, max_depth):
-        if depth > max_depth:
-            return
-        try:
-            elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
-            if not elements:
-                elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
-            for el in elements:
-                question_text = el.text.strip()
-                if question_text and question_text not in paa_set:
-                    paa_set.add(question_text)
-                    try:
-                        driver.execute_script("arguments[0].click();", el)
-                        time.sleep(2)  # Wait for new questions to load
-                        extract_paa_recursive(depth + 1, max_depth)
-                    except Exception:
-                        continue
-        except Exception as e:
-            st.error(f"Error during PAA extraction for query '{query}': {e}")
-
-    # First, extract PAA questions normally.
-    extract_paa_recursive(1, max_depth)
-    driver.quit()
-
-    # Now, if we have not exceeded our related search depth, extract related searches.
-    if related_depth < max_related_depth:
-        try:
-            driver_related = webdriver.Chrome(options=chrome_options)
-            driver_related.get("https://www.google.com/search?q=" + query)
-            time.sleep(3)
-            related_elements = driver_related.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
-            driver_related.quit()
-            for el in related_elements:
-                related_query = el.text.strip()
-                if related_query and related_query not in paa_set:
-                    # For the related query, use a lower max_depth (e.g., 3) for speed.
-                    related_paa = get_paa(related_query, max_depth=3, related_depth=related_depth+1, max_related_depth=max_related_depth)
-                    paa_set.update(related_paa)
-        except Exception as e:
-            st.error(f"Error extracting related searches for query '{query}': {e}")
-
-    return paa_set
-
-# ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
 def url_analysis_dashboard_page():
@@ -937,6 +855,10 @@ def named_entity_barchart_page():
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
 
+
+# ------------------------------------
+# Semantic Gap Analyzer (without clustering)
+# ------------------------------------
 def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
     st.markdown("""
@@ -1125,6 +1047,11 @@ def ngram_tfidf_analysis_page():
             else:
                 st.write(f"No gap n-grams for competitor: {source}")
 
+
+
+# ------------------------------------
+# Keyword Clustering Tool (with clustering)
+# ------------------------------------
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
@@ -1327,6 +1254,7 @@ def keyword_clustering_from_gap_page():
             for gram in gram_list:
                 st.write(f" - {gram}")
 
+
 def paa_extraction_clustering_page():
     st.header("People Also Asked Recommendations")
     st.markdown(
@@ -1346,6 +1274,43 @@ def paa_extraction_clustering_page():
         user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
                       "Chrome/115.0.0.0 Safari/537.36")
+        
+        # --- Helper function to extract PAA questions for a given query ---
+        # This function clicks on each PAA element recursively up to max_depth times.
+        def get_paa(query, max_depth=10):
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument(f"user-agent={user_agent}")
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.get("https://www.google.com/search?q=" + query)
+            time.sleep(3)  # Allow page to load
+            
+            paa_set = set()
+            def extract_paa_recursive(depth, max_depth):
+                if depth > max_depth:
+                    return
+                try:
+                    # Use a CSS selector for PAA questions; update as needed
+                    elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
+                    if not elements:
+                        elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
+                    for el in elements:
+                        question_text = el.text.strip()
+                        if question_text and question_text not in paa_set:
+                            paa_set.add(question_text)
+                            try:
+                                driver.execute_script("arguments[0].click();", el)
+                                time.sleep(2)  # Allow time for new questions to load
+                                extract_paa_recursive(depth + 1, max_depth)
+                            except Exception:
+                                continue
+                except Exception as e:
+                    st.error(f"Error during PAA extraction for query '{query}': {e}")
+            extract_paa_recursive(1, max_depth)
+            driver.quit()
+            return paa_set
         
         st.info("I'm researching...")
         # Extract PAA questions (clicking each element recursively up to 10 times)
@@ -1436,6 +1401,9 @@ def paa_extraction_clustering_page():
         for q in combined_questions:
             st.write(f"- {q}")
 
+
+          
+
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
@@ -1469,7 +1437,7 @@ def main():
         "Entity Frequency Charts",
         "Semantic Gap Analyzer",
         "Keyword Clustering",
-        "People Also Asked"
+        "People Also Asked"  # <-- New option
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1498,6 +1466,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
