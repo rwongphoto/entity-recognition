@@ -1395,7 +1395,7 @@ def paa_extraction_clustering_page():
             dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
             
             import plotly.figure_factory as ff
-            # Orientation 'top' produces a horizontal dendrogram
+            # Orientation 'top' produces a horizontal dendrogram tree
             dendro = ff.create_dendrogram(dendro_embeddings, orientation='top', labels=dendro_labels)
             dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
@@ -1403,13 +1403,14 @@ def paa_extraction_clustering_page():
             st.info("No recommended questions to visualize.")
         
         # --- Results ---
-        st.subheader("Recommended Questions")
+        st.subheader("Recommended Questions (Average and Above)")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
         st.subheader("All Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
+
 
 
 
