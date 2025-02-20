@@ -1259,7 +1259,8 @@ def paa_extraction_clustering_page():
     st.header("People Also Asked & Topic Clustering")
     st.markdown(
         """
-        This tool reveals People Also Ask (PAA) questions based on your search query. It then calculates the similarity between each question and your search query and recommends those with a similarity score at or above the average. Finally, the recommended questions are visualized as a topic cluster with your original query highlighted.
+        This tool reveals People Also Ask (PAA) questions based on your search query. It then calculates the similarity between each question and your search query and recommends those with a similarity score at or above the average. 
+        Finally, the recommended questions are visualized as a topic cluster with your original query highlighted.
         """
     )
     
@@ -1269,7 +1270,7 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        st.info("Please wait while we research PAA questions...")
+        st.info("Extracting PAA questions...")
         # Initialize Selenium Chrome driver
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -1313,8 +1314,8 @@ def paa_extraction_clustering_page():
         extract_paa_recursive(depth=1, max_depth=5)
         driver.quit()
         
-        st.info("Autocomplete suggestions...")
-        # Use autocomplete suggestions using Google's unofficial endpoint
+        st.info("Fetching autocomplete suggestions...")
+        # Scrape autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
         params = {
@@ -1337,6 +1338,7 @@ def paa_extraction_clustering_page():
         for q in combined_questions:
             st.write(f"- {q}")
         
+        st.info("Analyzing similarity...")
         # Compute cosine similarity using your SentenceTransformer model
         model = initialize_sentence_transformer()
         query_embedding = get_embedding(search_query, model)
@@ -1360,44 +1362,19 @@ def paa_extraction_clustering_page():
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
-        # Visualize the recommended questions as a topic cluster
+        # Visualize the recommended questions as a topic cluster in a dendrogram tree
         if recommended:
             texts = [q for q, sim in recommended]
-            embeddings = [get_embedding(q, model) for q in texts]
-            embeddings = np.array(embeddings)
-            # Reduce dimensionality for visualization
-            pca = PCA(n_components=2)
-            reduced = pca.fit_transform(embeddings)
-            # Cluster using KMeans (up to 5 clusters or fewer if needed)
-            num_clusters = min(5, len(texts))
-            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init="auto")
-            cluster_labels = kmeans.fit_predict(embeddings)
+            # Combine the original query with recommended questions
+            all_texts = [search_query] + texts
+            all_embeddings = np.vstack([get_embedding(text, model) for text in all_texts])
             
-            df_plot = pd.DataFrame({
-                "x": reduced[:, 0],
-                "y": reduced[:, 1],
-                "Question": texts,
-                "Cluster": [f"Cluster {label}" for label in cluster_labels]
-            })
-            
-            # Also include the original query in the visualization
-            query_reduced = pca.transform([query_embedding])[0]
-            df_query = pd.DataFrame({
-                "x": [query_reduced[0]],
-                "y": [query_reduced[1]],
-                "Question": [search_query],
-                "Cluster": ["Original Query"]
-            })
-            df_final = pd.concat([df_plot, df_query], ignore_index=True)
-            
-            fig = px.scatter(
-                df_final, x="x", y="y", color="Cluster", text="Question",
-                title="PAA Topic Cluster (Original Query Highlighted)"
-            )
-            fig.update_traces(textposition='top center')
-            st.plotly_chart(fig)
+            import plotly.figure_factory as ff
+            dendro = ff.create_dendrogram(all_embeddings, orientation='left', labels=all_texts)
+            st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
+
           
 
 # ------------------------------------
