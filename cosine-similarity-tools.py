@@ -337,7 +337,7 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
 # ------------------------------------
 # People Also Asked Helper (Global)
 # ------------------------------------
-def get_paa(query, max_depth=10, related_depth=1, max_related_depth=1):
+def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
     """
     Extracts People Also Asked (PAA) questions for a given query.
     In addition to recursively clicking PAA questions (up to max_depth),
