@@ -1259,8 +1259,8 @@ def paa_extraction_clustering_page():
     st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent. 
-        You can either write pages to support the main page or address the intent behind People Also Asked though you don't necessarily need to copy questions verbatim.
+        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
+        You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
         """
     )
     
@@ -1270,15 +1270,17 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
+        # Define user_agent once to use throughout
+        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/115.0.0.0 Safari/537.36")
+        
         # --- Helper function to extract PAA questions for a given query ---
         def get_paa(query, max_depth=1):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                          "AppleWebKit/537.36 (KHTML, like Gecko) "
-                          "Chrome/115.0.0.0 Safari/537.36")
             chrome_options.add_argument(f"user-agent={user_agent}")
             driver = webdriver.Chrome(options=chrome_options)
             driver.get("https://www.google.com/search?q=" + query)
@@ -1385,7 +1387,7 @@ def paa_extraction_clustering_page():
         recommended.sort(key=lambda x: x[1], reverse=True)
         
         # --- Visualization: Hierarchical Dendrogram Tree ---
-        st.subheader("Recommended Questions")
+        st.subheader("Recommended Questions Tree")
         if recommended:
             # Build a list with the original query at the beginning, then recommended questions
             rec_texts = [q for q, sim in recommended]
