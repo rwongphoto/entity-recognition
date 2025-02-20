@@ -1276,8 +1276,7 @@ def paa_extraction_clustering_page():
                       "Chrome/115.0.0.0 Safari/537.36")
         
         # --- Helper function to extract PAA questions for a given query ---
-        # This function clicks on each PAA element recursively up to max_depth times.
-        def get_paa(query, max_depth=8):
+        def get_paa(query, max_depth=1):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
@@ -1313,8 +1312,19 @@ def paa_extraction_clustering_page():
             return paa_set
         
         st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 10 times)
-        paa_questions = get_paa(search_query, max_depth=10)
+        # Extract initial PAA questions (up to eight levels deep)
+        initial_paa = get_paa(search_query, max_depth=8)
+        
+        st.info("Ooh, this is getting really interesting...")
+        # For each PAA question from the original query, extract one level of additional PAA questions
+        additional_paa = set()
+        for q in initial_paa:
+            st.write(f"Searching for: {q}")
+            extra = get_paa(q, max_depth=1)
+            additional_paa.update(extra)
+        
+        # Combine initial and additional PAA questions
+        all_paa = initial_paa.union(additional_paa)
         
         st.info("Autocomplete suggestions...")
         # Scrape autocomplete suggestions using Google's unofficial endpoint
@@ -1354,7 +1364,7 @@ def paa_extraction_clustering_page():
             st.error(f"Error extracting related searches: {e}")
         
         # Combine all extracted questions: PAA + autocomplete suggestions + related searches
-        combined_questions = list(paa_questions) + suggestions + related_searches
+        combined_questions = list(all_paa) + suggestions + related_searches
         
         st.info("Analyzing similarity...")
         # Compute cosine similarity using your SentenceTransformer model
@@ -1376,17 +1386,17 @@ def paa_extraction_clustering_page():
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
         
-        # --- Visualization: Horizontal Dendrogram Tree ---
+        # --- Visualization: Hierarchical Dendrogram Tree ---
         st.subheader("Recommended Questions Tree")
         if recommended:
-            # Build a list of recommended questions only (do not include the original search query)
+            # Build a list with the original query at the beginning, then recommended questions
             rec_texts = [q for q, sim in recommended]
-            dendro_labels = rec_texts
+            dendro_labels = [search_query] + rec_texts
             dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
             
             import plotly.figure_factory as ff
-            # Orientation 'left' produces a horizontal dendrogram tree with leaves on the left side
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
+            # Orientation 'top' produces a horizontal dendrogram tree
+            dendro = ff.create_dendrogram(dendro_embeddings, orientation='top', labels=dendro_labels)
             dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
         else:
@@ -1400,6 +1410,8 @@ def paa_extraction_clustering_page():
         st.subheader("All Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
+
+
 
 
           
@@ -1466,6 +1478,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
