@@ -1531,7 +1531,7 @@ def google_ads_search_term_analyzer_page():
         """
     )
 
-     # --- User Input for Brands - KEPT for consistency, but not directly used in classification
+    # --- User Input for Brands - KEPT for consistency, but not directly used in classification
     brands_input = st.text_input("Enter a comma-separated list of brands:", value="nike, adidas, samsung, iphone, google, facebook")  #Default values
     brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
@@ -1542,23 +1542,28 @@ def google_ads_search_term_analyzer_page():
 
     if uploaded_file is not None:
         try:
-            # Read the CSV file using the csv module first to detect the delimiter
+            # Read the file content INTO A STRINGIO OBJECT *ONCE*
             csvfile = StringIO(uploaded_file.getvalue().decode("utf-8"))
-            
+
             # --- IMPROVED DELIMITER DETECTION ---
             try:
-                dialect = csv.Sniffer().sniff(csvfile.read(2048))  # Read more bytes
-                csvfile.seek(0)
-                reader = csv.reader(csvfile, dialect)
-                header = next(reader)  # Get the header
-                df = pd.read_csv(uploaded_file, sep=dialect.delimiter, header=0, engine='python')
+                dialect = csv.Sniffer().sniff(csvfile.read(2048))  # Read more bytes for better sniffing
+                csvfile.seek(0)  # Reset the StringIO object to the beginning!
+                # reader = csv.reader(csvfile, dialect)  # NO LONGER NEEDED - We use Pandas for reading
+                # header = next(reader)  # NO LONGER NEEDED
 
-            except csv.Error as e: # Specifically catch csv.Error
+                # Use Pandas to read the CSV, skipping the incorrect header rows
+                # and telling it to skip "bad" lines (lines with incorrect # of columns).
+                df = pd.read_csv(csvfile, sep=dialect.delimiter, skiprows=2, header=0, engine='python', on_bad_lines='skip') # KEY CHANGES HERE
+
+            except csv.Error as e:  # Specifically catch csv.Error
                 st.error(f"CSV Parsing Error: {e}.  Please check your CSV file's format. It might have an unusual delimiter, inconsistent formatting, or be too small.")
-                return # Stop if CSV parsing fails
+                return  # Stop if CSV parsing fails
+
             except Exception as e: #Catch all other exceptions
                 st.error(f"An unexpected error occurred during CSV processing: {e}")
                 return
+
 
 
             # --- Input Validation and Data Cleaning --- (REST OF YOUR FUNCTION - NO CHANGES NEEDED HERE)
@@ -1567,7 +1572,7 @@ def google_ads_search_term_analyzer_page():
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
                 return  # Stop execution if required columns are missing
-            
+
             # Convert numeric columns, handling errors.
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
                 try:
