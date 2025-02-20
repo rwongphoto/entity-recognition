@@ -29,6 +29,13 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 # Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
 
+# --- Configuration ---
+GOOGLE_SEARCH_URL = "https://www.google.com/search?q="
+AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search?client=firefox&q="
+MAX_RELATED_SEARCHES = 5  # Limit the number of related searches per level.  CRITICAL OPTIMIZATION.
+REQUEST_INTERVAL = 1.5     # Increased rate limiting.
+MAX_TOTAL_REQUESTS = 20   # Limit the *total* number of Google searches.  Another CRITICAL OPTIMIZATION.
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -276,25 +283,28 @@ def display_entity_wordcloud(entity_counts):
     plt.tight_layout()
     st.pyplot(fig)
 
-def fetch_page_selenium(url, wait_for_selector="body"):
-    """Fetches a page using Selenium (headless Chrome)."""
+@st.cache_resource
+def initialize_selenium_driver():
+    """Initializes a single, persistent Selenium driver (cached)."""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    chrome_options.add_argument(f"user-agent={user_agent}")
+    driver = webdriver.Chrome(options=chrome_options)
+    return driver
+
+def fetch_page_selenium(driver, url, wait_for_selector="body"):
+    """Fetches a page using the *provided* Selenium driver."""
     try:
         enforce_rate_limit()
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        chrome_options.add_argument(f"user-agent={user_agent}")
-        driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, wait_for_selector)))
-        page_source = driver.page_source
-        driver.quit()
-        return page_source
-    except (TimeoutException, WebDriverException) as e:
-        print(f"Selenium error fetching {url}: {e}")  # Use print for errors in functions
+        return driver.page_source
+    except (TimeoutException, WebDriverException, StaleElementReferenceException) as e:
+        print(f"Selenium error fetching {url}: {e}")
         return None
     except Exception as e:
         print(f"Unexpected error fetching {url}: {e}")
@@ -304,9 +314,7 @@ def fetch_page_requests(url):
     """Fetches a webpage using the requests library."""
     try:
         enforce_rate_limit()
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.text
@@ -315,7 +323,6 @@ def fetch_page_requests(url):
         return None
 
 def extract_paa_questions(soup):
-    """Extracts PAA questions."""
     paa_questions = []
     for element in soup.find_all('div', {'jsname': True, 'data-ved': True}):
         question_text = element.text.strip()
@@ -324,9 +331,8 @@ def extract_paa_questions(soup):
     return paa_questions
 
 def get_autocomplete_suggestions(query):
-    """Gets Google Autocomplete suggestions."""
     try:
-        response = fetch_page_requests(f"https://suggestqueries.google.com/complete/search?client=firefox&q={query}")
+        response = fetch_page_requests(f"{AUTOCOMPLETE_URL}{query}")
         if response:
             data = json.loads(response)
             return data[1]
@@ -337,26 +343,33 @@ def get_autocomplete_suggestions(query):
         return []
 
 def extract_related_searches(soup):
-    """Extracts related search terms."""
     related_searches = []
-    # More robust selector: looks for a div with a role of 'listitem' AND an 'a' tag inside.
     for element in soup.select("div[role='listitem'] a"):
-        # Get the text content of the *parent* div (which contains the whole related search).
         text = element.find_parent("div").text.strip() if element.find_parent("div") else ""
         if text:
           related_searches.append(text)
     return related_searches
 
-def get_paa_and_related(query, max_paa_depth=2):
-    """Gets PAA questions and related searches for a given query."""
-    search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-    page_source = fetch_page_selenium(search_url)
+@st.cache_data(ttl=3600, show_spinner=False)  # Cache results for 1 hour.
+def get_paa_and_related(driver, query, _request_count=None):
+    """Gets PAA and related searches, with caching and request counting."""
+
+    if _request_count is None:
+        _request_count = {"count": 0}  # Use a dict to make it mutable inside the function
+
+    if _request_count["count"] >= MAX_TOTAL_REQUESTS:
+        print("Reached maximum number of requests. Stopping.")
+        return [], []
+
+    _request_count["count"] += 1  # Increment request count
+    print(f"Fetching data for: {query} (Request #{_request_count['count']})")
+
+    search_url = f"{GOOGLE_SEARCH_URL}{query.replace(' ', '+')}"
+    page_source = fetch_page_selenium(driver, search_url)
 
     if page_source:
         soup = BeautifulSoup(page_source, "html.parser")
-        paa_questions = extract_paa_questions(soup)
-        related_searches = extract_related_searches(soup)
-        return paa_questions, related_searches
+        return extract_paa_questions(soup), extract_related_searches(soup)
     else:
         return [], []
 
@@ -1343,8 +1356,8 @@ def paa_extraction_clustering_page():
     st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
-        You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
+        This tool builds a topic cluster around a main search query, addressing user search intent.
+        It explores People Also Asked (PAA) questions and related searches across multiple levels.
         """
     )
 
@@ -1354,78 +1367,73 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        st.info("I'm researching...")
-
-        # --- Level 1: Initial Query ---
-        paa_questions_l1, related_searches_l1 = get_paa_and_related(search_query)
-        autocomplete_suggestions_l1 = get_autocomplete_suggestions(search_query)
-
-        # --- Level 2: Related Searches of Initial Query ---
-        paa_questions_l2 = []
-        related_searches_l2 = []  # Added to store level 2 related searches
-        combined_questions_l2 = set() # Use a set for level 2 to avoid duplicates
-
-        for related_query_l1 in related_searches_l1:
-            paa_l2, related_l2 = get_paa_and_related(related_query_l1)
-            paa_questions_l2.extend(paa_l2)
-            related_searches_l2.extend(related_l2)  # Store related searches from level 2
-            combined_questions_l2.update(paa_l2)
-            combined_questions_l2.update(related_l2)
-
-        # --- Level 3: Related Searches of Level 2 Related Searches ---
-        paa_questions_l3 = []
-        combined_questions_l3 = set() # Use a set to avoid duplicates
-        for related_query_l2 in related_searches_l2:  # Iterate through Level 2 related searches
-            paa_l3, related_l3 = get_paa_and_related(related_query_l2) #we don't need related_l3
-            paa_questions_l3.extend(paa_l3)
-            combined_questions_l3.update(paa_l3) # Only PAA is needed.
-
-
-        # Combine all unique questions/suggestions/searches
-        combined_questions = [search_query] + list(paa_questions_l1) + autocomplete_suggestions_l1 + related_searches_l1 + list(combined_questions_l2) + list(combined_questions_l3)
-        combined_questions = list(dict.fromkeys(combined_questions))  # Remove duplicates, preserving order
-
-
-        st.info("Analyzing similarity...")
-        # --- Similarity Calculation and Filtering ---
+        # --- Initialize ---
+        driver = initialize_selenium_driver()  # Get the persistent driver
         model = initialize_sentence_transformer()
-        query_embedding = get_embedding(search_query, model)
-        question_similarities = []
+        request_count = {"count": 0}  # Track total requests
 
-        for q in combined_questions:
-            q_embedding = get_embedding(q, model)
-            sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
-            question_similarities.append((q, sim))
+        with st.spinner("I'm researching... Please wait, this may take a few moments."):
+            # --- Level 1 ---
+            paa_questions_l1, related_searches_l1 = get_paa_and_related(driver, search_query, _request_count=request_count)
+            autocomplete_suggestions_l1 = get_autocomplete_suggestions(search_query)
+            combined_questions_l1 = [search_query] + paa_questions_l1 + autocomplete_suggestions_l1 + related_searches_l1
 
-        if not question_similarities:
-            st.warning("No questions/suggestions were extracted to analyze.")
-            return
+            # --- Level 2 ---
+            paa_questions_l2 = []
+            related_searches_l2 = []
+            combined_questions_l2 = set()
 
-        avg_sim = np.mean([sim for _, sim in question_similarities])
-        st.write(f"Average Similarity Score: {avg_sim:.4f}")
-        recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
-        recommended.sort(key=lambda x: x[1], reverse=True)
+            for related_query_l1 in related_searches_l1[:MAX_RELATED_SEARCHES]:  # Limit related searches
+                paa_l2, related_l2 = get_paa_and_related(driver, related_query_l1, _request_count=request_count)
+                paa_questions_l2.extend(paa_l2)
+                related_searches_l2.extend(related_l2)
+                combined_questions_l2.update(paa_l2 + related_l2)
 
-        # --- Visualization: Horizontal Dendrogram Tree ---
-        st.subheader("Recommended Questions Tree")
-        if recommended:
-            dendro_labels = [q for q, sim in recommended]
-            dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+            # --- Level 3 ---
+            paa_questions_l3 = []
+            combined_questions_l3 = set()
+            for related_query_l2 in related_searches_l2[:MAX_RELATED_SEARCHES]:  # Limit related searches
+                paa_l3, _ = get_paa_and_related(driver, related_query_l2, _request_count=request_count) # We only need PAA for Level 3
+                paa_questions_l3.extend(paa_l3)
+                combined_questions_l3.update(paa_l3)
 
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
-            dendro.update_layout(width=800, height=600)  # Adjust height as needed
-            st.plotly_chart(dendro)
-        else:
-            st.info("No recommended questions to visualize.")
+            # --- Combine and Deduplicate ---
+            combined_questions = list(dict.fromkeys(combined_questions_l1 + list(combined_questions_l2) + list(combined_questions_l3)))
 
-        # --- Results ---
-        st.subheader("Recommended Questions (Average and Above)")
-        for q, sim in recommended:
-            st.write(f"{q} (Similarity: {sim:.4f})")
+            # --- Similarity Analysis ---
+            st.info("Analyzing similarity...")
+            query_embedding = get_embedding(search_query, model)
+            question_similarities = [(q, cosine_similarity([query_embedding], [get_embedding(q, model)])[0][0]) for q in combined_questions]
 
-        st.subheader("All Commonly Asked Questions, Related Searches, and Suggestions")
-        for q in combined_questions:
-            st.write(f"- {q}")
+            if not question_similarities:
+                st.warning("No questions/suggestions were extracted to analyze.")
+                return
+
+            avg_sim = np.mean([sim for _, sim in question_similarities])
+            st.write(f"Average Similarity Score: {avg_sim:.4f}")
+            recommended = sorted([(q, sim) for q, sim in question_similarities if sim >= avg_sim], key=lambda x: x[1], reverse=True)
+
+            # --- Visualization ---
+            st.subheader("Recommended Questions Tree")
+            if recommended:
+                dendro_labels = [q for q, sim in recommended]
+                dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+                dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
+                dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))  # Dynamic height
+                st.plotly_chart(dendro)
+            else:
+                st.info("No recommended questions to visualize.")
+
+            # --- Results ---
+            st.subheader("Recommended Questions (Average and Above)")
+            for q, sim in recommended:
+                st.write(f"{q} (Similarity: {sim:.4f})")
+
+            st.subheader("All Extracted Questions, Related Searches, and Suggestions")
+            for q in combined_questions:
+                st.write(f"- {q}")
+
+        st.success(f"Analysis complete! Total Google searches performed: {request_count['count']}")
 
 
 
