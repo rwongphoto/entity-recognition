@@ -1444,7 +1444,7 @@ def paa_extraction_clustering_page():
         st.success(f"Analysis complete! Total Google searches performed: {request_count['count']}")
 
 
-          
+        
 
 # ------------------------------------
 # Main Streamlit App
