@@ -45,7 +45,6 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.compose import ColumnTransformer # Import ColumnTransformer
-import csv # NEW: Import the csv module
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -1524,61 +1523,42 @@ def google_ads_search_term_analyzer_page():
     st.header("Google Ads Search Term Analyzer")
     st.markdown(
         """
-        Upload a CSV file from your Google Ads search terms report and analyze it.
+        Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
         This tool offers two main options:
         1. **Search Intent Labeling:** Categorize search terms by intent (e.g., informational, navigational, transactional).
         2. **N-gram Analysis:** Identify common phrases and their performance.
         """
     )
 
-     # --- User Input for Brands - KEPT for consistency, but not directly used in classification
-    brands_input = st.text_input("Enter a comma-separated list of brands:", value="nike, adidas, samsung, iphone, google, facebook")  #Default values
+    # User Input for Brands
+    brands_input = st.text_input("Enter a comma-separated list of brands (optional):", value="nike, adidas, samsung, iphone, google, facebook")
     brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
-    # Load the pre-trained classifier, NO LONGER passing brand list. The model handles all text features.
+    # Load the pre-trained classifier
     intent_classifier = train_intent_classifier()
 
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"]) # Changed to xlsx
 
     if uploaded_file is not None:
         try:
-            # Read the file content INTO A STRINGIO OBJECT *ONCE*
-            csvfile = StringIO(uploaded_file.getvalue().decode("utf-8"))
+            # Read the Excel file directly with pandas.  No need for StringIO or csv module.
+            df = pd.read_excel(uploaded_file,  skiprows=2)  # Skip the first two rows
 
-            # --- IMPROVED DELIMITER DETECTION ---
-            try:
-                dialect = csv.Sniffer().sniff(csvfile.read(2048))  # Read more bytes for better sniffing
-                csvfile.seek(0)  # Reset the StringIO object to the beginning!
-                # reader = csv.reader(csvfile, dialect)  # NO LONGER NEEDED - We use Pandas for reading
-                # header = next(reader)  # NO LONGER NEEDED
-
-                # Use Pandas to read the CSV, skipping the incorrect header rows
-                # and telling it to skip "bad" lines (lines with incorrect # of columns).
-                df = pd.read_csv(csvfile, sep=dialect.delimiter, skiprows=2, header=0, engine='python', on_bad_lines='skip') # KEY CHANGES HERE
-
-            except csv.Error as e: # Specifically catch csv.Error
-                st.error(f"CSV Parsing Error: {e}.  Please check your CSV file's format. It might have an unusual delimiter, inconsistent formatting, or be too small.")
-                return # Stop if CSV parsing fails
-            except Exception as e: #Catch all other exceptions
-                st.error(f"An unexpected error occurred during CSV processing: {e}")
-                return
-
-            # --- Input Validation and Data Cleaning --- (REST OF YOUR FUNCTION - NO CHANGES NEEDED HERE)
-            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
+            # Input Validation and Data Cleaning (check for required columns)
+            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
                 return  # Stop execution if required columns are missing
 
-            # Convert numeric columns, handling errors.
+            # Convert numeric columns, handling errors (same as before)
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
                 try:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')  # Convert to numeric, invalid values become NaN
-                    df[col] = df[col].fillna(0)  # Replace NaN with 0
-                except KeyError:
-                    st.error(f"Column '{col}' not found in the uploaded CSV.") #Should have been handled above.
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    df[col] = df[col].fillna(0)
+                except KeyError:  # This should be caught by the previous check, but it's good to be safe
+                    st.error(f"Column '{col}' not found in the uploaded Excel file.")
                     return
-
 
             analysis_option = st.radio(
                 "Select Analysis Option:",
@@ -1600,11 +1580,8 @@ def google_ads_search_term_analyzer_page():
 
                 df['processed_query'] = df['Search term'].apply(preprocess)
 
-                # --- Brand Detection REMOVED ---  We're relying on TF-IDF now.
-
-                # --- Predict Intent ---  Pass only the processed text column
+                # Predict Intent
                 df["Intent"] = intent_classifier.predict(df['processed_query'])
-
 
                 # Aggregate performance data
                 intent_summary = df.groupby("Intent").agg({
@@ -1618,6 +1595,7 @@ def google_ads_search_term_analyzer_page():
                 intent_summary["Cost per Conversion"] = intent_summary["Cost"] / intent_summary["Conversions"]
 
                 st.dataframe(intent_summary)
+
 
 
             elif analysis_option == "N-gram Analysis":
@@ -1642,9 +1620,7 @@ def google_ads_search_term_analyzer_page():
                 ngram_counts = Counter(all_ngrams)
                 filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
 
-
-                if filtered_ngrams:  # Only proceed if there are n-grams after filtering
-
+                if filtered_ngrams:
                     df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
 
                     # Create a mapping from search term to n-grams
@@ -1652,45 +1628,41 @@ def google_ads_search_term_analyzer_page():
                     for term in df["Search term"]:
                         search_term_to_ngrams[term] = extract_ngrams(term, n_value)
 
-
                     # Aggregate performance data based on n-grams
-                    ngram_performance = {}  # Use N-gram as key
+                    ngram_performance = {}
 
                     for index, row in df.iterrows():
-                        search_term = row["Search term"]
-                        for ngram in search_term_to_ngrams[search_term]:  # Iterate through n-grams of THIS search term
-                            if ngram in filtered_ngrams:  # Only consider frequent n-grams
-
+                         search_term = row["Search term"]
+                         for ngram in search_term_to_ngrams[search_term]:
+                            if ngram in filtered_ngrams:
                                 if ngram not in ngram_performance:
-                                        ngram_performance[ngram] = {
-                                            "Clicks": 0,
-                                            "Impressions": 0,
-                                            "Cost": 0,
-                                            "Conversions": 0
-                                        }
+                                    ngram_performance[ngram] = {
+                                        "Clicks": 0,
+                                        "Impressions": 0,
+                                        "Cost": 0,
+                                        "Conversions": 0
+                                    }
                                 ngram_performance[ngram]["Clicks"] += row["Clicks"]
                                 ngram_performance[ngram]["Impressions"] += row["Impressions"]
                                 ngram_performance[ngram]["Cost"] += row["Cost"]
                                 ngram_performance[ngram]["Conversions"] += row["Conversions"]
 
 
-
                     # Convert aggregated data to DataFrame
                     df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
                     df_ngram_performance.index.name = "N-gram"
-                    df_ngram_performance = df_ngram_performance.reset_index()  # Make N-gram a regular column
+                    df_ngram_performance = df_ngram_performance.reset_index()
 
                     df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
                     df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
                     df_ngram_performance["Cost per Conversion"] = df_ngram_performance["Cost"] / df_ngram_performance["Conversions"]
 
-
                     st.dataframe(df_ngram_performance)
-
                 else:
                     st.warning("No n-grams found with the specified minimum frequency.")
-        except Exception as e: #THIS WAS MODIFIED
-            st.error(f"An error occurred while processing the CSV file: {e}")
+
+        except Exception as e:
+            st.error(f"An error occurred while processing the Excel file: {e}")
 
           
 
