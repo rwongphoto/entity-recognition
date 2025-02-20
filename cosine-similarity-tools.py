@@ -1256,13 +1256,11 @@ def keyword_clustering_from_gap_page():
 
 
 def paa_extraction_clustering_page():
-    st.header("PAA Extraction & Topic Clustering")
+    st.header("People Also Asked & Topic Clustering")
     st.markdown(
         """
-        This tool extracts People Also Ask (PAA) questions from Google based on your search query.  
-        It goes three levels deep by clicking on each PAA question to reveal more related questions,  
-        and it also scrapes Google autocomplete suggestions directly.  
-        The tool then calculates cosine similarity between each question and your search query and recommends  
+        This tool reveals People Also Ask (PAA) questions based on your search query.  
+        It then calculates the similarity between each question and your search query and recommends  
         those with a similarity score at or above the average. Finally, the recommended questions are visualized  
         as a topic cluster with your original query highlighted.
         """
