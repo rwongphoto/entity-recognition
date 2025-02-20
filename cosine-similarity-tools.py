@@ -1277,7 +1277,7 @@ def paa_extraction_clustering_page():
         
         # --- Helper function to extract PAA questions for a given query ---
         # This function clicks on each PAA element recursively up to max_depth times.
-def get_paa(query, max_depth=10, related_depth=0, max_related_depth=1):
+def get_paa(query, max_depth=10, related_depth=1, max_related_depth=1):
     """
     Extracts People Also Asked (PAA) questions for a given query.
     In addition to recursively clicking PAA questions (up to max_depth),
