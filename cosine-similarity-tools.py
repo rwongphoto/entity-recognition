@@ -1259,8 +1259,8 @@ def paa_extraction_clustering_page():
     st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
-        You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
+        This tool builds a topic cluster around a main search query, addressing user search intent.
+        It explores People Also Asked (PAA) questions and related searches across multiple levels.
         """
     )
 
@@ -1279,7 +1279,7 @@ def paa_extraction_clustering_page():
         def get_paa_and_related(query, driver): #Takes driver
             """Gets PAA questions and related searches for a given query."""
             search_url = "https://www.google.com/search?q=" + query.replace(" ", "+")
-            page_source = fetch_page_selenium(driver, search_url)  # Use existing function
+            page_source = fetch_page_selenium(driver, search_url)  # Call the GLOBAL function
 
             if page_source:
                 soup = BeautifulSoup(page_source, "html.parser")
