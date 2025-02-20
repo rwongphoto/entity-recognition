@@ -1256,10 +1256,11 @@ def keyword_clustering_from_gap_page():
 
 
 def paa_extraction_clustering_page():
-    st.header("People Also Asked & Topic Clustering")
+    st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent. You can either write pages to support the main page or address the intent behind People Also Asked though you don't necessarily need to copy questions verbatim.
+        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent. 
+        You can either write pages to support the main page or address the intent behind People Also Asked though you don't necessarily need to copy questions verbatim.
         """
     )
     
@@ -1309,11 +1310,11 @@ def paa_extraction_clustering_page():
             return paa_set
         
         st.info("I'm researching...")
-        # Extract initial PAA questions with a deeper recursion (up to eight levels)
+        # Extract initial PAA questions (up to eight levels deep)
         initial_paa = get_paa(search_query, max_depth=8)
         
-        st.info("Oooh, this is getting really interesting...")
-        # For each PAA question extracted from the original query, extract one level of additional PAA questions
+        st.info("Ooh, this is getting really interesting...")
+        # For each PAA question from the original query, extract one level of additional PAA questions
         additional_paa = set()
         for q in initial_paa:
             st.write(f"Searching for: {q}")
@@ -1338,13 +1339,30 @@ def paa_extraction_clustering_page():
             st.error(f"Error fetching autocomplete suggestions: {e}")
             suggestions = []
         
-        # Combine all extracted questions with autocomplete suggestions
-        combined_questions = list(all_paa) + suggestions
+        st.info("Related searches...")
+        # Reinitialize a driver to extract related searches from the original query page
+        related_searches = []
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument(f"user-agent={user_agent}")
+            driver2 = webdriver.Chrome(options=chrome_options)
+            driver2.get("https://www.google.com/search?q=" + search_query)
+            time.sleep(3)
+            # Related searches often appear in <p> tags with a specific class (update selector as needed)
+            related_elements = driver2.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
+            for el in related_elements:
+                text = el.text.strip()
+                if text:
+                    related_searches.append(text)
+            driver2.quit()
+        except Exception as e:
+            st.error(f"Error extracting related searches: {e}")
         
-        # Display Extracted Questions
-        st.subheader("Commonly Asked Questions")
-        for q in combined_questions:
-            st.write(f"- {q}")
+        # Combine all extracted questions: PAA + autocomplete suggestions + related searches
+        combined_questions = list(all_paa) + suggestions + related_searches
         
         st.info("Analyzing similarity...")
         # Compute cosine similarity using your SentenceTransformer model
@@ -1366,29 +1384,31 @@ def paa_extraction_clustering_page():
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
         
-        # --- Visualization: Hierarchical Dendrogram Tree with Recommended Questions Only ---
-        st.subheader("Hierarchical Dendrogram Tree (Recommended Questions)")
+        # --- Visualization: Hierarchical Dendrogram Tree ---
+        st.subheader("Recommended Questions")
         if recommended:
-            # Build a list of recommended questions only
-            texts = [q for q, sim in recommended]
-            all_embeddings = np.vstack([get_embedding(text, model) for text in texts])
+            # Build a list with the original query at the beginning, then recommended questions
+            rec_texts = [q for q, sim in recommended]
+            dendro_labels = [search_query] + rec_texts
+            dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
             
             import plotly.figure_factory as ff
-            dendro = ff.create_dendrogram(all_embeddings, orientation='top', labels=texts)
+            # Orientation 'top' produces a horizontal dendrogram
+            dendro = ff.create_dendrogram(dendro_embeddings, orientation='top', labels=dendro_labels)
             dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
         
-        # Show Recommended Questions
-        st.subheader("Recommended Questions (Average and Above)")
+        # --- Results ---
+        st.subheader("Recommended Questions")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
-        # Finally, show all Extracted Questions
-        st.subheader("All Questions")
+        st.subheader("All Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
+
 
 
           
