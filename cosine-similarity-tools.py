@@ -1309,10 +1309,10 @@ def paa_extraction_clustering_page():
             return paa_set
         
         st.info("I'm researching...")
-        # Extract initial PAA questions with a deeper recursion (up to five levels)
-        initial_paa = get_paa(search_query, max_depth=5)
+        # Extract initial PAA questions with a deeper recursion (up to eight levels)
+        initial_paa = get_paa(search_query, max_depth=8)
         
-        st.info("There's some really interesting things here...")
+        st.info("Oooh, this is getting really interesting...")
         # For each PAA question extracted from the original query, extract one level of additional PAA questions
         additional_paa = set()
         for q in initial_paa:
@@ -1323,7 +1323,7 @@ def paa_extraction_clustering_page():
         # Combine initial and additional PAA questions
         all_paa = initial_paa.union(additional_paa)
         
-        st.info("Fetching autocomplete suggestions...")
+        st.info("Autocomplete suggestions...")
         # Scrape autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
@@ -1367,7 +1367,7 @@ def paa_extraction_clustering_page():
         recommended.sort(key=lambda x: x[1], reverse=True)
         
         # --- Visualization: Hierarchical Dendrogram Tree with Recommended Questions Only ---
-        st.subheader("Recommended Topic Cluster")
+        st.subheader("Hierarchical Dendrogram Tree (Recommended Questions)")
         if recommended:
             # Build a list of recommended questions only
             texts = [q for q, sim in recommended]
@@ -1381,7 +1381,7 @@ def paa_extraction_clustering_page():
             st.info("No recommended questions to visualize.")
         
         # Show Recommended Questions
-        st.subheader("Recommended Questions")
+        st.subheader("Recommended Questions (Average and Above)")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
@@ -1389,9 +1389,6 @@ def paa_extraction_clustering_page():
         st.subheader("All Questions")
         for q in combined_questions:
             st.write(f"- {q}")
-
-
-
 
 
           
