@@ -30,21 +30,12 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 from sentence_transformers import SentenceTransformer
 
 #NEW IMPORTS
-import requests
-#from google.ads.googleads.client import GoogleAdsClient #Commented out because this needs configuration and keys, which are user specific.
-#from google.ads.googleads.errors import GoogleAdsException #Commented out, see above comment
-from io import StringIO #For CSV upload
 import nltk
-from nltk.tokenize import word_tokenize, sent_tokenize
-from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
-
-#NEW IMPORTS FOR CLASSIFIER (Place these at the top of your file with other imports)
-from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
-from sklearn.compose import ColumnTransformer # Import ColumnTransformer
+from nltk.corpus import stopwords
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -1421,126 +1412,14 @@ def paa_extraction_clustering_page():
 # ------------------------------------
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
-@st.cache_resource()
-def train_intent_classifier():
-    """
-    Trains a search intent classifier on a small, built-in dataset.
-    This version does NOT take a brands_list.  Brand detection is handled
-    at prediction time.
-    """
-
-    data = {
-        "query": [
-            "buy cheap shoes online",
-            "what is the best seo tool",
-            "nike shoes price",  # Example of a query that *could* be navigational
-            "seo consultant near me",
-            "how to rank higher on google",
-            "google ads login",
-            "facebook advertising costs",
-            "content marketing strategy guide",
-            "best running shoes for men",
-            "cheap flights to london",
-            "google ads support phone number",
-            "what is search engine optimization",
-            "order pizza online",
-            "digital marketing agency services",
-            "email marketing best practices",
-            "social media marketing tips",
-            "the seo consultant",
-            "theseoconsultant.ai",
-            "find a local plumber",
-            "emergency plumber 24/7",
-            "Nike Air Max",  # Brand + product
-            "Adidas Ultraboost",  # Brand + product
-            "Samsung Galaxy S23",  # Brand + Product
-            "iPhone 15 Pro",  # Brand + Product
-            "best price nike shoes",  # Example - could be navigational
-            "google ads account",  # Navigational
-            "advertising on facebook", #commercial
-            "local plumber near me"   #commercial
-        ],
-        "intent": [
-            "Transactional",
-            "Informational",
-            "Commercial",        #  Classified as commercial UNLESS user specifies "nike"
-            "Commercial",
-            "Informational",
-            "Navigational",    #  Navigational
-            "Commercial",
-            "Informational",
-            "Transactional",
-            "Transactional",
-            "Navigational",   #  Navigational
-            "Informational",
-            "Transactional",
-            "Commercial",
-            "Informational",
-            "Informational",
-            "Navigational",      # Navigational (Branded website)
-            "Navigational",      # Navigational (Branded website)
-            "Commercial",
-            "Transactional",
-            "Navigational",      # Now explicitly navigational
-            "Navigational",      # Now explicitly navigational
-            "Navigational",      # Now explicitly navigational
-            "Navigational",       # Now explicitly navigational
-            "Commercial", #Added commercial
-            "Navigational", #Added navigational
-            "Commercial", #Added commercial
-            "Commercial",#Added commercial
-
-        ]
-    }
-    df_train = pd.DataFrame(data)
-
-    stop_words = set(stopwords.words('english'))
-    lemmatizer = WordNetLemmatizer()
-
-    def preprocess(text):
-        tokens = word_tokenize(text.lower())
-        tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-        return " ".join(tokens)
-
-    df_train['processed_query'] = df_train['query'].apply(preprocess)
-
-    # Split data
-    X = df_train['processed_query']
-    y = df_train['intent']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Simplified Pipeline - NO ColumnTransformer
-    model = Pipeline([
-        ('tfidf', TfidfVectorizer()),
-        ('clf', MultinomialNB())
-    ])
-
-    model.fit(X_train, y_train)
-    accuracy = model.score(X_test, y_test)
-    st.write(f"Classifier Training Complete.  Test Set Accuracy: {accuracy:.4f}")
-    st.write("Note:  Accuracy is based on the *built-in* training data, and will be low due to the limited dataset.  Provide your own training data for better results.")
-    return model
-
-
-
 def google_ads_search_term_analyzer_page():
     st.header("Google Ads Search Term Analyzer")
     st.markdown(
         """
         Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
-        This tool offers two main options:
-        1. **Search Intent Labeling:** Categorize search terms by intent (e.g., informational, navigational, transactional).
-        2. **N-gram Analysis:** Identify common phrases and their performance.
+        This tool extracts n-grams and performs topic modeling.
         """
     )
-
-    # --- User Input for Brands ---
-    brands_input = st.text_input("Enter a comma-separated list of brands (optional):", value="nike, adidas, samsung, iphone, google, facebook")
-    brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
-
-
-    # Load the pre-trained classifier (no brands passed to training)
-    intent_classifier = train_intent_classifier()
 
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -1549,7 +1428,7 @@ def google_ads_search_term_analyzer_page():
             # Read the Excel file, skipping the first two rows.
             df = pd.read_excel(uploaded_file, skiprows=2)
 
-            # *** KEY CHANGE: RENAME COLUMNS ***
+            # Rename columns for consistency and readability.
             df = df.rename(columns={
                 "Search term": "Search term",
                 "Match type": "Match type",
@@ -1566,7 +1445,7 @@ def google_ads_search_term_analyzer_page():
                 "Cost / conv.": "Cost per Conversion"
             })
 
-           # Input Validation (check for required columns - this part is correct and unchanged)
+            # Input Validation (check for required columns - this part is correct and unchanged)
             required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
@@ -1582,125 +1461,88 @@ def google_ads_search_term_analyzer_page():
                     st.error(f"Column '{col}' not found in the uploaded Excel file.")
                     return
 
+            st.subheader("N-gram Analysis")
+            n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
+            min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
 
-            analysis_option = st.radio(
-                "Select Analysis Option:",
-                options=["Search Intent Labeling", "N-gram Analysis"],
-                index=0
-            )
+            # --- N-gram Extraction and Aggregation ---
+            stop_words = set(stopwords.words('english'))
+            lemmatizer = WordNetLemmatizer()
 
-            if analysis_option == "Search Intent Labeling":
-                st.subheader("Search Intent Labeling")
+            def extract_ngrams(text, n):
+                #Ensure the search term is a string
+                text = str(text)
+                tokens = word_tokenize(text.lower())
+                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+                ngrams_list = list(nltk.ngrams(tokens, n))
+                return [" ".join(gram) for gram in ngrams_list]
 
-                stop_words = set(stopwords.words('english'))
-                lemmatizer = WordNetLemmatizer()
+            all_ngrams = []
+            for term in df["Search term"]:
+                all_ngrams.extend(extract_ngrams(term, n_value))
 
-                def preprocess(text):
-                   # Ensure input is a string
-                    text = str(text)
-                    tokens = word_tokenize(text.lower())
-                    tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-                    return " ".join(tokens)
+            ngram_counts = Counter(all_ngrams)
+            filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
 
-                df['processed_query'] = df['Search term'].apply(preprocess)
+            if not filtered_ngrams:
+                st.warning("No n-grams found with the specified minimum frequency.")
+                return  # Exit if no n-grams found
 
-                # --- Predict Intent (with Brand Override) ---
-                def predict_with_brand_override(query, brands, model):
-                    query_lower = query.lower()
-                    for brand in brands:
-                        if brand in query_lower:
-                            return "Navigational"  # Override to Navigational
-                    return model.predict([query])[0]  # Use the model's prediction
+            df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
 
-                df["Intent"] = df['processed_query'].apply(lambda x: predict_with_brand_override(x, brands_list, intent_classifier))
+            search_term_to_ngrams = {}
+            for term in df["Search term"]:
+                 search_term_to_ngrams[term] = extract_ngrams(term, n_value)
 
-
-                # Aggregate performance data
-                intent_summary = df.groupby("Intent").agg({
-                    "Clicks": "sum",
-                    "Impressions": "sum",
-                    "Cost": "sum",
-                    "Conversions": "sum"
-                })
-                intent_summary["CTR"] = (intent_summary["Clicks"] / intent_summary["Impressions"]) * 100
-                intent_summary["Conversion Rate"] = (intent_summary["Conversions"] / intent_summary["Clicks"]) * 100
-                intent_summary["Cost per Conversion"] = intent_summary["Cost"] / intent_summary["Conversions"]
-
-                st.dataframe(intent_summary)
-
-
-
-            elif analysis_option == "N-gram Analysis":
-                st.subheader("N-gram Analysis")
-                n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
-                min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
-
-                # --- N-gram Extraction and Aggregation ---
-                stop_words = set(stopwords.words('english'))
-                lemmatizer = WordNetLemmatizer()
-
-                def extract_ngrams(text, n):
-                    tokens = word_tokenize(str(text).lower()) #Ensure string input
-                    tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-                    ngrams_list = list(nltk.ngrams(tokens, n))
-                    return [" ".join(gram) for gram in ngrams_list]
-
-                all_ngrams = []
-                for term in df["Search term"]:
-                    all_ngrams.extend(extract_ngrams(term, n_value))
-
-                ngram_counts = Counter(all_ngrams)
-                filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
+            ngram_performance = {}
+            for index, row in df.iterrows():
+                search_term = row["Search term"]
+                for ngram in search_term_to_ngrams[search_term]:
+                    if ngram in filtered_ngrams:
+                        if ngram not in ngram_performance:
+                            ngram_performance[ngram] = {
+                                "Clicks": 0,
+                                "Impressions": 0,
+                                "Cost": 0,
+                                "Conversions": 0
+                            }
+                        ngram_performance[ngram]["Clicks"] += row["Clicks"]
+                        ngram_performance[ngram]["Impressions"] += row["Impressions"]
+                        ngram_performance[ngram]["Cost"] += row["Cost"]
+                        ngram_performance[ngram]["Conversions"] += row["Conversions"]
 
 
-                if filtered_ngrams:  # Only proceed if there are n-grams after filtering
+            df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
+            df_ngram_performance.index.name = "N-gram"
+            df_ngram_performance = df_ngram_performance.reset_index()
 
-                    df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
+            df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
+            df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
+            df_ngram_performance["Cost per Conversion"] = df_ngram_performance["Cost"] / df_ngram_performance["Conversions"]
 
-                    # Create a mapping from search term to n-grams
-                    search_term_to_ngrams = {}
-                    for term in df["Search term"]:
-                        search_term_to_ngrams[term] = extract_ngrams(term, n_value)
+            st.dataframe(df_ngram_performance)
+            
+            # --- Topic Modeling (using LDA) ---
+            st.subheader("Topic Modeling")
+            num_topics = st.number_input("Number of Topics:", min_value=2, max_value=10, value=5)
 
+            # Use CountVectorizer instead of TfidfVectorizer for LDA
+            vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
+            dtm = vectorizer.fit_transform(filtered_ngrams.keys())  # Use the *unique* n-grams as input
 
-                    # Aggregate performance data based on n-grams
-                    ngram_performance = {}  # Use N-gram as key
+            lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
+            lda.fit(dtm)
 
-                    for index, row in df.iterrows():
-                        search_term = row["Search term"]
-                        for ngram in search_term_to_ngrams[search_term]:  # Iterate through n-grams of THIS search term
-                            if ngram in filtered_ngrams:  # Only consider frequent n-grams
-
-                                if ngram not in ngram_performance:
-                                        ngram_performance[ngram] = {
-                                            "Clicks": 0,
-                                            "Impressions": 0,
-                                            "Cost": 0,
-                                            "Conversions": 0
-                                        }
-                                ngram_performance[ngram]["Clicks"] += row["Clicks"]
-                                ngram_performance[ngram]["Impressions"] += row["Impressions"]
-                                ngram_performance[ngram]["Cost"] += row["Cost"]
-                                ngram_performance[ngram]["Conversions"] += row["Conversions"]
+            # Display topics and their top words
+            for topic_idx, topic in enumerate(lda.components_):
+                st.write(f"**Topic #{topic_idx + 1}:**")
+                top_words_indices = topic.argsort()[:-11:-1]  # Get indices of top 10 words
+                top_words = [vectorizer.get_feature_names_out()[i] for i in top_words_indices]
+                st.write(", ".join(top_words))
 
 
-
-                    # Convert aggregated data to DataFrame
-                    df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
-                    df_ngram_performance.index.name = "N-gram"
-                    df_ngram_performance = df_ngram_performance.reset_index()  # Make N-gram a regular column
-
-                    df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
-                    df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-                    df_ngram_performance["Cost per Conversion"] = df_ngram_performance["Cost"] / df_ngram_performance["Conversions"]
-
-
-                    st.dataframe(df_ngram_performance)
-
-                else:
-                    st.warning("No n-grams found with the specified minimum frequency.")
-        except Exception as e: #THIS WAS MODIFIED
-            st.error(f"An error occurred while processing the Excel file: {e}")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
           
 
@@ -1768,11 +1610,7 @@ def main():
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    nltk.download('punkt')        # Keep this
-    nltk.download('stopwords')    # Keep this
-    nltk.download('wordnet')      # Keep this
-    nltk.download('omw-1.4')      # Keep this (good practice)
-    nltk.download('punkt_tab')    # ADD THIS LINE
+    nltk.download('punkt')
     main()
 
 
