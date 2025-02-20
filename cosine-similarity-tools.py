@@ -350,7 +350,6 @@ def extract_related_searches(soup):
           related_searches.append(text)
     return related_searches
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def get_paa_and_related(driver, query, _request_count=None):
     """Gets PAA and related searches, with caching and request counting."""
 
