@@ -1259,13 +1259,8 @@ def paa_extraction_clustering_page():
     st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
-        This tool builds a three-level topic cluster around a main search query.
-        Level 1 is your original query.
-        Level 2 consists of the related searches (as extracted from the original query).
-        Level 3 is obtained by performing an additional search on each related search—extracting its PAA and related searches.
-        
-        For example: 
-        Peter Lik > Peter Lik For Sale > Are Peter Lik Photos Worth Anything?
+        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent. 
+        You can either write pages to support the main page or address the intent behind People Also Asked though you don't necessarily need to copy questions verbatim.
         """
     )
     
