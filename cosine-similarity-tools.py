@@ -356,7 +356,7 @@ def extract_related_searches(soup):
     return related_searches
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_paa_and_related(driver, query, _request_count=None):
+def get_paa_and_related(_driver, query, _request_count=None):
     """Gets PAA and related searches, with caching and request counting."""
 
     if _request_count is None:
@@ -370,7 +370,7 @@ def get_paa_and_related(driver, query, _request_count=None):
     print(f"Fetching data for: {query} (Request #{_request_count['count']})")
 
     search_url = f"{GOOGLE_SEARCH_URL}{query.replace(' ', '+')}"
-    page_source = fetch_page_selenium(driver, search_url)
+    page_source = fetch_page_selenium(_driver, search_url)
 
     if page_source:
         soup = BeautifulSoup(page_source, "html.parser")
