@@ -1445,7 +1445,7 @@ def google_ads_search_term_analyzer_page():
                 "Cost / conv.": "Cost per Conversion"
             })
 
-            # Input Validation (check for required columns - this part is correct and unchanged)
+           # Input Validation (check for required columns - this part is correct and unchanged)
             required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
@@ -1461,6 +1461,8 @@ def google_ads_search_term_analyzer_page():
                     st.error(f"Column '{col}' not found in the uploaded Excel file.")
                     return
 
+
+
             st.subheader("N-gram Analysis")
             n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
             min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
@@ -1470,7 +1472,7 @@ def google_ads_search_term_analyzer_page():
             lemmatizer = WordNetLemmatizer()
 
             def extract_ngrams(text, n):
-                #Ensure the search term is a string
+              # Ensure input is a string.
                 text = str(text)
                 tokens = word_tokenize(text.lower())
                 tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
@@ -1492,36 +1494,44 @@ def google_ads_search_term_analyzer_page():
 
             search_term_to_ngrams = {}
             for term in df["Search term"]:
-                 search_term_to_ngrams[term] = extract_ngrams(term, n_value)
+                search_term_to_ngrams[term] = extract_ngrams(term, n_value)
 
             ngram_performance = {}
+
             for index, row in df.iterrows():
                 search_term = row["Search term"]
-                for ngram in search_term_to_ngrams[search_term]:
-                    if ngram in filtered_ngrams:
+                for ngram in search_term_to_ngrams[search_term]:  # Iterate through n-grams of THIS search term
+                    if ngram in filtered_ngrams:  # Only consider frequent n-grams
+
                         if ngram not in ngram_performance:
-                            ngram_performance[ngram] = {
-                                "Clicks": 0,
-                                "Impressions": 0,
-                                "Cost": 0,
-                                "Conversions": 0
-                            }
+                                ngram_performance[ngram] = {
+                                    "Clicks": 0,
+                                    "Impressions": 0,
+                                    "Cost": 0,
+                                    "Conversions": 0
+                                }
                         ngram_performance[ngram]["Clicks"] += row["Clicks"]
                         ngram_performance[ngram]["Impressions"] += row["Impressions"]
                         ngram_performance[ngram]["Cost"] += row["Cost"]
                         ngram_performance[ngram]["Conversions"] += row["Conversions"]
 
 
+
+            # Convert aggregated data to DataFrame
             df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
             df_ngram_performance.index.name = "N-gram"
-            df_ngram_performance = df_ngram_performance.reset_index()
+            df_ngram_performance = df_ngram_performance.reset_index()  # Make N-gram a regular column
 
             df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
             df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-            df_ngram_performance["Cost per Conversion"] = df_ngram_performance["Cost"] / df_ngram_performance["Conversions"]
+            # --- Corrected Cost per Conversion Handling ---
+            # Calculate Cost per Conversion, handling potential division by zero and NaN values
+            df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
+                lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
+            )
 
             st.dataframe(df_ngram_performance)
-            
+
             # --- Topic Modeling (using LDA) ---
             st.subheader("Topic Modeling")
             num_topics = st.number_input("Number of Topics:", min_value=2, max_value=10, value=5)
@@ -1540,9 +1550,8 @@ def google_ads_search_term_analyzer_page():
                 top_words = [vectorizer.get_feature_names_out()[i] for i in top_words_indices]
                 st.write(", ".join(top_words))
 
-
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+        except Exception as e: #THIS WAS MODIFIED
+            st.error(f"An error occurred while processing the Excel file: {e}")
 
           
 
@@ -1610,9 +1619,10 @@ def main():
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    nltk.download('punkt')
+    nltk.download('punkt')       # Keep this for tokenization
+    nltk.download('stopwords')   # Keep this for stop word removal
+    nltk.download('wordnet')     # Keep this for lemmatization
     main()
-
 
 
 
