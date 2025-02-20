@@ -26,7 +26,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
 
-# Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
 
 # ------------------------------------
@@ -335,29 +334,35 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     return top_sections, bottom_sections
 
 # ------------------------------------
-# People Also Asked Helper (Global)
+# People Also Asked Hierarchical Helper
 # ------------------------------------
-def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
+def get_paa_hierarchical(query, parent_query=None, level=1, max_depth=10, related_depth=0, max_related_depth=2):
     """
-    Extracts People Also Asked (PAA) questions for a given query.
-    In addition to recursively clicking PAA questions (up to max_depth),
-    if related_depth is below max_related_depth, it will also extract related
-    search queries from the original results page and extract their PAA questions.
+    Extracts People Also Asked (PAA) questions hierarchically.
+    For each query, it extracts direct PAA questions (up to max_depth) and computes a similarity score
+    with respect to the parent query. Then, if related_depth is less than max_related_depth,
+    it extracts related searches and recursively extracts their PAA questions (with a lower max_depth for speed).
     
     Parameters:
-        query (str): The search query.
-        max_depth (int): Maximum recursion depth for PAA clicks.
-        related_depth (int): Current depth level for related search extraction.
-        max_related_depth (int): Maximum allowed related search depth.
+        query (str): The query to search.
+        parent_query (str): The query to compare against. Defaults to the main query.
+        level (int): The current hierarchy level (1 for direct, 2 for related, etc.).
+        max_depth (int): Maximum recursion depth for direct PAA clicks.
+        related_depth (int): Current recursion depth for related search extraction.
+        max_related_depth (int): Maximum allowed related search extraction depth.
         
     Returns:
-        set: A set of PAA question strings.
+        list: A list of dictionaries. Each dictionary contains:
+              - "question": The extracted PAA question.
+              - "level": The level (1, 2, or 3).
+              - "parent": The parent query string.
+              - "similarity": The cosine similarity between the question’s embedding and the parent's embedding.
     """
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
     import time
 
-    # Configure headless Chrome options.
+    # Set up headless Chrome options.
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -365,14 +370,21 @@ def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
     user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
                   "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
     chrome_options.add_argument(f"user-agent={user_agent}")
+    
+    # If no parent_query is provided, use the main query.
+    if parent_query is None:
+        parent_query = query
 
-    # Start a driver for the main query.
+    # Initialize the SentenceTransformer model and compute parent's embedding.
+    model = initialize_sentence_transformer()
+    parent_embedding = get_embedding(parent_query, model)
+    
     driver = webdriver.Chrome(options=chrome_options)
     driver.get("https://www.google.com/search?q=" + query)
     time.sleep(3)  # Allow the page to load
-
-    paa_set = set()
-
+    
+    results = []
+    
     def extract_paa_recursive(depth, max_depth):
         if depth > max_depth:
             return
@@ -382,8 +394,16 @@ def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
                 elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
             for el in elements:
                 question_text = el.text.strip()
-                if question_text and question_text not in paa_set:
-                    paa_set.add(question_text)
+                if question_text:
+                    # Compute similarity between the extracted question and the parent query.
+                    q_embedding = get_embedding(question_text, model)
+                    sim = cosine_similarity([q_embedding], [parent_embedding])[0][0]
+                    results.append({
+                        "question": question_text,
+                        "level": level,
+                        "parent": parent_query,
+                        "similarity": sim
+                    })
                     try:
                         driver.execute_script("arguments[0].click();", el)
                         time.sleep(2)  # Wait for new questions to load
@@ -392,12 +412,12 @@ def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
                         continue
         except Exception as e:
             st.error(f"Error during PAA extraction for query '{query}': {e}")
-
-    # First, extract PAA questions normally.
+    
+    # Extract direct PAA questions.
     extract_paa_recursive(1, max_depth)
     driver.quit()
-
-    # Now, if we have not exceeded our related search depth, extract related searches.
+    
+    # If allowed, extract PAA questions from related searches (i.e. a deeper level).
     if related_depth < max_related_depth:
         try:
             driver_related = webdriver.Chrome(options=chrome_options)
@@ -407,14 +427,17 @@ def get_paa(query, max_depth=10, related_depth=2, max_related_depth=2):
             driver_related.quit()
             for el in related_elements:
                 related_query = el.text.strip()
-                if related_query and related_query not in paa_set:
+                if related_query:
                     # For the related query, use a lower max_depth (e.g., 3) for speed.
-                    related_paa = get_paa(related_query, max_depth=3, related_depth=related_depth+1, max_related_depth=max_related_depth)
-                    paa_set.update(related_paa)
+                    child_results = get_paa_hierarchical(related_query, parent_query=related_query, 
+                                                         level=level+1, max_depth=3, 
+                                                         related_depth=related_depth+1, 
+                                                         max_related_depth=max_related_depth)
+                    results.extend(child_results)
         except Exception as e:
             st.error(f"Error extracting related searches for query '{query}': {e}")
-
-    return paa_set
+    
+    return results
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -1327,12 +1350,15 @@ def keyword_clustering_from_gap_page():
             for gram in gram_list:
                 st.write(f" - {gram}")
 
+# ------------------------------------
+# Updated People Also Asked Tool (Hierarchical)
+# ------------------------------------
 def paa_extraction_clustering_page():
     st.header("People Also Asked Recommendations")
     st.markdown(
         """
-        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
-        You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
+        This tool builds a topic cluster around a search query by extracting hierarchical PAA questions.
+        Three levels of questions are displayed, and each node’s similarity score is computed relative to its parent's query.
         """
     )
     
@@ -1341,100 +1367,36 @@ def paa_extraction_clustering_page():
         if not search_query:
             st.warning("Please enter a search query.")
             return
-
-        # Define user_agent once to use throughout
-        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/115.0.0.0 Safari/537.36")
         
-        st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 10 times)
-        paa_questions = get_paa(search_query, max_depth=10)
+        st.info("Extracting hierarchical PAA questions...")
+        # Set max_depth for direct extraction and max_related_depth to achieve three levels overall.
+        hierarchical_data = get_paa_hierarchical(search_query, level=1, max_depth=10, related_depth=0, max_related_depth=2)
         
-        st.info("Autocomplete suggestions...")
-        # Scrape autocomplete suggestions using Google's unofficial endpoint
-        import requests
-        autocomplete_url = "http://suggestqueries.google.com/complete/search"
-        params = {"client": "chrome", "q": search_query}
-        try:
-            response = requests.get(autocomplete_url, params=params)
-            if response.status_code == 200:
-                suggestions = response.json()[1]
-            else:
-                suggestions = []
-        except Exception as e:
-            st.error(f"Error fetching autocomplete suggestions: {e}")
-            suggestions = []
-        
-        st.info("Related searches...")
-        # Reinitialize a driver to extract related searches from the original query page
-        related_searches = []
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
-            driver2 = webdriver.Chrome(options=chrome_options)
-            driver2.get("https://www.google.com/search?q=" + search_query)
-            time.sleep(3)
-            # Related searches often appear in <p> tags with a specific class (update selector as needed)
-            related_elements = driver2.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
-            for el in related_elements:
-                text = el.text.strip()
-                if text:
-                    related_searches.append(text)
-            driver2.quit()
-        except Exception as e:
-            st.error(f"Error extracting related searches: {e}")
-        
-        # Combine all extracted questions: PAA + autocomplete suggestions + related searches
-        combined_questions = list(paa_questions) + suggestions + related_searches
-        
-        st.info("Analyzing similarity...")
-        # Compute cosine similarity using your SentenceTransformer model
-        model = initialize_sentence_transformer()
-        query_embedding = get_embedding(search_query, model)
-        question_similarities = []
-        for q in combined_questions:
-            q_embedding = get_embedding(q, model)
-            sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
-            question_similarities.append((q, sim))
-        
-        if not question_similarities:
-            st.warning("No questions were extracted to analyze.")
+        if not hierarchical_data:
+            st.warning("No PAA questions were extracted.")
             return
         
-        # Compute average similarity and filter recommendations (include average and above)
-        avg_sim = np.mean([sim for _, sim in question_similarities])
-        st.write(f"Average Similarity Score: {avg_sim:.4f}")
-        recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
-        recommended.sort(key=lambda x: x[1], reverse=True)
+        # Build a DataFrame for hierarchical visualization.
+        # Add a root node representing the main query.
+        df = pd.DataFrame(hierarchical_data)
+        root = pd.DataFrame({
+            "question": [search_query],
+            "level": [0],
+            "parent": [""],
+            "similarity": [None]
+        })
+        df_tree = pd.concat([root, df], ignore_index=True)
         
-        # --- Visualization: Horizontal Dendrogram Tree ---
-        st.subheader("Topic Tree")
-        if recommended:
-            # Build a list of recommended questions only (do not include the original search query)
-            rec_texts = [q for q, sim in recommended]
-            dendro_labels = rec_texts
-            dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
-            
-            import plotly.figure_factory as ff
-            # Orientation 'left' produces a horizontal dendrogram tree with leaves on the left side
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
-            dendro.update_layout(width=800, height=600)
-            st.plotly_chart(dendro)
-        else:
-            st.info("No recommended questions to visualize.")
+        # Create a treemap visualization to mimic a hierarchical (dendrogram-like) tree.
+        fig = px.treemap(df_tree, path=['parent', 'question'], color="level",
+                         hover_data={"similarity": True, "level": True},
+                         title="Hierarchical PAA Tree (Three Levels)")
+        st.plotly_chart(fig)
         
-        # --- Results ---
-        st.subheader("Most Relevant Related Search Queries")
-        for q, sim in recommended:
-            st.write(f"{q} (Similarity: {sim:.4f})")
-        
-        st.subheader("All Related Search Queries")
-        for q in combined_questions:
-            st.write(f"- {q}")
+        # Optionally, display the extracted hierarchical data.
+        st.subheader("Extracted Hierarchical PAA Questions:")
+        for item in hierarchical_data:
+            st.write(f"Level {item['level']} (Parent: {item['parent']}): {item['question']} (Similarity: {item['similarity']:.4f})")
 
 # ------------------------------------
 # Main Streamlit App
@@ -1498,6 +1460,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
