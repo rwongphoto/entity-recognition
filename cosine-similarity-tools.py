@@ -1259,11 +1259,7 @@ def paa_extraction_clustering_page():
     st.header("People Also Asked & Topic Clustering")
     st.markdown(
         """
-        This tool reveals People Also Ask (PAA) questions based on your search query.  
-        It extracts both PAA questions and Google autocomplete suggestions, computes the similarity  
-        between each question and your search query, and recommends those with a similarity score  
-        at or above the average. Finally, it visualizes the recommended questions as a topic cluster  
-        in a tree (dendrogram) with your original query included.
+        This tool is designed to build a topic cluster around a main search query that helps address a user's search intent. You can either write pages to support the main page or address the intent behind People Also Asked though you don't necessarily need to copy questions verbatim.
         """
     )
     
@@ -1273,58 +1269,65 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        st.info("Extracting PAA questions...")
-        # Initialize Selenium Chrome driver
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/115.0.0.0 Safari/537.36")
-        chrome_options.add_argument(f"user-agent={user_agent}")
-        driver = webdriver.Chrome(options=chrome_options)
+        # --- Helper function to extract PAA questions for a given query ---
+        def get_paa(query, max_depth=1):
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/115.0.0.0 Safari/537.36")
+            chrome_options.add_argument(f"user-agent={user_agent}")
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.get("https://www.google.com/search?q=" + query)
+            time.sleep(3)  # Allow page to load
+            
+            paa_set = set()
+            def extract_paa_recursive(depth, max_depth):
+                if depth > max_depth:
+                    return
+                try:
+                    # Use a CSS selector for PAA questions; update as needed
+                    elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
+                    if not elements:
+                        elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
+                    for el in elements:
+                        question_text = el.text.strip()
+                        if question_text and question_text not in paa_set:
+                            paa_set.add(question_text)
+                            try:
+                                driver.execute_script("arguments[0].click();", el)
+                                time.sleep(2)  # Allow time for new questions to load
+                                extract_paa_recursive(depth + 1, max_depth)
+                            except Exception:
+                                continue
+                except Exception as e:
+                    st.error(f"Error during PAA extraction for query '{query}': {e}")
+            extract_paa_recursive(1, max_depth)
+            driver.quit()
+            return paa_set
         
-        # Open Google search page for the query
-        driver.get("https://www.google.com/search?q=" + search_query)
-        time.sleep(3)  # Allow page to load
+        st.info("I'm researching...")
+        # Extract initial PAA questions with a deeper recursion (up to five levels)
+        initial_paa = get_paa(search_query, max_depth=5)
         
-        # Recursive function to extract PAA questions (five levels deep)
-        paa_questions = set()
-        def extract_paa_recursive(depth, max_depth):
-            if depth > max_depth:
-                return
-            try:
-                # Locate PAA question elements using a CSS selector (update as necessary)
-                elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
-                if not elements:
-                    # Alternative XPath selector as a fallback
-                    elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
-                for el in elements:
-                    question_text = el.text.strip()
-                    if question_text and question_text not in paa_questions:
-                        paa_questions.add(question_text)
-                        try:
-                            # Click to reveal additional PAA questions
-                            driver.execute_script("arguments[0].click();", el)
-                            time.sleep(2)  # Allow time for new questions to load
-                            extract_paa_recursive(depth + 1, max_depth)
-                        except Exception as click_error:
-                            continue
-            except Exception as e:
-                st.error(f"Error during PAA extraction: {e}")
+        st.info("There's some really interesting things here...")
+        # For each PAA question extracted from the original query, extract one level of additional PAA questions
+        additional_paa = set()
+        for q in initial_paa:
+            st.write(f"Searching for: {q}")
+            extra = get_paa(q, max_depth=1)
+            additional_paa.update(extra)
         
-        extract_paa_recursive(depth=1, max_depth=5)
-        driver.quit()
+        # Combine initial and additional PAA questions
+        all_paa = initial_paa.union(additional_paa)
         
         st.info("Fetching autocomplete suggestions...")
         # Scrape autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
-        params = {
-            "client": "chrome",
-            "q": search_query
-        }
+        params = {"client": "chrome", "q": search_query}
         try:
             response = requests.get(autocomplete_url, params=params)
             if response.status_code == 200:
@@ -1335,9 +1338,11 @@ def paa_extraction_clustering_page():
             st.error(f"Error fetching autocomplete suggestions: {e}")
             suggestions = []
         
-        # Combine PAA questions with autocomplete suggestions
-        combined_questions = list(paa_questions) + suggestions
-        st.subheader("Extracted Questions")
+        # Combine all extracted questions with autocomplete suggestions
+        combined_questions = list(all_paa) + suggestions
+        
+        # Display Extracted Questions
+        st.subheader("Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
         
@@ -1355,28 +1360,36 @@ def paa_extraction_clustering_page():
             st.warning("No questions were extracted to analyze.")
             return
         
-        # Compute average similarity and filter recommendations
+        # Compute average similarity and filter recommendations (include average and above)
         avg_sim = np.mean([sim for _, sim in question_similarities])
         st.write(f"Average Similarity Score: {avg_sim:.4f}")
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
         
-        st.subheader("Recommended Questions (Similarity >= Average)")
-        for q, sim in recommended:
-            st.write(f"{q} (Similarity: {sim:.4f})")
-        
-        # Visualize the recommended questions as a topic cluster in a dendrogram tree
+        # --- Visualization: Hierarchical Dendrogram Tree with Recommended Questions Only ---
+        st.subheader("Recommended Topic Cluster")
         if recommended:
+            # Build a list of recommended questions only
             texts = [q for q, sim in recommended]
-            # Combine the original query with recommended questions
-            all_texts = [search_query] + texts
-            all_embeddings = np.vstack([get_embedding(text, model) for text in all_texts])
+            all_embeddings = np.vstack([get_embedding(text, model) for text in texts])
             
             import plotly.figure_factory as ff
-            dendro = ff.create_dendrogram(all_embeddings, orientation='left', labels=all_texts)
+            dendro = ff.create_dendrogram(all_embeddings, orientation='top', labels=texts)
+            dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
+        
+        # Show Recommended Questions
+        st.subheader("Recommended Questions")
+        for q, sim in recommended:
+            st.write(f"{q} (Similarity: {sim:.4f})")
+        
+        # Finally, show all Extracted Questions
+        st.subheader("All Questions")
+        for q in combined_questions:
+            st.write(f"- {q}")
+
 
 
 
@@ -1416,7 +1429,7 @@ def main():
         "Entity Frequency Charts",
         "Semantic Gap Analyzer",
         "Keyword Clustering",
-        "PAA Extraction & Clustering"  # <-- New option
+        "Intent-Based Topic Clustering"  # <-- New option
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1438,7 +1451,7 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
-    elif tool == "PAA Extraction & Clustering":
+    elif tool == "Intent-Based Topic Clustering":
         paa_extraction_clustering_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
