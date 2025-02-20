@@ -1423,7 +1423,7 @@ def paa_extraction_clustering_page():
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
 @st.cache_resource()  # Cache the trained model
-def train_intent_classifier(brands_list):
+def train_intent_classifier(brands_list=None): #Added brands_list with a default None
     """Trains a search intent classifier on a small, built-in dataset."""
 
     # Built-in training data (Expand this for better accuracy!)
@@ -1495,38 +1495,20 @@ def train_intent_classifier(brands_list):
 
     df_train['processed_query'] = df_train['query'].apply(preprocess)
 
-    # --- Brand Detection (Simple Example - Expand this!) ---
-    # brands = ["nike", "adidas", "samsung", "iphone", "the seo consultant", "theseoconsultant.ai", "google", "facebook"]  # Add more brands #REMOVED HARDCODING
-    brands = brands_list #Use the brands_list from function argument
-    def contains_brand(query):
-        query = query.lower()
-        for brand in brands:
-            if brand in query:
-                return 1  # True (contains brand)
-        return 0  # False (does not contain brand)
-
-    df_train['contains_brand'] = df_train['query'].apply(contains_brand)
-
+    # --- Brand Detection REMOVED ---  No longer needed, TF-IDF handles this
 
     # Split data
-    X = df_train[['processed_query', 'contains_brand']] #Now using two features
+    X = df_train['processed_query'] # Only use the processed text
     y = df_train['intent']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)  # Use a small test set
 
 
-   # Create a pipeline: TF-IDF Vectorizer + Multinomial Naive Bayes + ColumnTransformer
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('tfidf', TfidfVectorizer(), 'processed_query'), #Apply TfidfVectorizer to the 'processed_query'
-            ('passthrough', 'passthrough', ['contains_brand']) # Keep 'contains_brand' as is
-        ],
-        remainder='drop'  # Drop any other columns
-    )
-
+    # --- Simplified Pipeline - NO ColumnTransformer ---
     model = Pipeline([
-        ('preprocessor', preprocessor), #Apply the column transformer
-        ('clf', MultinomialNB())
+        ('tfidf', TfidfVectorizer()),  # Just TF-IDF
+        ('clf', MultinomialNB())       # And the classifier
     ])
+
 
     # Train the model
     model.fit(X_train, y_train)
@@ -1549,29 +1531,37 @@ def google_ads_search_term_analyzer_page():
         """
     )
 
-     # --- User Input for Brands ---
+     # --- User Input for Brands - KEPT for consistency, but not directly used in classification
     brands_input = st.text_input("Enter a comma-separated list of brands:", value="nike, adidas, samsung, iphone, google, facebook")  #Default values
-    brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]  # Clean and lowercase
+    brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
-    # Load the pre-trained classifier, passing in the brand list
-    intent_classifier = train_intent_classifier(brands_list)
+    # Load the pre-trained classifier, NO LONGER passing brand list. The model handles all text features.
+    intent_classifier = train_intent_classifier()
 
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
-
 
     if uploaded_file is not None:
         try:
             # Read the CSV file using the csv module first to detect the delimiter
             csvfile = StringIO(uploaded_file.getvalue().decode("utf-8"))
-            dialect = csv.Sniffer().sniff(csvfile.read(1024))  # Detect delimiter
-            csvfile.seek(0)  # Reset file pointer
-            reader = csv.reader(csvfile, dialect)
-            header = next(reader)  # Get the header row
+            
+            # --- IMPROVED DELIMITER DETECTION ---
+            try:
+                dialect = csv.Sniffer().sniff(csvfile.read(2048))  # Read more bytes
+                csvfile.seek(0)
+                reader = csv.reader(csvfile, dialect)
+                header = next(reader)  # Get the header
+                df = pd.read_csv(uploaded_file, sep=dialect.delimiter, header=0, engine='python')
 
-            # Now read with Pandas, using the detected delimiter and header
-            df = pd.read_csv(uploaded_file, sep=dialect.delimiter, header=0, engine='python')
+            except csv.Error as e: # Specifically catch csv.Error
+                st.error(f"CSV Parsing Error: {e}.  Please check your CSV file's format. It might have an unusual delimiter, inconsistent formatting, or be too small.")
+                return # Stop if CSV parsing fails
+            except Exception as e: #Catch all other exceptions
+                st.error(f"An unexpected error occurred during CSV processing: {e}")
+                return
 
-            # --- Input Validation and Data Cleaning ---
+
+            # --- Input Validation and Data Cleaning --- (REST OF YOUR FUNCTION - NO CHANGES NEEDED HERE)
             required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
@@ -1605,23 +1595,13 @@ def google_ads_search_term_analyzer_page():
                     tokens = word_tokenize(text.lower())
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     return " ".join(tokens)
-                
+
                 df['processed_query'] = df['Search term'].apply(preprocess)
 
-                # --- Brand Detection (for uploaded data) ---
-                # brands = ["nike", "adidas", "samsung", "iphone", "the seo consultant", "theseoconsultant.ai", "google", "facebook"] #MATCH WITH TRAINING
-                brands = brands_list # Use the brands list defined by user
+                # --- Brand Detection REMOVED ---  We're relying on TF-IDF now.
 
-                def contains_brand(query):
-                    query = query.lower()
-                    for brand in brands:
-                        if brand in query:
-                            return 1
-                    return 0
-                df['contains_brand'] = df['Search term'].apply(contains_brand)
-
-                # Use the classifier to predict intent.  Pass a DataFrame with the expected columns
-                df["Intent"] = intent_classifier.predict(df[['processed_query', 'contains_brand']])
+                # --- Predict Intent ---  Pass only the processed text column
+                df["Intent"] = intent_classifier.predict(df['processed_query'])
 
 
                 # Aggregate performance data
@@ -1652,11 +1632,11 @@ def google_ads_search_term_analyzer_page():
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     ngrams_list = list(nltk.ngrams(tokens, n))
                     return [" ".join(gram) for gram in ngrams_list]
-                
+
                 all_ngrams = []
                 for term in df["Search term"]:
                     all_ngrams.extend(extract_ngrams(term, n_value))
-                
+
                 ngram_counts = Counter(all_ngrams)
                 filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
 
@@ -1707,7 +1687,7 @@ def google_ads_search_term_analyzer_page():
 
                 else:
                     st.warning("No n-grams found with the specified minimum frequency.")
-        except Exception as e:
+        except Exception as e: #THIS WAS MODIFIED
             st.error(f"An error occurred while processing the CSV file: {e}")
 
           
