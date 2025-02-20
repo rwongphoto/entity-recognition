@@ -1417,7 +1417,7 @@ def google_ads_search_term_analyzer_page():
     st.markdown(
         """
         Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
-        This tool extracts n-grams and performs topic modeling (LDA).
+        This tool extracts n-grams.
         """
     )
 
@@ -1445,17 +1445,21 @@ def google_ads_search_term_analyzer_page():
                 "Cost / conv.": "Cost per Conversion"
             })
 
-            # Input Validation (check for required columns)
-            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
+           # Input Validation (check for required columns - this part is correct and unchanged)
+            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-                return
+                return  # Stop execution if required columns are missing
 
-            # Convert numeric columns, handling errors.
+            # Convert numeric columns, handling errors (correct and unchanged)
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')  # Convert to numeric, invalid values become NaN
+                    df[col] = df[col].fillna(0)  # Replace NaN with 0
+                except KeyError:  # This should be caught by the previous check, but it's good to be safe
+                    st.error(f"Column '{col}' not found in the uploaded Excel file.")
+                    return
 
             st.subheader("N-gram Analysis")
             n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
@@ -1515,45 +1519,35 @@ def google_ads_search_term_analyzer_page():
 
             df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
             df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-            # Correctly handle cases where Conversions is 0, then convert back to numeric.
+           # Calculate "Cost per Conversion," handling division by zero
             df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
                 lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
             )
             # Convert 'Cost per Conversion' to numeric, handling 'None'
             df_ngram_performance['Cost per Conversion'] = df_ngram_performance['Cost per Conversion'].apply(lambda x: pd.NA if x == 'None' else x)
             df_ngram_performance['Cost per Conversion'] = pd.to_numeric(df_ngram_performance['Cost per Conversion'], errors='coerce')
-            # Format as currency after making numeric
+
+            # --- Display with Correct Sorting and Formatting ---
+            # Get the column to sort by and the sort order from the user.
+            sort_column = st.selectbox("Sort by Column:", options=df_ngram_performance.columns)
+            sort_ascending = st.checkbox("Sort Ascending", value=True)  # Default to ascending
+
+            # Sort the DataFrame.  Use na_position to control 'None' placement.
+            if sort_ascending:
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=True, na_position='last')
+            else:
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=False, na_position='first')
+
+
+            # Apply formatting *after* sorting.
             st.dataframe(df_ngram_performance.style.format({
-                "Cost": "${:,.2f}",        # Format Cost
-                "Cost per Conversion": "${:,.2f}"  # Format Cost per Conversion
+                "Cost": "${:,.2f}",
+                "Cost per Conversion": "${:,.2f}",  # Now correctly formatted
+                "CTR": "{:,.2f}%",
+                "Conversion Rate": "{:,.2f}%",
+                "Conversions":"{:,.1f}"
             }))
 
-            # --- Topic Modeling (using LDA) ---
-            st.subheader("Topic Modeling")
-            num_topics = st.number_input("Number of Topics:", min_value=2, max_value=10, value=5)
-
-            # Use CountVectorizer (important for LDA)
-            vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words=list(stop_words))  # max and min document frequency.
-            dtm = vectorizer.fit_transform(filtered_ngrams.keys())  # Use the *unique* n-grams as input
-
-            # Use Gensim's LDA for coherence calculation
-            id2word = corpora.Dictionary([list(filtered_ngrams.keys())])  # Create dictionary from n-grams
-            corpus = [id2word.doc2bow(list(text)) for text in [filtered_ngrams.keys()]]  # Convert to bag-of-words
-
-            lda_model = LdaModel(corpus=corpus,
-                                 id2word=id2word,
-                                 num_topics=num_topics,
-                                 random_state=42,
-                                 passes=10)  # You can adjust passes for better results
-
-            # Calculate coherence
-            coherence_model_lda = CoherenceModel(model=lda_model, texts=[list(filtered_ngrams.keys())], dictionary=id2word, coherence='c_v')
-            coherence_lda = coherence_model_lda.get_coherence()
-            st.write(f"Coherence Score: {coherence_lda:.4f}")
-
-            # Display topics and their top words:
-            for idx, topic in lda_model.print_topics(-1):
-                st.write('Topic: {} \nWords: {}'.format(idx, topic))
 
         except Exception as e:
             st.error(f"An error occurred while processing the Excel file: {e}")
@@ -1624,9 +1618,10 @@ def main():
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    nltk.download('punkt')       # Keep this for tokenization
-    nltk.download('stopwords')   # Keep this for stop word removal
-    nltk.download('wordnet')     # Keep this for lemmatization
+    # We only need these downloads now.
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    nltk.download('wordnet')
     main()
 
 
