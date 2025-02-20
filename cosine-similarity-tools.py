@@ -45,6 +45,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.compose import ColumnTransformer # Import ColumnTransformer
+import csv # NEW: Import the csv module
 
 # ------------------------------------
 # Global Variables & Utility Functions
