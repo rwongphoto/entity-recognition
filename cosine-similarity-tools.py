@@ -1377,7 +1377,7 @@ def paa_extraction_clustering_page():
         recommended.sort(key=lambda x: x[1], reverse=True)
         
         # --- Visualization: Horizontal Dendrogram Tree ---
-        st.subheader("Recommended Questions Tree")
+        st.subheader("Topic Tree")
         if recommended:
             # Build a list of recommended questions only (do not include the original search query)
             rec_texts = [q for q, sim in recommended]
@@ -1393,11 +1393,11 @@ def paa_extraction_clustering_page():
             st.info("No recommended questions to visualize.")
         
         # --- Results ---
-        st.subheader("Recommended Questions (Average and Above)")
+        st.subheader("Most Relevant Related Search Queries")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
-        st.subheader("All Commonly Asked Questions")
+        st.subheader("All Related Search Queries")
         for q in combined_questions:
             st.write(f"- {q}")
 
