@@ -1417,7 +1417,7 @@ def google_ads_search_term_analyzer_page():
     st.markdown(
         """
         Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
-        This tool extracts n-grams and performs topic modeling.
+        This tool extracts n-grams and performs topic modeling (LDA).
         """
     )
 
@@ -1445,22 +1445,16 @@ def google_ads_search_term_analyzer_page():
                 "Cost / conv.": "Cost per Conversion"
             })
 
-           # Input Validation (check for required columns - this part is correct and unchanged)
-            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
+            # Input Validation (check for required columns)
+            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-                return  # Stop execution if required columns are missing
+                return
 
-            # Convert numeric columns, handling errors (correct and unchanged)
+            # Convert numeric columns, handling errors.
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
-                try:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')  # Convert to numeric, invalid values become NaN
-                    df[col] = df[col].fillna(0)  # Replace NaN with 0
-                except KeyError:  # This should be caught by the previous check, but it's good to be safe
-                    st.error(f"Column '{col}' not found in the uploaded Excel file.")
-                    return
-
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
 
             st.subheader("N-gram Analysis")
@@ -1472,9 +1466,9 @@ def google_ads_search_term_analyzer_page():
             lemmatizer = WordNetLemmatizer()
 
             def extract_ngrams(text, n):
-              # Ensure input is a string.
-                text = str(text)
-                tokens = word_tokenize(text.lower())
+                # Ensure input is a string.
+                text = str(text).lower()
+                tokens = word_tokenize(text)
                 tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                 ngrams_list = list(nltk.ngrams(tokens, n))
                 return [" ".join(gram) for gram in ngrams_list]
@@ -1488,7 +1482,7 @@ def google_ads_search_term_analyzer_page():
 
             if not filtered_ngrams:
                 st.warning("No n-grams found with the specified minimum frequency.")
-                return  # Exit if no n-grams found
+                return
 
             df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
 
@@ -1500,57 +1494,68 @@ def google_ads_search_term_analyzer_page():
 
             for index, row in df.iterrows():
                 search_term = row["Search term"]
-                for ngram in search_term_to_ngrams[search_term]:  # Iterate through n-grams of THIS search term
-                    if ngram in filtered_ngrams:  # Only consider frequent n-grams
-
+                for ngram in search_term_to_ngrams[search_term]:
+                    if ngram in filtered_ngrams:
                         if ngram not in ngram_performance:
-                                ngram_performance[ngram] = {
-                                    "Clicks": 0,
-                                    "Impressions": 0,
-                                    "Cost": 0,
-                                    "Conversions": 0
-                                }
+                            ngram_performance[ngram] = {
+                                "Clicks": 0,
+                                "Impressions": 0,
+                                "Cost": 0,
+                                "Conversions": 0
+                            }
                         ngram_performance[ngram]["Clicks"] += row["Clicks"]
                         ngram_performance[ngram]["Impressions"] += row["Impressions"]
                         ngram_performance[ngram]["Cost"] += row["Cost"]
                         ngram_performance[ngram]["Conversions"] += row["Conversions"]
 
 
-
-            # Convert aggregated data to DataFrame
             df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
             df_ngram_performance.index.name = "N-gram"
-            df_ngram_performance = df_ngram_performance.reset_index()  # Make N-gram a regular column
+            df_ngram_performance = df_ngram_performance.reset_index()
 
             df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
             df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-            # --- Corrected Cost per Conversion Handling ---
-            # Calculate Cost per Conversion, handling potential division by zero and NaN values
+            # Correctly handle cases where Conversions is 0, then convert back to numeric.
             df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
                 lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
             )
-
-            st.dataframe(df_ngram_performance)
+            # Convert 'Cost per Conversion' to numeric, handling 'None'
+            df_ngram_performance['Cost per Conversion'] = df_ngram_performance['Cost per Conversion'].apply(lambda x: pd.NA if x == 'None' else x)
+            df_ngram_performance['Cost per Conversion'] = pd.to_numeric(df_ngram_performance['Cost per Conversion'], errors='coerce')
+            # Format as currency after making numeric
+            st.dataframe(df_ngram_performance.style.format({
+                "Cost": "${:,.2f}",        # Format Cost
+                "Cost per Conversion": "${:,.2f}"  # Format Cost per Conversion
+            }))
 
             # --- Topic Modeling (using LDA) ---
             st.subheader("Topic Modeling")
             num_topics = st.number_input("Number of Topics:", min_value=2, max_value=10, value=5)
 
-            # Use CountVectorizer instead of TfidfVectorizer for LDA
-            vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
+            # Use CountVectorizer (important for LDA)
+            vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words=list(stop_words))  # max and min document frequency.
             dtm = vectorizer.fit_transform(filtered_ngrams.keys())  # Use the *unique* n-grams as input
 
-            lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
-            lda.fit(dtm)
+            # Use Gensim's LDA for coherence calculation
+            id2word = corpora.Dictionary([list(filtered_ngrams.keys())])  # Create dictionary from n-grams
+            corpus = [id2word.doc2bow(list(text)) for text in [filtered_ngrams.keys()]]  # Convert to bag-of-words
 
-            # Display topics and their top words
-            for topic_idx, topic in enumerate(lda.components_):
-                st.write(f"**Topic #{topic_idx + 1}:**")
-                top_words_indices = topic.argsort()[:-11:-1]  # Get indices of top 10 words
-                top_words = [vectorizer.get_feature_names_out()[i] for i in top_words_indices]
-                st.write(", ".join(top_words))
+            lda_model = LdaModel(corpus=corpus,
+                                 id2word=id2word,
+                                 num_topics=num_topics,
+                                 random_state=42,
+                                 passes=10)  # You can adjust passes for better results
 
-        except Exception as e: #THIS WAS MODIFIED
+            # Calculate coherence
+            coherence_model_lda = CoherenceModel(model=lda_model, texts=[list(filtered_ngrams.keys())], dictionary=id2word, coherence='c_v')
+            coherence_lda = coherence_model_lda.get_coherence()
+            st.write(f"Coherence Score: {coherence_lda:.4f}")
+
+            # Display topics and their top words:
+            for idx, topic in lda_model.print_topics(-1):
+                st.write('Topic: {} \nWords: {}'.format(idx, topic))
+
+        except Exception as e:
             st.error(f"An error occurred while processing the Excel file: {e}")
 
           
