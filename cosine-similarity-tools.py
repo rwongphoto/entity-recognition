@@ -1736,9 +1736,11 @@ def main():
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    nltk.download('punkt')
-    nltk.download('stopwords')
-    nltk.download('wordnet')
+    nltk.download('punkt')        # Keep this
+    nltk.download('stopwords')    # Keep this
+    nltk.download('wordnet')      # Keep this
+    nltk.download('omw-1.4')      # Keep this (good practice)
+    nltk.download('punkt_tab')    # ADD THIS LINE
     main()
 
 
