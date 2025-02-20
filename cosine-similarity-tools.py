@@ -1422,15 +1422,18 @@ def paa_extraction_clustering_page():
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
 @st.cache_resource()
-def train_intent_classifier(brands_list=None):
-    """Trains a search intent classifier on a small, built-in dataset,
-    optionally incorporating brand detection.
+def train_intent_classifier():
     """
+    Trains a search intent classifier on a small, built-in dataset.
+    This version does NOT take a brands_list.  Brand detection is handled
+    at prediction time.
+    """
+
     data = {
         "query": [
             "buy cheap shoes online",
             "what is the best seo tool",
-            "nike shoes price",
+            "nike shoes price",  # Example of a query that *could* be navigational
             "seo consultant near me",
             "how to rank higher on google",
             "google ads login",
@@ -1448,36 +1451,45 @@ def train_intent_classifier(brands_list=None):
             "theseoconsultant.ai",
             "find a local plumber",
             "emergency plumber 24/7",
-            "Nike Air Max",
-            "Adidas Ultraboost",
-            "Samsung Galaxy S23",
-            "iPhone 15 Pro"
+            "Nike Air Max",  # Brand + product
+            "Adidas Ultraboost",  # Brand + product
+            "Samsung Galaxy S23",  # Brand + Product
+            "iPhone 15 Pro",  # Brand + Product
+            "best price nike shoes",  # Example - could be navigational
+            "google ads account",  # Navigational
+            "advertising on facebook", #commercial
+            "local plumber near me"   #commercial
         ],
         "intent": [
             "Transactional",
             "Informational",
+            "Commercial",        #  Classified as commercial UNLESS user specifies "nike"
+            "Commercial",
+            "Informational",
+            "Navigational",    #  Navigational
+            "Commercial",
+            "Informational",
+            "Transactional",
+            "Transactional",
+            "Navigational",   #  Navigational
+            "Informational",
             "Transactional",
             "Commercial",
             "Informational",
-            "Navigational",
-            "Commercial",
             "Informational",
-            "Transactional",
-            "Transactional",
-            "Navigational",
-            "Informational",
-            "Transactional",
-            "Commercial",
-            "Informational",
-            "Informational",
-            "Navigational",
-            "Navigational",
+            "Navigational",      # Navigational (Branded website)
+            "Navigational",      # Navigational (Branded website)
             "Commercial",
             "Transactional",
-            "Navigational",
-            "Navigational",
-            "Navigational",
-            "Navigational"
+            "Navigational",      # Now explicitly navigational
+            "Navigational",      # Now explicitly navigational
+            "Navigational",      # Now explicitly navigational
+            "Navigational",       # Now explicitly navigational
+            "Commercial", #Added commercial
+            "Navigational", #Added navigational
+            "Commercial", #Added commercial
+            "Commercial",#Added commercial
+
         ]
     }
     df_train = pd.DataFrame(data)
@@ -1492,20 +1504,17 @@ def train_intent_classifier(brands_list=None):
 
     df_train['processed_query'] = df_train['query'].apply(preprocess)
 
-
     # Split data
     X = df_train['processed_query']
     y = df_train['intent']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # --- Simplified Pipeline - NO ColumnTransformer ---
+    # Simplified Pipeline - NO ColumnTransformer
     model = Pipeline([
         ('tfidf', TfidfVectorizer()),
         ('clf', MultinomialNB())
     ])
 
-
-    # Train the model
     model.fit(X_train, y_train)
     accuracy = model.score(X_test, y_test)
     st.write(f"Classifier Training Complete.  Test Set Accuracy: {accuracy:.4f}")
@@ -1525,19 +1534,13 @@ def google_ads_search_term_analyzer_page():
         """
     )
 
-    # User Input for Brands
+    # --- User Input for Brands ---
     brands_input = st.text_input("Enter a comma-separated list of brands (optional):", value="nike, adidas, samsung, iphone, google, facebook")
     brands_list = [brand.strip().lower() for brand in brands_input.split(',') if brand.strip()]
 
-     # --- Brand Filter Selection (Radio Buttons) ---
-    brand_filter_option = st.radio(
-        "Filter by Brand:",
-        options=["All"] + brands_list,  # Include an "All" option
-        index=0  # Default to "All"
-    )
 
-    # Load the pre-trained classifier, now passing brands_list again
-    intent_classifier = train_intent_classifier(brands_list=brands_list)
+    # Load the pre-trained classifier (no brands passed to training)
+    intent_classifier = train_intent_classifier()
 
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -1564,31 +1567,21 @@ def google_ads_search_term_analyzer_page():
             })
 
            # Input Validation (check for required columns - this part is correct and unchanged)
-            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
+            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
                 st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-                return
+                return  # Stop execution if required columns are missing
 
             # Convert numeric columns, handling errors (correct and unchanged)
             for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
                 try:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                    df[col] = df[col].fillna(0)
-                except KeyError:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')  # Convert to numeric, invalid values become NaN
+                    df[col] = df[col].fillna(0)  # Replace NaN with 0
+                except KeyError:  # This should be caught by the previous check, but it's good to be safe
                     st.error(f"Column '{col}' not found in the uploaded Excel file.")
                     return
 
-            # --- Brand Filtering (Implemented Here) ---
-            if brand_filter_option != "All":
-                 # Brand Detection (as a separate function, for clarity)
-                def detect_brand(query, brands):
-                    for brand in brands:
-                        if brand in query.lower():
-                            return brand
-                    return 'Other'
-                df['brand'] = df['Search term'].apply(lambda x: detect_brand(str(x), brands_list))
-                df = df[df["brand"] == brand_filter_option] #Filter DF to selected brands.
 
             analysis_option = st.radio(
                 "Select Analysis Option:",
@@ -1603,16 +1596,23 @@ def google_ads_search_term_analyzer_page():
                 lemmatizer = WordNetLemmatizer()
 
                 def preprocess(text):
-                    # Ensure input is a string
+                   # Ensure input is a string
                     text = str(text)
                     tokens = word_tokenize(text.lower())
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     return " ".join(tokens)
 
-                df['processed_query'] = df['Search term'].apply(preprocess) #APPLY PREPROCESS
+                df['processed_query'] = df['Search term'].apply(preprocess)
 
-                # --- Predict Intent ---  Pass only the processed text column
-                df["Intent"] = intent_classifier.predict(df['processed_query'])
+                # --- Predict Intent (with Brand Override) ---
+                def predict_with_brand_override(query, brands, model):
+                    query_lower = query.lower()
+                    for brand in brands:
+                        if brand in query_lower:
+                            return "Navigational"  # Override to Navigational
+                    return model.predict([query])[0]  # Use the model's prediction
+
+                df["Intent"] = df['processed_query'].apply(lambda x: predict_with_brand_override(x, brands_list, intent_classifier))
 
 
                 # Aggregate performance data
@@ -1640,9 +1640,7 @@ def google_ads_search_term_analyzer_page():
                 lemmatizer = WordNetLemmatizer()
 
                 def extract_ngrams(text, n):
-                  # Ensure input is a string.
-                    text = str(text)
-                    tokens = word_tokenize(text.lower())
+                    tokens = word_tokenize(str(text).lower()) #Ensure string input
                     tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
                     ngrams_list = list(nltk.ngrams(tokens, n))
                     return [" ".join(gram) for gram in ngrams_list]
@@ -1653,6 +1651,7 @@ def google_ads_search_term_analyzer_page():
 
                 ngram_counts = Counter(all_ngrams)
                 filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
+
 
                 if filtered_ngrams:  # Only proceed if there are n-grams after filtering
 
