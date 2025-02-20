@@ -1259,10 +1259,7 @@ def paa_extraction_clustering_page():
     st.header("People Also Asked & Topic Clustering")
     st.markdown(
         """
-        This tool reveals People Also Ask (PAA) questions based on your search query.  
-        It then calculates the similarity between each question and your search query and recommends  
-        those with a similarity score at or above the average. Finally, the recommended questions are visualized  
-        as a topic cluster with your original query highlighted.
+        This tool reveals People Also Ask (PAA) questions based on your search query. It then calculates the similarity between each question and your search query and recommends those with a similarity score at or above the average. Finally, the recommended questions are visualized as a topic cluster with your original query highlighted.
         """
     )
     
