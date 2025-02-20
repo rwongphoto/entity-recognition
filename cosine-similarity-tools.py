@@ -1256,7 +1256,7 @@ def keyword_clustering_from_gap_page():
 
 
 def paa_extraction_clustering_page():
-    st.header("People Also Asked Recommendations")
+    st.header("Intent-Based Topic Recommendations")
     st.markdown(
         """
         This tool is designed to build a topic cluster around a main search query that helps address a user's search intent.
@@ -1265,7 +1265,7 @@ def paa_extraction_clustering_page():
     )
     
     search_query = st.text_input("Enter Search Query:", "")
-    if st.button("Analyze"):
+    if st.button("Extract and Analyze"):
         if not search_query:
             st.warning("Please enter a search query.")
             return
@@ -1277,7 +1277,7 @@ def paa_extraction_clustering_page():
         
         # --- Helper function to extract PAA questions for a given query ---
         # This function clicks on each PAA element recursively up to max_depth times.
-        def get_paa(query, max_depth=10):
+        def get_paa(query, max_depth=8):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
@@ -1377,7 +1377,7 @@ def paa_extraction_clustering_page():
         recommended.sort(key=lambda x: x[1], reverse=True)
         
         # --- Visualization: Horizontal Dendrogram Tree ---
-        st.subheader("Topic Tree")
+        st.subheader("Recommended Questions Tree")
         if recommended:
             # Build a list of recommended questions only (do not include the original search query)
             rec_texts = [q for q, sim in recommended]
@@ -1393,11 +1393,11 @@ def paa_extraction_clustering_page():
             st.info("No recommended questions to visualize.")
         
         # --- Results ---
-        st.subheader("Most Relevant Related Search Queries")
+        st.subheader("Recommended Questions (Average and Above)")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
-        st.subheader("All Related Search Queries")
+        st.subheader("All Commonly Asked Questions")
         for q in combined_questions:
             st.write(f"- {q}")
 
@@ -1437,7 +1437,7 @@ def main():
         "Entity Frequency Charts",
         "Semantic Gap Analyzer",
         "Keyword Clustering",
-        "People Also Asked"  # <-- New option
+        "Intent-Based Topic Clustering"  # <-- New option
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1459,7 +1459,7 @@ def main():
         ngram_tfidf_analysis_page()
     elif tool == "Keyword Clustering":
         keyword_clustering_from_gap_page()
-    elif tool == "People Also Asked":
+    elif tool == "Intent-Based Topic Clustering":
         paa_extraction_clustering_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
