@@ -284,7 +284,7 @@ def display_entity_wordcloud(entity_counts):
     st.pyplot(fig)
 
 
-    @st.cache_resource
+@st.cache_resource
 def initialize_selenium_driver():
     """Initializes a single, persistent Selenium driver (cached)."""
     chrome_options = Options()
