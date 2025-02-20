@@ -1263,143 +1263,122 @@ def paa_extraction_clustering_page():
         You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
         """
     )
-    
+
     search_query = st.text_input("Enter Search Query:", "")
     if st.button("Extract and Analyze"):
         if not search_query:
             st.warning("Please enter a search query.")
             return
 
-        # Define user_agent once to use throughout
+        # Use existing user_agent. No global changes.
         user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
                       "Chrome/115.0.0.0 Safari/537.36")
-        
-        # --- Helper function to extract PAA questions for a given query ---
-        # This function clicks on each PAA element recursively up to max_depth times.
-        def get_paa(query, max_depth=8):
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.get("https://www.google.com/search?q=" + query)
-            time.sleep(3)  # Allow page to load
-            
-            paa_set = set()
-            def extract_paa_recursive(depth, max_depth):
-                if depth > max_depth:
-                    return
-                try:
-                    # Use a CSS selector for PAA questions; update as needed
-                    elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
-                    if not elements:
-                        elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
-                    for el in elements:
-                        question_text = el.text.strip()
-                        if question_text and question_text not in paa_set:
-                            paa_set.add(question_text)
-                            try:
-                                driver.execute_script("arguments[0].click();", el)
-                                time.sleep(2)  # Allow time for new questions to load
-                                extract_paa_recursive(depth + 1, max_depth)
-                            except Exception:
-                                continue
-                except Exception as e:
-                    st.error(f"Error during PAA extraction for query '{query}': {e}")
-            extract_paa_recursive(1, max_depth)
-            driver.quit()
-            return paa_set
-        
-        st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 10 times)
-        paa_questions = get_paa(search_query, max_depth=10)
-        
-        st.info("Autocomplete suggestions...")
-        # Scrape autocomplete suggestions using Google's unofficial endpoint
-        import requests
-        autocomplete_url = "http://suggestqueries.google.com/complete/search"
-        params = {"client": "chrome", "q": search_query}
-        try:
-            response = requests.get(autocomplete_url, params=params)
-            if response.status_code == 200:
-                suggestions = response.json()[1]
+
+        # --- Helper function (Modified to use existing fetch_page_selenium) ---
+        def get_paa_and_related(query, driver): #Takes driver
+            """Gets PAA questions and related searches for a given query."""
+            search_url = "https://www.google.com/search?q=" + query.replace(" ", "+")
+            page_source = fetch_page_selenium(driver, search_url)  # Use existing function
+
+            if page_source:
+                soup = BeautifulSoup(page_source, "html.parser")
+                paa_questions = []
+                for element in soup.find_all('div', {'jsname': True, 'data-ved': True}):
+                    question_text = element.text.strip()
+                    if question_text:
+                        paa_questions.append(question_text)
+
+                related_searches = []
+                for element in soup.select("div[role='listitem'] a"):
+                    text = element.find_parent("div").text.strip() if element.find_parent("div") else ""
+                    if text:
+                        related_searches.append(text)
+                return paa_questions, related_searches
             else:
-                suggestions = []
-        except Exception as e:
-            st.error(f"Error fetching autocomplete suggestions: {e}")
-            suggestions = []
-        
-        st.info("Related searches...")
-        # Reinitialize a driver to extract related searches from the original query page
-        related_searches = []
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
-            driver2 = webdriver.Chrome(options=chrome_options)
-            driver2.get("https://www.google.com/search?q=" + search_query)
-            time.sleep(3)
-            # Related searches often appear in <p> tags with a specific class (update selector as needed)
-            related_elements = driver2.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
-            for el in related_elements:
-                text = el.text.strip()
-                if text:
-                    related_searches.append(text)
-            driver2.quit()
-        except Exception as e:
-            st.error(f"Error extracting related searches: {e}")
-        
-        # Combine all extracted questions: PAA + autocomplete suggestions + related searches
-        combined_questions = list(paa_questions) + suggestions + related_searches
-        
+                return [], []
+
+        # --- Initialize Driver (Locally) ---
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled") # Add this
+        chrome_options.add_argument(f"user-agent={user_agent}")
+        driver = webdriver.Chrome(options=chrome_options)  # Local driver instance
+
+
+        st.info("I'm researching...")
+
+        # --- Level 1: Initial Query ---
+        paa_questions_l1, related_searches_l1 = get_paa_and_related(search_query, driver) # Pass the driver
+        autocomplete_suggestions_l1 = get_autocomplete_suggestions(search_query) # Existing function
+        combined_questions_l1 = [search_query] + paa_questions_l1 + autocomplete_suggestions_l1 + related_searches_l1
+
+        # --- Level 2: Related Searches of Initial Query ---
+        paa_questions_l2 = []
+        combined_questions_l2 = set()
+        for related_query_l1 in related_searches_l1[:MAX_RELATED_SEARCHES]:
+            paa_l2, _ = get_paa_and_related(related_query_l1, driver)  # Pass driver, only need PAA
+            paa_questions_l2.extend(paa_l2)
+            combined_questions_l2.update(paa_l2)
+
+        # --- Level 3: PAA of Level 2 PAA ---
+        paa_questions_l3 = []
+        combined_questions_l3 = set()
+        for paa_question_l2 in list(combined_questions_l2)[:MAX_RELATED_SEARCHES]:
+            paa_l3, _ = get_paa_and_related(paa_question_l2, driver)  # Pass driver, only need PAA
+            paa_questions_l3.extend(paa_l3)
+            combined_questions_l3.update(paa_l3)
+        # --- Combine and Deduplicate ---
+        combined_questions = list(dict.fromkeys([search_query] + combined_questions_l1 + list(combined_questions_l2) + list(combined_questions_l3)))
+
+        # --- Similarity Analysis ---
         st.info("Analyzing similarity...")
-        # Compute cosine similarity using your SentenceTransformer model
-        model = initialize_sentence_transformer()
-        query_embedding = get_embedding(search_query, model)
-        question_similarities = []
-        for q in combined_questions:
-            q_embedding = get_embedding(q, model)
-            sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
-            question_similarities.append((q, sim))
-        
+        model = initialize_sentence_transformer()  # Use existing cached function
+        query_embedding = get_embedding(search_query, model)  # Use existing function
+        question_similarities = [(q, cosine_similarity([query_embedding], [get_embedding(q, model)])[0][0]) for q in combined_questions]
+
         if not question_similarities:
-            st.warning("No questions were extracted to analyze.")
+            st.warning("No questions/suggestions were extracted to analyze.")
+            driver.quit() # Quit driver
             return
-        
-        # Compute average similarity and filter recommendations (include average and above)
+
         avg_sim = np.mean([sim for _, sim in question_similarities])
         st.write(f"Average Similarity Score: {avg_sim:.4f}")
-        recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
-        recommended.sort(key=lambda x: x[1], reverse=True)
-        
-        # --- Visualization: Horizontal Dendrogram Tree ---
+        recommended = sorted([(q, sim) for q, sim in question_similarities if sim >= avg_sim], key=lambda x: x[1], reverse=True)
+
+        # --- Visualization ---
         st.subheader("Recommended Questions Tree")
         if recommended:
-            # Build a list of recommended questions only (do not include the original search query)
-            rec_texts = [q for q, sim in recommended]
-            dendro_labels = rec_texts
-            dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
-            
-            import plotly.figure_factory as ff
-            # Orientation 'left' produces a horizontal dendrogram tree with leaves on the left side
-            dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
-            dendro.update_layout(width=800, height=600)
-            st.plotly_chart(dendro)
+            dendro_labels = [q for q, sim in recommended]
+            try:
+                dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
+                import plotly.figure_factory as ff  # Local import
+                import scipy.cluster.hierarchy as sch # Local import
+                dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels,  linkagefun=lambda x: sch.linkage(x, 'complete'))
+                dendro.update_layout(width=800, height=max(600, len(dendro_labels) * 15))
+                st.plotly_chart(dendro)
+            except ValueError as ve:
+                st.error(f"Error creating dendrogram: {ve}. This often happens if all embeddings are identical.  Try a different query.")
+                print(f"ValueError: {ve}")
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {e}")
+                print(f"Unexpected Error: {e}")
         else:
             st.info("No recommended questions to visualize.")
-        
+
         # --- Results ---
         st.subheader("Recommended Questions (Average and Above)")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
-        
-        st.subheader("All Commonly Asked Questions")
+
+        st.subheader("All Extracted Questions, Related Searches, and Suggestions")
         for q in combined_questions:
             st.write(f"- {q}")
+
+        driver.quit() # Quit driver
+        st.success(f"Analysis complete!") #Simplified
 
 
           
