@@ -1315,11 +1315,11 @@ def paa_extraction_clustering_page():
             except Exception as e:
                 st.error(f"Error during PAA extraction: {e}")
         
-        extract_paa_recursive(depth=1, max_depth=3)
+        extract_paa_recursive(depth=1, max_depth=5)
         driver.quit()
         
-        st.info("Scraping autocomplete suggestions from Google...")
-        # Scrape autocomplete suggestions using Google's unofficial endpoint
+        st.info("Autocomplete suggestions from Google...")
+        # Use autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
         params = {
