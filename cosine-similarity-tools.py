@@ -1260,10 +1260,10 @@ def paa_extraction_clustering_page():
     st.markdown(
         """
         This tool reveals People Also Ask (PAA) questions based on your search query.  
-        It extracts both PAA questions (by recursively clicking them) and Google autocomplete suggestions,  
-        computes the cosine similarity between each question and your search query, and recommends those  
-        with a similarity score at or above the average. Finally, it visualizes the recommended questions  
-        as a vertical tree with your original query at the top.
+        It extracts both PAA questions and Google autocomplete suggestions, computes the similarity  
+        between each question and your search query, and recommends those with a similarity score  
+        at or above the average. Finally, it visualizes the recommended questions as a topic cluster  
+        in a tree (dendrogram) with your original query included.
         """
     )
     
@@ -1318,7 +1318,7 @@ def paa_extraction_clustering_page():
         driver.quit()
         
         st.info("Fetching autocomplete suggestions...")
-        # Autocomplete suggestions using Google's unofficial endpoint
+        # Scrape autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
         params = {
@@ -1365,83 +1365,20 @@ def paa_extraction_clustering_page():
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
         
-        # Build a vertical tree using a network graph with the original query as the root
+        # Visualize the recommended questions as a topic cluster in a dendrogram tree
         if recommended:
-            import networkx as nx
-            import plotly.graph_objects as go
+            texts = [q for q, sim in recommended]
+            # Combine the original query with recommended questions
+            all_texts = [search_query] + texts
+            all_embeddings = np.vstack([get_embedding(text, model) for text in all_texts])
             
-            G = nx.DiGraph()
-            # Add the original query as the root node
-            G.add_node(search_query)
-            # Add recommended questions as children of the root
-            for q, sim in recommended:
-                G.add_node(q)
-                G.add_edge(search_query, q)
-            
-            # Manually set positions for a vertical tree layout:
-            # Place the root at the top (y = 0) and children at a lower level (y = -2)
-            pos = {}
-            pos[search_query] = (0, 0)
-            n = len(recommended)
-            # Distribute child nodes evenly horizontally
-            for i, (q, sim) in enumerate(recommended):
-                x = (i - (n - 1) / 2) * 2  # Adjust spacing as needed
-                y = -2
-                pos[q] = (x, y)
-            
-            # Create edge traces for Plotly
-            edge_x = []
-            edge_y = []
-            for edge in G.edges():
-                x0, y0 = pos[edge[0]]
-                x1, y1 = pos[edge[1]]
-                edge_x.extend([x0, x1, None])
-                edge_y.extend([y0, y1, None])
-            
-            edge_trace = go.Scatter(
-                x=edge_x, y=edge_y,
-                line=dict(width=2, color='#888'),
-                hoverinfo='none',
-                mode='lines'
-            )
-            
-            # Create node traces for Plotly
-            node_x = []
-            node_y = []
-            node_text = []
-            for node in G.nodes():
-                x, y = pos[node]
-                node_x.append(x)
-                node_y.append(y)
-                node_text.append(node)
-            
-            node_trace = go.Scatter(
-                x=node_x, y=node_y,
-                mode='markers+text',
-                text=node_text,
-                textposition="bottom center",
-                hoverinfo='text',
-                marker=dict(
-                    showscale=False,
-                    color='skyblue',
-                    size=20,
-                    line_width=2
-                )
-            )
-            
-            fig = go.Figure(data=[edge_trace, node_trace],
-                            layout=go.Layout(
-                                title='Topic Cluster Tree (Vertical)',
-                                title_x=0.5,
-                                showlegend=False,
-                                margin=dict(b=20, l=5, r=5, t=40),
-                                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                height=600
-                            ))
-            st.plotly_chart(fig)
+            import plotly.figure_factory as ff
+            dendro = ff.create_dendrogram(all_embeddings, orientation='left', labels=all_texts)
+            st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
+
+
 
 
           
