@@ -1374,7 +1374,7 @@ def paa_extraction_clustering_page():
 
         with st.spinner("I'm researching... Please wait, this may take a few moments."):
             # --- Level 1: Initial Query ---
-            paa_questions_l1, related_searches_l1 = get_paa_and_related(driver, search_query, _request_count=request_count)
+            paa_questions_l1, related_searches_l1 = get_paa_and_related(_driver, search_query, _request_count=request_count)
             autocomplete_suggestions_l1 = get_autocomplete_suggestions(search_query)
             # Combine level 1 results.
             combined_questions_l1 = [search_query] + paa_questions_l1 + autocomplete_suggestions_l1 + related_searches_l1
