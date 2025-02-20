@@ -1272,7 +1272,7 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        st.info("Launching headless browser to extract PAA questions...")
+        st.info("Please wait while we research PAA questions...")
         # Initialize Selenium Chrome driver
         chrome_options = Options()
         chrome_options.add_argument("--headless")
@@ -1288,7 +1288,7 @@ def paa_extraction_clustering_page():
         driver.get("https://www.google.com/search?q=" + search_query)
         time.sleep(3)  # Allow page to load
         
-        # Recursive function to extract PAA questions (three levels deep)
+        # Recursive function to extract PAA questions (five levels deep)
         paa_questions = set()
         def extract_paa_recursive(depth, max_depth):
             if depth > max_depth:
@@ -1316,7 +1316,7 @@ def paa_extraction_clustering_page():
         extract_paa_recursive(depth=1, max_depth=5)
         driver.quit()
         
-        st.info("Autocomplete suggestions from Google...")
+        st.info("Autocomplete suggestions...")
         # Use autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
