@@ -1779,6 +1779,29 @@ def google_keyword_planner_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go  # Import graph_objects
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import KMeans
+import collections
+import nltk
+from nltk.corpus import stopwords
+
+
+@st.cache_resource
+def initialize_sentence_transformer():
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    return model
+
+def get_embedding(text, model):
+    return model.encode(text)
+
+
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -1791,8 +1814,8 @@ def google_search_console_analysis_page():
         - Calculate ranking changes and additional metric comparisons.
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
         - Classify queries into topics with descriptive labels.
-        - Aggregate metrics by topic and show overall changes.
-        - Display a dashboard with overall change metrics and per-topic charts.
+        - Aggregate metrics by topic and show overall changes, including percentage changes.
+        - Display a dashboard with overall change metrics and a single chart per topic showing all metrics.
         """
     )
 
@@ -1910,37 +1933,11 @@ def google_search_console_analysis_page():
                 "Impressions_after": "{:,.0f}",
                 "Impressions_YOY": "{:,.0f}",
             }
-            st.dataframe(df.style.format(format_dict))  # Display the main DataFrame
-
-
-            # --- Overall Changes (Dashboard) ---
-            st.markdown("### Overall Changes Dashboard")
-
-            overall_clicks_change = df["Clicks_YOY"].sum()
-            overall_impressions_change = df["Impressions_YOY"].sum()
-            overall_position_change = df["Position_YOY"].mean()
-
-            # Calculate overall CTR change (weighted average)
-            total_clicks_before = df["Clicks_before"].sum()
-            total_clicks_after = df["Clicks_after"].sum()
-            if total_clicks_before > 0 : #avoid division by zero
-                overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
-                                    ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-            else:
-              overall_ctr_change = 0
-
-            col1, col2, col3, col4 = st.columns(4)  # Create 4 columns
-            with col1:
-                st.metric(label="Overall Click Change", value=f"{overall_clicks_change:,.0f}")
-            with col2:
-                st.metric(label="Avg Position Change", value=f"{overall_position_change:.1f}")
-            with col3:
-                st.metric(label="Overall CTR Change", value=f"{overall_ctr_change:.1f}%")
-            with col4:
-                st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}")
+            st.dataframe(df.style.format(format_dict))
 
 
             # --- Aggregated Metrics by Topic and DataFrame ---
+            #  Place this BEFORE the overall changes
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
                 "Average Position_before": "mean",
@@ -1990,45 +1987,87 @@ def google_search_console_analysis_page():
                 "Impressions_after": "{:,.0f}",
                 "Impressions_YOY": "{:,.0f}",
                 }
-            # Sort the aggregated DataFrame by 'Position_YOY' in descending order (largest positive change first)
+
             aggregated = aggregated.sort_values(by="Position_YOY", ascending=False)
             st.dataframe(aggregated.style.format(format_dict_agg))
 
-            # --- Per-Topic Charts (using Plotly Express)---
+
+            # --- Overall Changes (Dashboard) ---  (AFTER Aggregated, but BEFORE charts)
+            st.markdown("### Overall Changes Dashboard")
+
+            overall_clicks_change = df["Clicks_YOY"].sum()
+            overall_impressions_change = df["Impressions_YOY"].sum()
+            overall_position_change = df["Position_YOY"].mean()
+            total_clicks_before = df["Clicks_before"].sum()
+            total_clicks_after = df["Clicks_after"].sum()
+
+            # Calculate overall CTR change (weighted average) and percentage changes
+            if total_clicks_before > 0:
+                overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
+                                      ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
+                overall_ctr_pct_change = (overall_ctr_change / (df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0
+            else:
+                overall_ctr_change = 0
+                overall_ctr_pct_change = 0
+
+
+            overall_clicks_pct_change = (overall_clicks_change / total_clicks_before) * 100 if total_clicks_before > 0 else 0
+            overall_impressions_pct_change = (overall_impressions_change / df["Impressions_before"].sum()) * 100 if df["Impressions_before"].sum() > 0 else 0
+
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric(label="Overall Click Change", value=f"{overall_clicks_change:,.0f}", delta=f"{overall_clicks_pct_change:.1f}%")
+            with col2:
+                st.metric(label="Avg Position Change", value=f"{overall_position_change:.1f}")
+            with col3:
+                st.metric(label="Overall CTR Change", value=f"{overall_ctr_change:.1f}%", delta=f"{overall_ctr_pct_change:.1f}%")
+            with col4:
+                st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_pct_change:.1f}%")
+
+
+
+            # --- Per-Topic Charts (Combined) ---
             st.markdown("### Per-Topic Charts")
 
             for topic in aggregated['Topic']:
                 topic_df = df[df['Topic'] == topic]
 
-                # Clicks Chart
-                fig_clicks = px.bar(topic_df, x='Query', y=['Clicks_before', 'Clicks_after'],
-                                    title=f"Clicks Before/After for Topic: {topic}",
-                                    barmode='group')  # Grouped bar chart
-                st.plotly_chart(fig_clicks)
+                # Create subplots:  1 row, 1 column (all traces in one chart)
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-                # Impressions Chart
-                fig_impressions = px.bar(topic_df, x='Query', y=['Impressions_before', 'Impressions_after'],
-                                         title=f"Impressions Before/After for Topic: {topic}",
-                                         barmode='group')
-                st.plotly_chart(fig_impressions)
+                # Add traces for Clicks
+                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Clicks_before'], name='Clicks Before', marker_color='blue'), secondary_y=False)
+                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Clicks_after'], name='Clicks After', marker_color='lightblue'), secondary_y=False)
 
-                # CTR Chart
-                fig_ctr = px.bar(topic_df, x='Query', y=['CTR_before', 'CTR_after'],
-                                  title=f"CTR Before/After for Topic: {topic}",
-                                  barmode='group')
-                st.plotly_chart(fig_ctr)
 
-                # Position Chart
-                fig_position = px.bar(topic_df, x='Query', y=['Average Position_before', 'Average Position_after'],
-                                       title=f"Average Position Before/After for Topic: {topic}",
-                                       barmode='group')
-                st.plotly_chart(fig_position)
+                # Add traces for Impressions
+                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Impressions_before'], name='Impressions Before', marker_color='green'), secondary_y=False)
+                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Impressions_after'], name='Impressions After', marker_color='lightgreen'), secondary_y=False)
+
+
+                # Add traces for CTR (on secondary y-axis)
+                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['CTR_before'], name='CTR Before', mode='lines+markers', marker_color='red'), secondary_y=True)
+                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['CTR_after'], name='CTR After', mode='lines+markers', marker_color='orange'), secondary_y=True)
+
+                # Add traces for Average Position
+                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['Average Position_before'], name='Avg Position Before', mode='lines+markers', marker_color='purple'), secondary_y=True)
+                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['Average Position_after'], name='Avg Position After', mode='lines+markers', marker_color='pink'), secondary_y=True)
 
 
 
+                # Set layout
+                fig.update_layout(
+                    title_text=f"Metrics for Topic: {topic}",
+                    xaxis_title="Query",
+                    yaxis_title="Clicks/Impressions",  # Primary y-axis
+                    yaxis2_title="CTR / Avg Position", # Secondary y-axis
+                    barmode='group'
+                )
+
+                st.plotly_chart(fig)
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
-            # st.exception(e) # Optionally display full traceback
 
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
