@@ -1788,18 +1788,18 @@ def google_search_console_analysis_page():
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         
         - Merge data on query terms.
-        - Calculate ranking changes (e.g., average position change).
-        - Calculate changes in additional metrics (Clicks, Impressions, CTR).
-        - Filter queries with significant ranking changes.
-        - Tokenize queries and apply the Apriori algorithm to extract frequent n-grams or associations.
-        - Use BERT embeddings (via SentenceTransformer) to cluster and visualize semantically similar queries.
+        - Calculate ranking changes and additional metric comparisons.
+        - Display before and after values side-by-side with a YOY change column following each metric.
+        - Label each query with a topic classifier and aggregate totals by topic.
+        - Perform Apriori analysis on query terms.
+        - Visualize query clusters using BERT embeddings.
         """
     )
     
     st.markdown("### Upload GSC Data")
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
-
+    
     if uploaded_file_before is not None and uploaded_file_after is not None:
         try:
             # Read CSV files
@@ -1818,19 +1818,19 @@ def google_search_console_analysis_page():
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             
-            # Merge on Query; pandas will add suffixes for common columns (e.g., Clicks, Impressions, CTR)
+            # Merge on Query; common columns (e.g., Clicks, Impressions, CTR) get suffixes
             df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
             
-            # Calculate change in Average Position (positive means improvement – lower position numbers are better)
-            df["Position_Change"] = df["Average Position_before"] - df["Average Position_after"]
+            # Calculate YOY change for Average Position (positive value means improvement since lower position numbers are better)
+            df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
             
-            # Calculate additional metric changes if the columns exist
+            # Calculate additional metric YOY changes if they exist
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
-                df["Clicks_Change"] = df["Clicks_after"] - df["Clicks_before"]
+                df["Clicks_YOY"] = df["Clicks_after"] - df["Clicks_before"]
             if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
-                df["Impressions_Change"] = df["Impressions_after"] - df["Impressions_before"]
+                df["Impressions_YOY"] = df["Impressions_after"] - df["Impressions_before"]
             if "CTR" in df_before.columns and "CTR" in df_after.columns:
-                # If CTR is stored as a percentage string (e.g., "12.3%"), parse it to float first.
+                # Convert CTR percentages to float if necessary
                 def parse_ctr(ctr):
                     try:
                         if isinstance(ctr, str) and "%" in ctr:
@@ -1841,54 +1841,89 @@ def google_search_console_analysis_page():
                         return None
                 df["CTR_before"] = df["CTR_before"].apply(parse_ctr)
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
-                df["CTR_Change"] = df["CTR_after"] - df["CTR_before"]
+                df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
             
-            st.subheader("Merged GSC Data with Ranking & Metric Changes")
+            # Rearrange columns so that for each metric the before, after, and YOY change columns are adjacent
+            base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY"]
+            if "Clicks_before" in df.columns and "Clicks_after" in df.columns:
+                base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY"]
+            if "Impressions_before" in df.columns and "Impressions_after" in df.columns:
+                base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY"]
+            if "CTR_before" in df.columns and "CTR_after" in df.columns:
+                base_cols += ["CTR_before", "CTR_after", "CTR_YOY"]
+            
+            df = df[base_cols]
+            st.subheader("Merged GSC Data with Metric Comparisons")
             st.dataframe(df.head())
-
-            # Allow the user to set a threshold for significant position change
-            threshold = st.number_input("Enter minimum position change threshold (e.g., 1.0):", value=1.0)
-            df_significant = df[abs(df["Position_Change"]) >= threshold]
-            st.subheader("Queries with Significant Ranking Change")
-            st.dataframe(df_significant)
+            
+            # --- Topic Classification ---
+            st.markdown("### Topic Classification")
+            model = initialize_sentence_transformer()
+            queries = df["Query"].tolist()
+            embeddings = [get_embedding(query, model) for query in queries]
+            from sklearn.cluster import KMeans
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=3, key="num_topics")
+            kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
+            topic_labels = kmeans.fit_predict(embeddings)
+            df["Topic_Label"] = topic_labels
+            df["Topic"] = df["Topic_Label"].apply(lambda x: f"Topic {x+1}")
+            st.dataframe(df.head())
+            
+            # Aggregate totals by topic for key metrics
+            st.markdown("### Aggregated Metrics by Topic")
+            agg_dict = {
+                "Average Position_before": "mean",
+                "Average Position_after": "mean",
+                "Position_YOY": "mean"
+            }
+            if "Clicks_before" in df.columns:
+                agg_dict.update({
+                    "Clicks_before": "sum",
+                    "Clicks_after": "sum",
+                    "Clicks_YOY": "sum"
+                })
+            if "Impressions_before" in df.columns:
+                agg_dict.update({
+                    "Impressions_before": "sum",
+                    "Impressions_after": "sum",
+                    "Impressions_YOY": "sum"
+                })
+            if "CTR_before" in df.columns:
+                agg_dict.update({
+                    "CTR_before": "mean",
+                    "CTR_after": "mean",
+                    "CTR_YOY": "mean"
+                })
+            aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
+            st.dataframe(aggregated)
             
             # --- Apriori Analysis Section ---
             st.markdown("### Apriori Analysis on Query Terms")
-            # Tokenize each query into words
-            transactions = df_significant["Query"].apply(lambda x: str(x).lower().split()).tolist()
-            
+            transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
             from mlxtend.preprocessing import TransactionEncoder
             te = TransactionEncoder()
             te_ary = te.fit(transactions).transform(transactions)
             df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-            
             from mlxtend.frequent_patterns import apriori, association_rules
             freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
             st.subheader("Frequent Itemsets")
             st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            
             rules = association_rules(freq_items, metric="confidence", min_threshold=0.5)
             st.subheader("Association Rules")
             st.dataframe(rules.sort_values(by="confidence", ascending=False))
             
-            # --- BERT Embedding and Clustering Section ---
-            st.markdown("### Query Clustering with BERT Embeddings")
-            model = initialize_sentence_transformer()
-            query_list = df_significant["Query"].tolist()
-            embeddings = [get_embedding(query, model) for query in query_list]
-            
-            from sklearn.cluster import KMeans
-            num_clusters = st.slider("Select number of clusters:", min_value=2, max_value=10, value=3)
-            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
-            cluster_labels = kmeans.fit_predict(embeddings)
-            
+            # --- BERT Embedding and Clustering Section (Optional Visualization) ---
+            st.markdown("### Query Clustering with BERT Embeddings (Visualization)")
+            num_clusters_viz = st.slider("Select number of clusters for visualization:", min_value=2, max_value=10, value=3, key="viz_clusters")
+            kmeans_viz = KMeans(n_clusters=num_clusters_viz, random_state=42, n_init='auto')
+            cluster_labels = kmeans_viz.fit_predict(embeddings)
             from sklearn.decomposition import PCA
             pca = PCA(n_components=2)
             embeddings_2d = pca.fit_transform(embeddings)
             df_plot = pd.DataFrame({
                 'x': embeddings_2d[:, 0],
                 'y': embeddings_2d[:, 1],
-                'Query': query_list,
+                'Query': queries,
                 'Cluster': cluster_labels.astype(str)
             })
             fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Query',
@@ -1900,6 +1935,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
