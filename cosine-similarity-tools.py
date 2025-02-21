@@ -1460,18 +1460,18 @@ def google_ads_search_term_analyzer_page():
         else:
             st.subheader("N-gram Performance Table")
             df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
-            df_ngrams = df_ngrams.merge(df, left_on="N-gram", right_on="Search Term", how="left")
+            df_ngrams = df_ngrams.merge(df, left_on="N-gram", right_on="Search Term", how="inner")
             df_ngrams = df_ngrams[["N-gram", "Frequency", "Clicks", "Impressions", "Cost", "Conversions", "Conversion Efficiency"]]
             st.dataframe(df_ngrams)
             
             vectorizer = CountVectorizer()
-            ngram_matrix = vectorizer.fit_transform(filtered_ngrams.keys())
+            ngram_matrix = vectorizer.fit_transform(df_ngrams["N-gram"])
             lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
             lda.fit(ngram_matrix)
             
             topic_scores = lda.transform(ngram_matrix)
-            topic_conversion_efficiency = np.dot(topic_scores.T, df_ngrams["Conversion Efficiency"].values)
-            topic_volume = np.dot(topic_scores.T, df_ngrams["Conversions"].values)
+            topic_conversion_efficiency = np.dot(topic_scores.T, df_ngrams["Conversion Efficiency"].values.reshape(-1, 1)).flatten()
+            topic_volume = np.dot(topic_scores.T, df_ngrams["Conversions"].values.reshape(-1, 1)).flatten()
             
             topic_data = pd.DataFrame({
                 "Topic": [f"Topic {i+1}" for i in range(num_topics)],
