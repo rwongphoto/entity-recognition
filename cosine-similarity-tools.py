@@ -2078,10 +2078,19 @@ def google_search_console_analysis_page():
                 # Split URLs into segments
                 def segment_url(url):
                     try:
-                        # Remove protocol and domain, split by '/'
+                        # Remove protocol and domain, create cumulative segments
                         path = url.split("//", 1)[1].split("/", 1)[1]
-                        return [seg for seg in path.split("/") if seg]  # Remove empty segments
+                        segments = []
+                        cumulative_path = ""
+                        for part in path.split("/"):
+                            if part:  # Avoid empty segments
+                                cumulative_path += "/" + part
+                                segments.append(cumulative_path)
+                        return segments
                     except IndexError:
+                        return [] # Handle cases where URL structure is unexpected
+                    except Exception as e:
+                        st.error(f"Error segmenting URL {url}: {e}")
                         return []
 
                 transactions = df["Page"].apply(segment_url).tolist()
