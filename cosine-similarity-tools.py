@@ -1428,6 +1428,11 @@ def google_ads_search_term_analyzer_page():
         })
         df.fillna(0, inplace=True)
         
+        # Compute conversion efficiency
+        df["Conversion Efficiency"] = df["Conversions"] / df["Clicks"]
+        df["Conversion Efficiency"].replace([np.inf, -np.inf], 0, inplace=True)
+        df.sort_values(by="Conversion Efficiency", ascending=False, inplace=True)
+        
         # User input settings
         n_value = st.selectbox("Select N-gram size:", options=[1, 2, 3, 4], index=1)
         num_topics = st.slider("Number of Topics:", min_value=2, max_value=10, value=5)
@@ -1453,8 +1458,10 @@ def google_ads_search_term_analyzer_page():
         if not filtered_ngrams:
             st.warning("No significant n-grams found with the given frequency settings.")
         else:
-            st.subheader("Top N-grams")
+            st.subheader("N-gram Performance Table")
             df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
+            df_ngrams = df_ngrams.merge(df, left_on="N-gram", right_on="Search Term", how="left")
+            df_ngrams = df_ngrams[["N-gram", "Frequency", "Clicks", "Impressions", "Cost", "Conversions", "Conversion Efficiency"]]
             st.dataframe(df_ngrams)
             
             vectorizer = CountVectorizer()
@@ -1462,23 +1469,20 @@ def google_ads_search_term_analyzer_page():
             lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
             lda.fit(ngram_matrix)
             
-            topic_words = {} 
-            for topic_idx, topic in enumerate(lda.components_):
-                top_words = [vectorizer.get_feature_names_out()[i] for i in topic.argsort()[:-10 - 1:-1]]
-                topic_words[f"Topic {topic_idx+1}"] = top_words
+            topic_scores = lda.transform(ngram_matrix)
+            topic_conversion_efficiency = np.dot(topic_scores.T, df_ngrams["Conversion Efficiency"].values)
+            topic_volume = np.dot(topic_scores.T, df_ngrams["Conversions"].values)
+            
+            topic_data = pd.DataFrame({
+                "Topic": [f"Topic {i+1}" for i in range(num_topics)],
+                "Conversion Efficiency": topic_conversion_efficiency,
+                "Conversion Volume": topic_volume
+            })
             
             st.subheader("Topic Modeling Results")
-            st.write(pd.DataFrame(topic_words))
+            st.dataframe(topic_data.sort_values(by="Conversion Efficiency", ascending=False))
             
-            st.subheader("Wordclouds per Topic")
-            for topic, words in topic_words.items():
-                wordcloud = WordCloud(width=800, height=400, background_color='white').generate(" ".join(words))
-                fig, ax = plt.subplots(figsize=(8, 4))
-                ax.imshow(wordcloud, interpolation='bilinear')
-                ax.axis('off')
-                st.pyplot(fig)
-            
-            st.subheader("N-gram Clustering Visualization")
+            st.subheader("N-gram Topic Clustering Visualization")
             pca = PCA(n_components=2)
             embeddings_2d = pca.fit_transform(lda.components_)
             df_plot = pd.DataFrame({
