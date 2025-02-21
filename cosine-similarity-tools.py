@@ -1417,7 +1417,7 @@ def google_ads_search_term_analyzer_page():
     st.markdown(
         """
         Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
-        This tool extracts n-grams.
+        This tool extracts n-grams which can be used to optimize your campaigns. Your paid search data can also be used to inform SEO content strategy if you have a big enough sample size.
         """
     )
 
