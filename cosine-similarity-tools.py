@@ -1575,6 +1575,8 @@ def clean_search_volume(volume_str):
     except Exception:
         return 0  # Default to 0 for any parsing errors
 
+import plotly.figure_factory as ff  # Keep this, even though we're not using dendrograms *now*
+
 def google_keyword_planner_analyzer_page():
     st.header("Google Keyword Planner Analyzer")
     st.markdown(
@@ -1615,20 +1617,40 @@ def google_keyword_planner_analyzer_page():
             df.columns = new_header
             keyword_col = None
             search_volume_col = None
+            three_month_col = None  # New: Column for three-month change
+            yoy_col = None  # New: Column for YoY change
+
 
             for col in df.columns:
                 if "keyword" in col.lower():
                     keyword_col = col
                 if "avg" in col.lower() and "monthly search" in col.lower():
                     search_volume_col = col
+                if "three" in col.lower() and "month" in col.lower() and "change" in col.lower():
+                    three_month_col = col
+                if "yoy" in col.lower() and "change" in col.lower():
+                    yoy_col = col
 
-            if keyword_col is None or search_volume_col is None:
-                st.error("Could not find the required 'Keyword' and 'Avg. monthly searches' columns. "
+            if keyword_col is None or search_volume_col is None or three_month_col is None or yoy_col is None:
+                st.error("Could not find the required 'Keyword', 'Avg. monthly searches', 'Three month change', and 'YoY change' columns. "
                          "Please ensure your file is from Google Keyword Planner and contains this data.")
                 return
-            df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches"})
+
+            df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches",
+                                    three_month_col: "Three Month Change", yoy_col: "YoY Change"}) #Rename
+
             df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
             df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+
+            # Convert percentage strings to numeric values (e.g., "20%" -> 0.20)
+            def convert_percentage(perc_str):
+                try:
+                    return float(str(perc_str).replace('%', '')) / 100
+                except (ValueError, TypeError):
+                    return 0.0  # Or np.nan, if you prefer to represent missing values as NaN
+
+            df["Three Month Change"] = df["Three Month Change"].apply(convert_percentage)
+            df["YoY Change"] = df["YoY Change"].apply(convert_percentage)
 
             # --- Cosine Similarity Calculation --- (Same as before)
             model = initialize_sentence_transformer()
@@ -1700,21 +1722,30 @@ def google_keyword_planner_analyzer_page():
                 st.dataframe(cluster_subset)
 
 
-            # --- NEW: Aggregate Cluster Data ---
+            # --- Aggregate Cluster Data (NOW INCLUDES 3-MONTH AND YOY CHANGE) ---
             st.subheader("Aggregated Cluster Data")
             aggregated_data = []
             for cluster_num, keywords in clusters.items():
                 cluster_df = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
                 total_avg_searches = cluster_df["Avg. monthly searches"].sum()
-                # Add other aggregations as needed (e.g., average competition, etc.)
+
+                # Calculate *weighted average* for Three Month and YoY Change
+                total_volume = cluster_df["Avg. monthly searches"].sum()
+                weighted_avg_three_month = (cluster_df["Three Month Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
+                weighted_avg_yoy = (cluster_df["YoY Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
+
                 aggregated_data.append({
                     "Cluster": cluster_num,
                     "Representative Keyword": rep_keywords.get(cluster_num, 'N/A'),
                     "Total Avg. Monthly Searches": total_avg_searches,
-                    # Add other aggregated metrics here
+                    "Weighted Avg. Three Month Change": weighted_avg_three_month,  # Add to aggregated data
+                    "Weighted Avg. YoY Change": weighted_avg_yoy,  # Add to aggregated data
                 })
 
             aggregated_df = pd.DataFrame(aggregated_data)
+            # Format as percentages:
+            aggregated_df["Weighted Avg. Three Month Change"] = aggregated_df["Weighted Avg. Three Month Change"].map('{:.2%}'.format)
+            aggregated_df["Weighted Avg. YoY Change"] = aggregated_df["Weighted Avg. YoY Change"].map('{:.2%}'.format)
             st.dataframe(aggregated_df)
 
 
