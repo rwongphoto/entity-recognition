@@ -1792,7 +1792,7 @@ def get_search_analytics_data(webmasters_service, property_uri, start_date, end_
             'dimensions': dimensions,
             'rowLimit': row_limit,
             'startRow': start_row,
-            'searchType': search_type
+            'searchType': search_type  # Specify search type
         }
     ).execute()
     return response
@@ -1802,13 +1802,18 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods, either by
+        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
+        this tool lets you compare GSC data from two different time periods, either by
         fetching data directly from the Google Search Console API or by uploading CSV files.
         """
     )
 
     # --- Data Source Selection ---
     data_source = st.radio("Select Data Source:", ["Google Search Console API", "Upload CSV Files"])
+
+    # Initialize df_before and df_after to None
+    df_before = None
+    df_after = None
 
     if data_source == "Google Search Console API":
         # --- User Inputs (API) ---
@@ -1905,7 +1910,7 @@ def google_search_console_analysis_page():
             except Exception as e:
                 st.error(f"An error occurred during API setup or data retrieval: {e}")
                 st.exception(e)
-                return  # Stop if there's an API error
+                return
 
 
     elif data_source == "Upload CSV Files":
@@ -1916,7 +1921,7 @@ def google_search_console_analysis_page():
 
         if uploaded_file_before is None or uploaded_file_after is None:
             st.info("Please upload both 'Before' and 'After' CSV files.")
-            return  # Exit early if files aren't uploaded.
+            return
 
         try:
             df_before = pd.read_csv(uploaded_file_before)
@@ -1925,17 +1930,13 @@ def google_search_console_analysis_page():
             st.error(f"Error reading CSV files: {e}")
             return
 
-
-    else: # This should never happen, but good to have a fallback
-        st.error("Invalid data source selected.")
-        return
-
-
     # --- Common Data Processing (Both API and CSV) ---
-    # This section is now OUTSIDE the conditional blocks, and runs *after* either
-    # the API data fetching OR the CSV upload.
+    # Check if df_before and df_after were successfully created
+    if df_before is None or df_after is None:
+        st.error("Data loading failed.  Please check your inputs.")
+        return  # Exit if data loading failed
 
-    try:  # Wrap in a try-except to handle potential errors during processing
+    try:
         if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
             st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
             return
@@ -1943,13 +1944,11 @@ def google_search_console_analysis_page():
             st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
             return
 
-        # Make sure that the rename only happens if the columns exist.
         if "Top queries" in df_before.columns:
            df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
         if "Top queries" in df_after.columns:
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
         df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
-
 
         df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
 
@@ -1958,6 +1957,7 @@ def google_search_console_analysis_page():
         if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
             df["Impressions_YOY"] = df["Impressions_after"] - df["Impressions_before"]
         if "CTR" in df_before.columns and "CTR" in df_after.columns:
+            #Helper function to deal with percentage formatting
             def parse_ctr(ctr):
                 try:
                     if isinstance(ctr, str) and "%" in ctr:
@@ -1970,26 +1970,30 @@ def google_search_console_analysis_page():
             df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
             df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
 
+        # The rest of your calculations and dataframe setup...
         df["Position_YOY_pct"] = df.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
-                                            if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
+                                        if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
+
         if "Clicks_before" in df.columns:
             df["Clicks_YOY_pct"] = df.apply(lambda row: ((row["Clicks_YOY"] / row["Clicks_before"] * 100)
                                             if row["Clicks_before"] and row["Clicks_before"] != 0 else None), axis=1)
         if "Impressions_before" in df.columns:
             df["Impressions_YOY_pct"] = df.apply(lambda row: ((row["Impressions_YOY"] / row["Impressions_before"] * 100)
-                                                    if row["Impressions_before"] and row["Impressions_before"] != 0 else None), axis=1)
+                                                 if row["Impressions_before"] and row["Impressions_before"] != 0 else None), axis=1)
         if "CTR_before" in df.columns:
             df["CTR_YOY_pct"] = df.apply(lambda row: ((row["CTR_YOY"] / row["CTR_before"] * 100)
-                                            if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
-
+                                        if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
         base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
+
         if "Clicks_before" in df.columns:
             base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"]
         if "Impressions_before" in df.columns:
             base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"]
         if "CTR_before" in df.columns:
             base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
+
         df = df[base_cols]
+
 
         st.markdown("### Topic Classification and Combined Data")
         model = initialize_sentence_transformer()
@@ -2045,6 +2049,7 @@ def google_search_console_analysis_page():
             "Impressions_YOY": "{:,.0f}",
         }
         st.dataframe(df.style.format(format_dict))
+
 
         # --- Aggregated Metrics by Topic and DataFrame ---
         st.markdown("### Aggregated Metrics by Topic")
@@ -2115,7 +2120,7 @@ def google_search_console_analysis_page():
         if total_clicks_before > 0:
             overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
                                     ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-            overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0
+            overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0  #fixed
         else:
             overall_ctr_change = 0
             overall_ctr_pct_change = 0
