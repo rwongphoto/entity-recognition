@@ -1978,7 +1978,7 @@ def google_search_console_analysis_page():
             if total_clicks_before > 0:
                 overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
                                       ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0 #fixed
+                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0
             else:
                 overall_ctr_change = 0
                 overall_ctr_pct_change = 0
@@ -2028,9 +2028,21 @@ def google_search_console_analysis_page():
                 chart_data = topic_df[['Query', 'Clicks_YOY_pct', 'Impressions_YOY_pct', 'Position_YOY_pct', 'CTR_YOY_pct']]
                 chart_data = chart_data.melt(id_vars='Query', var_name='Metric', value_name='Change')
 
+                # Find min and max for y-axis range
+                min_val = chart_data['Change'].min()
+                max_val = chart_data['Change'].max()
+
+                # Add some padding to the range (e.g., 10% of the range)
+                padding = (max_val - min_val) * 0.1
+                y_min = min_val - padding
+                y_max = max_val + padding
+
                 fig = px.bar(chart_data, x='Metric', y='Change',
                              title=f"Percentage Change for Topic: {topic}",
                              labels={'Change': '% Change'})
+
+                # Set the y-axis range dynamically
+                fig.update_layout(yaxis_range=[y_min, y_max])
 
                 st.plotly_chart(fig)
 
