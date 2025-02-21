@@ -1789,10 +1789,9 @@ def google_search_console_analysis_page():
         
         - Merge data on query terms.
         - Calculate ranking changes and additional metric comparisons.
-        - Display before and after values side-by-side with a YOY change column following each metric.
-        - Label each query with a topic classifier and aggregate totals by topic.
+        - Display before and after values side-by-side with a YOY change column for each metric.
+        - Classify queries into topics with descriptive labels and aggregate totals by topic.
         - Perform Apriori analysis on query terms.
-        - Visualize query clusters using BERT embeddings.
         """
     )
     
@@ -1821,7 +1820,7 @@ def google_search_console_analysis_page():
             # Merge on Query; common columns (e.g., Clicks, Impressions, CTR) get suffixes
             df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
             
-            # Calculate YOY change for Average Position (positive value means improvement since lower position numbers are better)
+            # Calculate YOY change for Average Position (positive means improvement since lower numbers are better)
             df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
             
             # Calculate additional metric YOY changes if they exist
@@ -1843,7 +1842,7 @@ def google_search_console_analysis_page():
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                 df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
             
-            # Rearrange columns so that for each metric the before, after, and YOY change columns are adjacent
+            # Rearrange columns so that for each metric, before, after, and YOY are adjacent
             base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY"]
             if "Clicks_before" in df.columns and "Clicks_after" in df.columns:
                 base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY"]
@@ -1851,7 +1850,6 @@ def google_search_console_analysis_page():
                 base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY"]
             if "CTR_before" in df.columns and "CTR_after" in df.columns:
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY"]
-            
             df = df[base_cols]
             st.subheader("Merged GSC Data with Metric Comparisons")
             st.dataframe(df.head())
@@ -1861,12 +1859,38 @@ def google_search_console_analysis_page():
             model = initialize_sentence_transformer()
             queries = df["Query"].tolist()
             embeddings = [get_embedding(query, model) for query in queries]
+            
             from sklearn.cluster import KMeans
             num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=3, key="num_topics")
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
             df["Topic_Label"] = topic_labels
-            df["Topic"] = df["Topic_Label"].apply(lambda x: f"Topic {x+1}")
+            
+            # Generate descriptive labels by extracting the most common keywords per topic
+            import collections
+            import nltk
+            nltk.download('stopwords')
+            stop_words = set(nltk.corpus.stopwords.words('english'))
+            
+            def generate_topic_label(queries_in_topic):
+                words = []
+                for query in queries_in_topic:
+                    tokens = query.lower().split()
+                    filtered = [t for t in tokens if t not in stop_words]
+                    words.extend(filtered)
+                if words:
+                    freq = collections.Counter(words)
+                    common = freq.most_common(2)
+                    label = ", ".join([word for word, count in common])
+                    return label.capitalize()
+                else:
+                    return "N/A"
+            
+            topic_labels_desc = {}
+            for topic in range(num_topics):
+                topic_queries = df[df["Topic_Label"] == topic]["Query"].tolist()
+                topic_labels_desc[topic] = generate_topic_label(topic_queries)
+            df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
             st.dataframe(df.head())
             
             # Aggregate totals by topic for key metrics
@@ -1904,37 +1928,24 @@ def google_search_console_analysis_page():
             te = TransactionEncoder()
             te_ary = te.fit(transactions).transform(transactions)
             df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-            from mlxtend.frequent_patterns import apriori, association_rules
+            from mlxtend.frequent_patterns import apriori
             freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
             st.subheader("Frequent Itemsets")
             st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            rules = association_rules(freq_items, metric="confidence", min_threshold=0.5)
-            st.subheader("Association Rules")
-            st.dataframe(rules.sort_values(by="confidence", ascending=False))
             
-            # --- BERT Embedding and Clustering Section (Optional Visualization) ---
-            st.markdown("### Query Clustering with BERT Embeddings (Visualization)")
-            num_clusters_viz = st.slider("Select number of clusters for visualization:", min_value=2, max_value=10, value=3, key="viz_clusters")
-            kmeans_viz = KMeans(n_clusters=num_clusters_viz, random_state=42, n_init='auto')
-            cluster_labels = kmeans_viz.fit_predict(embeddings)
-            from sklearn.decomposition import PCA
-            pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(embeddings)
-            df_plot = pd.DataFrame({
-                'x': embeddings_2d[:, 0],
-                'y': embeddings_2d[:, 1],
-                'Query': queries,
-                'Cluster': cluster_labels.astype(str)
-            })
-            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Query',
-                             title="BERT Embedding Clusters of Queries")
-            fig.update_traces(textposition='top center')
+            # --- Visualization: Instead of a scatter plot, show a bar chart of Average Position YOY by Topic ---
+            st.markdown("### Average Position YOY Change by Topic")
+            import plotly.express as px
+            fig = px.bar(aggregated, x="Topic", y="Position_YOY", 
+                         title="Average Position YOY Change by Topic",
+                         labels={"Position_YOY": "YOY Change in Position"})
             st.plotly_chart(fig)
             
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
