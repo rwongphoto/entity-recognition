@@ -1590,16 +1590,15 @@ def google_keyword_planner_analyzer_page():
     if uploaded_file is not None and target_keyword:
         try:
             # --- Data Preprocessing & Validation ---
-            # Read the Excel file, but don't automatically set headers yet
-            df = pd.read_excel(uploaded_file)
+            # Read the Excel file *without* setting a header row initially.
+            df_raw = pd.read_excel(uploaded_file, header=None)
 
             # Find the row where the actual data starts. We look for a row
-            # where a column containing "keyword" exists. This is more robust
-            # than assuming a fixed number of header rows.
+            # where the *second* value is "Currency". This is a more reliable
+            # indicator than "keyword" because of the merged cells.
             header_row_index = None
-            for i in range(len(df)):
-                row_values = [str(val).lower() for val in df.iloc[i].values]
-                if any("keyword" in val for val in row_values):
+            for i in range(len(df_raw)):
+                if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency": #Check the second value for "Currency"
                     header_row_index = i
                     break
 
@@ -1608,34 +1607,49 @@ def google_keyword_planner_analyzer_page():
                          "Please ensure the file is a standard Google Keyword Planner export.")
                 return
 
-            # Now re-read the Excel file, using the correct header row
-            df = pd.read_excel(uploaded_file, header=header_row_index)
-            # Flexible column name matching:
+            # Extract the header row and the row below it.
+            header_row = df_raw.iloc[header_row_index].fillna(method='ffill').tolist()  # forward fill
+            sub_header_row = df_raw.iloc[header_row_index + 1].tolist()
+
+            # Combine the two rows to create the final column names
+            new_header = []
+            for h, sub_h in zip(header_row, sub_header_row):
+                if pd.isna(sub_h):
+                  new_header.append(str(h))
+                else:
+                  new_header.append(str(h) + ": " + str(sub_h))
+
+            # Now re-read the data, using the combined header
+            df = pd.read_excel(uploaded_file, header=header_row_index + 2)
+            df.columns = new_header  # Set the combined header
+
+
+            # Flexible column name matching (still important!):
             keyword_col = None
             search_volume_col = None
 
             for col in df.columns:
-                if "keyword" in str(col).lower():  # Check col as string
+                if "keyword" in col.lower():
                     keyword_col = col
-                if "avg" in str(col).lower() and "search" in str(col).lower():
+                if "avg" in col.lower() and "monthly search" in col.lower(): # More specific
                     search_volume_col = col
 
             if keyword_col is None or search_volume_col is None:
                 st.error("Could not find the required 'Keyword' and 'Avg. monthly searches' columns. "
-                         "Please ensure your file is from Google Keyword Planner and contains this data.")
+                         "Please ensure the file is from Google Keyword Planner and contains this data.")
                 return
-            # Rename the columns for consistent access later:
+
+            # Rename the columns for consistent access:
             df = df.rename(columns={
                 keyword_col: "Keyword",
                 search_volume_col: "Avg. monthly searches"
             })
 
-
             df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
-            # Convert to numeric and handle errors
             df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
 
-            # --- Cosine Similarity Calculation ---
+
+            # --- Cosine Similarity Calculation --- (Rest of the function is the same)
             model = initialize_sentence_transformer()
             target_embedding = get_embedding(target_keyword, model)
             keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
@@ -1722,23 +1736,28 @@ def google_keyword_planner_analyzer_page():
                              hover_data=['Keyword'], title="Keyword Clusters")
             fig.update_traces(textposition='top center')
             st.plotly_chart(fig)
+
             # --- Trend Visualization ---
-            # Define month columns
-            month_cols = ["Searches: Feb '24","Searches: Mar '24",	"Searches: Apr '24",	"Searches: May '24",	"Searches: Jun '24", "Searches: Jul '24", "Searches: Aug '24", "Searches: Sep '24", "Searches: Oct '24", "Searches: Nov '24",	"Searches: Dec '24",	"Searches: Jan '25"]
+            # Define month columns.  Handle merged header names.
+            month_cols = [col for col in df.columns if "Searches:" in col]
             st.subheader("Cluster Search Trends")
+
             # Iterate over each cluster to generate trend charts
             for cluster_num, keywords in clusters.items():
                 # Create a DataFrame for the current cluster's keywords
                 cluster_df = df[df['Keyword'].isin(keywords)].copy()
-                # Aggregate the monthly search volumes for all keywords in the cluster
-                # Ensure all month columns are present, filling missing ones with 0
+
+                # Ensure all month columns are present; if not, add with 0 values.
                 for month_col in month_cols:
                     if month_col not in cluster_df.columns:
                         cluster_df[month_col] = 0
-                # Convert monthly searches to numeric, handle non-numeric gracefully
+
+                # Convert monthly searches to numeric.
                 for col in month_cols:
                     cluster_df[col] = pd.to_numeric(cluster_df[col], errors='coerce').fillna(0)
+
                 monthly_totals = cluster_df[month_cols].sum()
+
                 # Create the trend chart using Plotly Graph Objects
                 fig_trend = go.Figure(data=[go.Scatter(x=month_cols, y=monthly_totals, mode='lines+markers')])
                 fig_trend.update_layout(
