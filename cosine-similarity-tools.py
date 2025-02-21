@@ -45,6 +45,7 @@ from mlxtend.frequent_patterns import apriori, association_rules
 
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+import io
 
 # ------------------------------------
 # Global Variables & Utility Functions
