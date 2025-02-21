@@ -37,6 +37,8 @@ from nltk.corpus import stopwords
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 
+import plotly.graph_objects as go
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -1539,6 +1541,190 @@ def google_ads_search_term_analyzer_page():
             st.error(f"An error occurred while processing the Excel file: {e}")
 
 # ------------------------------------
+# NEW TOOL: Google Keyword Planner Analyzer
+# ------------------------------------
+def clean_search_volume(volume_str):
+    """
+    Cleans the search volume string and returns the average as an integer.
+    Handles ranges (e.g., "100 - 1K") and plain numbers.
+    """
+    try:
+        # Remove any characters that are not digits, spaces, or hyphens
+        volume_str = re.sub(r'[^\d\s\-]', '', str(volume_str))
+
+        if '-' in volume_str:
+            low, high = volume_str.split('-')
+            low = int(low.strip())
+            high = high.strip()
+            if 'K' in high.upper():
+                high = int(float(high.upper().replace('K', '')) * 1000)
+            elif 'M' in high.upper():
+                high = int(float(high.upper().replace('M', '')) * 1000000)
+            else:
+                high = int(high)
+            return int((low + high) / 2)
+        else:
+            # Handle single numbers with 'K' or 'M'
+            volume = volume_str.strip().upper()
+            if 'K' in volume:
+                return int(float(volume.replace('K', '')) * 1000)
+            if 'M' in volume:
+                return int(float(volume.replace('M', '')) * 1000000)
+            return int(volume)
+    except Exception:
+        return 0  # Default to 0 for any parsing errors
+
+def google_keyword_planner_analyzer_page():
+    st.header("Google Keyword Planner Analyzer")
+    st.markdown(
+        """
+        Upload a Google Keyword Planner Excel file (.xlsx) and analyze keywords based on cosine similarity
+        to a target keyword.  This tool identifies relevant keywords, groups them into clusters,
+        and visualizes search trends.
+        """
+    )
+
+    uploaded_file = st.file_uploader("Upload Keyword Planner Excel File", type=["xlsx"])
+    target_keyword = st.text_input("Enter Your Target Keyword:", "")
+
+    if uploaded_file is not None and target_keyword:
+        try:
+            df = pd.read_excel(uploaded_file)
+
+            # --- Data Preprocessing & Validation ---
+            required_columns = ["Keyword", "Avg. monthly searches"]
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            if missing_cols:
+                st.error(f"Missing required columns: {', '.join(missing_cols)}")
+                return
+
+            df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
+            # Convert to numeric and handle errors
+            df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+
+            # --- Cosine Similarity Calculation ---
+            model = initialize_sentence_transformer()
+            target_embedding = get_embedding(target_keyword, model)
+            keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
+            similarities = [cosine_similarity([target_embedding], [kw_emb])[0][0]
+                            for kw_emb in keyword_embeddings]
+            df["Cosine Similarity"] = similarities
+            avg_similarity = df["Cosine Similarity"].mean()
+            st.write(f"Average Cosine Similarity: {avg_similarity:.4f}")
+
+            # --- Filtering ---
+            filtered_df = df[df["Cosine Similarity"] >= avg_similarity]
+            filtered_keywords = filtered_df["Keyword"].tolist()
+            filtered_embeddings = [get_embedding(kw, model) for kw in filtered_keywords]
+            if not filtered_embeddings:
+                st.warning("No keywords found with above-average similarity.")
+                return
+            filtered_embeddings = np.vstack(filtered_embeddings)  # Convert to NumPy array
+
+            # --- Topic Modeling (Clustering) ---
+            st.subheader("Clustering Settings")
+            algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
+
+            if algorithm == "Kindred Spirit":
+                clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
+                centers = clustering_model.cluster_centers_
+                rep_keywords = {}
+                for i in range(n_clusters):
+                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
+                    if not cluster_grams:
+                        continue
+                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
+                    distances = np.linalg.norm(cluster_embeddings_local - centers[i], axis=1)
+                    rep_keyword = cluster_grams[np.argmin(distances)]
+                    rep_keywords[i] = rep_keyword
+            elif algorithm == "Affinity Stack":
+                clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
+                rep_keywords = {}
+                for i in range(n_clusters):
+                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
+                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
+                    if len(cluster_embeddings_local) > 1:
+                        sims = cosine_similarity(cluster_embeddings_local, cluster_embeddings_local)
+                        rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+                    else:
+                        rep_keyword = cluster_grams[0]
+                    rep_keywords[i] = rep_keyword
+
+
+            # --- Cluster Analysis & Output ---
+            clusters = {}
+            for keyword, label in zip(filtered_keywords, cluster_labels):
+                clusters.setdefault(label, []).append(keyword)
+
+            cluster_data = []
+            for label, keyword_list in clusters.items():
+                rep = rep_keywords.get(label, "N/A")
+                total_volume = filtered_df[filtered_df["Keyword"].isin(keyword_list)][
+                    "Avg. monthly searches"].sum()
+                cluster_data.append({
+                    "Cluster": label,
+                    "Representative Keyword": rep,
+                    "Total Avg. Monthly Searches": total_volume,
+                    "Keywords": ", ".join(keyword_list)
+                })
+
+            df_clusters = pd.DataFrame(cluster_data)
+            st.subheader("Keyword Clusters")
+            st.dataframe(df_clusters)
+
+            # --- Plotly Visualization ---
+            st.markdown("### Interactive Cluster Visualization")
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(filtered_embeddings)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Keyword': filtered_keywords,
+                'Cluster': [f"Cluster {label}" for label in cluster_labels]
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword',
+                             hover_data=['Keyword'], title="Keyword Clusters")
+            fig.update_traces(textposition='top center')
+            st.plotly_chart(fig)
+            # --- Trend Visualization ---
+            # Define month columns
+            month_cols = ["Searches: Feb '24","Searches: Mar '24",	"Searches: Apr '24",	"Searches: May '24",	"Searches: Jun '24", "Searches: Jul '24", "Searches: Aug '24", "Searches: Sep '24", "Searches: Oct '24", "Searches: Nov '24",	"Searches: Dec '24",	"Searches: Jan '25"]
+            st.subheader("Cluster Search Trends")
+            # Iterate over each cluster to generate trend charts
+            for cluster_num, keywords in clusters.items():
+                # Create a DataFrame for the current cluster's keywords
+                cluster_df = df[df['Keyword'].isin(keywords)].copy()
+                # Aggregate the monthly search volumes for all keywords in the cluster
+                # Ensure all month columns are present, filling missing ones with 0
+                for month_col in month_cols:
+                    if month_col not in cluster_df.columns:
+                        cluster_df[month_col] = 0
+                # Convert monthly searches to numeric, handle non-numeric gracefully
+                for col in month_cols:
+                    cluster_df[col] = pd.to_numeric(cluster_df[col], errors='coerce').fillna(0)
+                monthly_totals = cluster_df[month_cols].sum()
+                # Create the trend chart using Plotly Graph Objects
+                fig_trend = go.Figure(data=[go.Scatter(x=month_cols, y=monthly_totals, mode='lines+markers')])
+                fig_trend.update_layout(
+                    title=f"Search Trend for Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})",
+                    xaxis_title="Month",
+                    yaxis_title="Total Search Volume",
+                    xaxis_tickangle=-45
+                )
+                st.plotly_chart(fig_trend)
+            
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+
+# --- In your main() function, add this to the tool selection: ---
+
+    elif tool == "Google Keyword Planner Analyzer":
+        google_keyword_planner_analyzer_page()
+
+# ------------------------------------
 # Main Streamlit App
 # ------------------------------------
 def main():
@@ -1572,7 +1758,8 @@ def main():
         "Semantic Gap Analyzer",
         "Keyword Clustering",
         "People Also Asked",
-        "Google Ads Search Term Analyzer"  # New tool
+        "Google Ads Search Term Analyzer",  # New tool
+        "Google Keyword Planner Analyzer" # Add this line
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1598,6 +1785,8 @@ def main():
         paa_extraction_clustering_page()
     elif tool == "Google Ads Search Term Analyzer":
         google_ads_search_term_analyzer_page()
+    elif tool == "Google Keyword Planner Analyzer":
+    google_keyword_planner_analyzer_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
