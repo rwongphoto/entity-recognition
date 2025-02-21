@@ -1783,7 +1783,8 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
+        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
+        this tool lets you compare GSC data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
 
         - Merge data on query terms.
@@ -1791,7 +1792,7 @@ def google_search_console_analysis_page():
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic and show overall changes, including percentage changes.
-        - Display a dashboard with overall change metrics and a single chart per topic showing *percentage* changes.
+        - Display a dashboard with overall change metrics and a single chart showing *percentage* changes across topics.
         """
     )
 
@@ -1978,7 +1979,7 @@ def google_search_console_analysis_page():
             if total_clicks_before > 0:
                 overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
                                       ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0
+                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0  #fixed
             else:
                 overall_ctr_change = 0
                 overall_ctr_pct_change = 0
@@ -2018,39 +2019,9 @@ def google_search_console_analysis_page():
                                  title="Aggregated % Change by Topic")
             st.plotly_chart(fig_combined)
 
-            # --- Per-Topic Charts (Percentage Changes) ---
-            st.markdown("### Per-Topic Charts (% Change)")
-
-            for topic in aggregated['Topic']:
-                topic_df = df[df['Topic'] == topic]
-
-                # Prepare data for Plotly Express (only percentage change columns)
-                chart_data = topic_df[['Query', 'Clicks_YOY_pct', 'Impressions_YOY_pct', 'Position_YOY_pct', 'CTR_YOY_pct']]
-                chart_data = chart_data.melt(id_vars='Query', var_name='Metric', value_name='Change')
-
-                # Find min and max for y-axis range
-                min_val = chart_data['Change'].min()
-                max_val = chart_data['Change'].max()
-
-                # Add some padding to the range (e.g., 10% of the range)
-                padding = (max_val - min_val) * 0.1
-                y_min = min_val - padding
-                y_max = max_val + padding
-
-                fig = px.bar(chart_data, x='Metric', y='Change',
-                             title=f"Percentage Change for Topic: {topic}",
-                             labels={'Change': '% Change'})
-
-                # Set the y-axis range dynamically
-                fig.update_layout(yaxis_range=[y_min, y_max])
-
-                st.plotly_chart(fig)
-
-
 
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
-            #st.exception(e)
 
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
