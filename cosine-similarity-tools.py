@@ -1958,9 +1958,20 @@ def google_search_console_analysis_page():
                 aggregated["CTR_YOY_pct"] = aggregated.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                                                              if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
             
+            # Format YOY % Change columns as percentages
+            format_dict = {}
+            if "Position_YOY_pct" in aggregated.columns:
+                format_dict["Position_YOY_pct"] = "{:.2f}%"
+            if "Clicks_YOY_pct" in aggregated.columns:
+                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
+            if "Impressions_YOY_pct" in aggregated.columns:
+                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
+            if "CTR_YOY_pct" in aggregated.columns:
+                format_dict["CTR_YOY_pct"] = "{:.2f}%"
+            
             # Provide an option to display more aggregated rows
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
-            st.dataframe(aggregated.head(display_count))
+            st.dataframe(aggregated.head(display_count).style.format(format_dict))
             
             # --- Visualization: Grouped Bar Chart of YOY % Change by Topic for Each Metric ---
             st.markdown("### YOY % Change by Topic for Each Metric")
@@ -1986,6 +1997,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
