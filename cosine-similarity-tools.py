@@ -1589,53 +1589,51 @@ def google_keyword_planner_analyzer_page():
 
     if uploaded_file is not None and target_keyword:
         try:
-        # --- Data Preprocessing & Validation ---
-        # Read the Excel file, but don't automatically set headers yet
-        df = pd.read_excel(uploaded_file)
+            # --- Data Preprocessing & Validation ---
+            # Read the Excel file, but don't automatically set headers yet
+            df = pd.read_excel(uploaded_file)
 
-        # Find the row where the actual data starts. We look for a row
-        # where a column containing "keyword" exists. This is more robust
-        # than assuming a fixed number of header rows.
-        header_row_index = None
-        for i in range(len(df)):
-            row_values = [str(val).lower() for val in df.iloc[i].values]
-            if any("keyword" in val for val in row_values):
-                header_row_index = i
-                break
+            # Find the row where the actual data starts. We look for a row
+            # where a column containing "keyword" exists. This is more robust
+            # than assuming a fixed number of header rows.
+            header_row_index = None
+            for i in range(len(df)):
+                row_values = [str(val).lower() for val in df.iloc[i].values]
+                if any("keyword" in val for val in row_values):
+                    header_row_index = i
+                    break
 
-        if header_row_index is None:
-            st.error("Could not find the header row in the Excel file. "
-                     "Please ensure the file is a standard Google Keyword Planner export.")
-            return
+            if header_row_index is None:
+                st.error("Could not find the header row in the Excel file. "
+                         "Please ensure the file is a standard Google Keyword Planner export.")
+                return
 
-        # Now re-read the Excel file, using the correct header row
-        df = pd.read_excel(uploaded_file, header=header_row_index)
-        # Flexible column name matching:
-        keyword_col = None
-        search_volume_col = None
+            # Now re-read the Excel file, using the correct header row
+            df = pd.read_excel(uploaded_file, header=header_row_index)
+            # Flexible column name matching:
+            keyword_col = None
+            search_volume_col = None
 
-        for col in df.columns:
-            if "keyword" in str(col).lower():  # Check col as string
-                keyword_col = col
-            if "avg" in str(col).lower() and "search" in str(col).lower():
-                search_volume_col = col
+            for col in df.columns:
+                if "keyword" in str(col).lower():  # Check col as string
+                    keyword_col = col
+                if "avg" in str(col).lower() and "search" in str(col).lower():
+                    search_volume_col = col
 
-        if keyword_col is None or search_volume_col is None:
-            st.error("Could not find the required 'Keyword' and 'Avg. monthly searches' columns. "
-                     "Please ensure your file is from Google Keyword Planner and contains this data.")
-            return
-        # Rename the columns for consistent access later:
-        df = df.rename(columns={
-            keyword_col: "Keyword",
-            search_volume_col: "Avg. monthly searches"
-        })
-
-
-        df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
-        # Convert to numeric and handle errors
-        df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+            if keyword_col is None or search_volume_col is None:
+                st.error("Could not find the required 'Keyword' and 'Avg. monthly searches' columns. "
+                         "Please ensure your file is from Google Keyword Planner and contains this data.")
+                return
+            # Rename the columns for consistent access later:
+            df = df.rename(columns={
+                keyword_col: "Keyword",
+                search_volume_col: "Avg. monthly searches"
+            })
 
 
+            df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
+            # Convert to numeric and handle errors
+            df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
 
             # --- Cosine Similarity Calculation ---
             model = initialize_sentence_transformer()
@@ -1750,14 +1748,9 @@ def google_keyword_planner_analyzer_page():
                     xaxis_tickangle=-45
                 )
                 st.plotly_chart(fig_trend)
-            
+
         except Exception as e:
             st.error(f"An error occurred: {e}")
-
-# --- In your main() function, add this to the tool selection: ---
-
-    elif tool == "Google Keyword Planner Analyzer":
-        google_keyword_planner_analyzer_page()
 
 # ------------------------------------
 # Main Streamlit App
