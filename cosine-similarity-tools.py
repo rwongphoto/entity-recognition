@@ -1779,35 +1779,11 @@ def google_keyword_planner_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go  # Import graph_objects
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.cluster import KMeans
-import collections
-import nltk
-from nltk.corpus import stopwords
-
-
-@st.cache_resource
-def initialize_sentence_transformer():
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    return model
-
-def get_embedding(text, model):
-    return model.encode(text)
-
-
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
-        this tool lets you compare GSC data from two different time periods.
+        This tool lets you compare GSC data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
 
         - Merge data on query terms.
@@ -1815,7 +1791,7 @@ def google_search_console_analysis_page():
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic and show overall changes, including percentage changes.
-        - Display a dashboard with overall change metrics and a single chart per topic showing all metrics.
+        - Display a dashboard with overall change metrics and a single chart per topic showing *percentage* changes.
         """
     )
 
@@ -1937,7 +1913,6 @@ def google_search_console_analysis_page():
 
 
             # --- Aggregated Metrics by Topic and DataFrame ---
-            #  Place this BEFORE the overall changes
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
                 "Average Position_before": "mean",
@@ -1987,12 +1962,11 @@ def google_search_console_analysis_page():
                 "Impressions_after": "{:,.0f}",
                 "Impressions_YOY": "{:,.0f}",
                 }
-
             aggregated = aggregated.sort_values(by="Position_YOY", ascending=False)
             st.dataframe(aggregated.style.format(format_dict_agg))
 
 
-            # --- Overall Changes (Dashboard) ---  (AFTER Aggregated, but BEFORE charts)
+            # --- Overall Changes (Dashboard) ---
             st.markdown("### Overall Changes Dashboard")
 
             overall_clicks_change = df["Clicks_YOY"].sum()
@@ -2001,11 +1975,10 @@ def google_search_console_analysis_page():
             total_clicks_before = df["Clicks_before"].sum()
             total_clicks_after = df["Clicks_after"].sum()
 
-            # Calculate overall CTR change (weighted average) and percentage changes
             if total_clicks_before > 0:
                 overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
                                       ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-                overall_ctr_pct_change = (overall_ctr_change / (df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0
+                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0 #fixed
             else:
                 overall_ctr_change = 0
                 overall_ctr_pct_change = 0
@@ -2027,47 +2000,45 @@ def google_search_console_analysis_page():
 
 
 
-            # --- Per-Topic Charts (Combined) ---
-            st.markdown("### Per-Topic Charts")
+            # --- Combined Aggregated Metrics Chart (Bar Chart) ---
+            st.markdown("### Combined Aggregated Metrics Chart")
+            # Prepare data for the combined chart
+            combined_chart_data = pd.DataFrame({
+                'Topic': aggregated['Topic'],
+                'Clicks % Change': aggregated['Clicks_YOY_pct'],
+                'Impressions % Change': aggregated['Impressions_YOY_pct'],
+                'Avg Position % Change': aggregated['Position_YOY_pct'],
+                'CTR % Change': aggregated['CTR_YOY_pct']
+            })
+
+            # Melt the DataFrame for Plotly Express
+            combined_chart_data = combined_chart_data.melt(id_vars='Topic', var_name='Metric', value_name='Change')
+            fig_combined = px.bar(combined_chart_data, x='Topic', y='Change', color='Metric',
+                                 barmode='group',
+                                 title="Aggregated % Change by Topic")
+            st.plotly_chart(fig_combined)
+
+            # --- Per-Topic Charts (Percentage Changes) ---
+            st.markdown("### Per-Topic Charts (% Change)")
 
             for topic in aggregated['Topic']:
                 topic_df = df[df['Topic'] == topic]
 
-                # Create subplots:  1 row, 1 column (all traces in one chart)
-                fig = make_subplots(specs=[[{"secondary_y": True}]])
+                # Prepare data for Plotly Express (only percentage change columns)
+                chart_data = topic_df[['Query', 'Clicks_YOY_pct', 'Impressions_YOY_pct', 'Position_YOY_pct', 'CTR_YOY_pct']]
+                chart_data = chart_data.melt(id_vars='Query', var_name='Metric', value_name='Change')
 
-                # Add traces for Clicks
-                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Clicks_before'], name='Clicks Before', marker_color='blue'), secondary_y=False)
-                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Clicks_after'], name='Clicks After', marker_color='lightblue'), secondary_y=False)
-
-
-                # Add traces for Impressions
-                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Impressions_before'], name='Impressions Before', marker_color='green'), secondary_y=False)
-                fig.add_trace(go.Bar(x=topic_df['Query'], y=topic_df['Impressions_after'], name='Impressions After', marker_color='lightgreen'), secondary_y=False)
-
-
-                # Add traces for CTR (on secondary y-axis)
-                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['CTR_before'], name='CTR Before', mode='lines+markers', marker_color='red'), secondary_y=True)
-                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['CTR_after'], name='CTR After', mode='lines+markers', marker_color='orange'), secondary_y=True)
-
-                # Add traces for Average Position
-                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['Average Position_before'], name='Avg Position Before', mode='lines+markers', marker_color='purple'), secondary_y=True)
-                fig.add_trace(go.Scatter(x=topic_df['Query'], y=topic_df['Average Position_after'], name='Avg Position After', mode='lines+markers', marker_color='pink'), secondary_y=True)
-
-
-
-                # Set layout
-                fig.update_layout(
-                    title_text=f"Metrics for Topic: {topic}",
-                    xaxis_title="Query",
-                    yaxis_title="Clicks/Impressions",  # Primary y-axis
-                    yaxis2_title="CTR / Avg Position", # Secondary y-axis
-                    barmode='group'
-                )
+                fig = px.bar(chart_data, x='Metric', y='Change',
+                             title=f"Percentage Change for Topic: {topic}",
+                             labels={'Change': '% Change'})
 
                 st.plotly_chart(fig)
+
+
+
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
+            #st.exception(e)
 
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
