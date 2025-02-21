@@ -1588,7 +1588,7 @@ def google_keyword_planner_analyzer_page():
     target_keyword = st.text_input("Enter Your Target Keyword:", "")
 
     if uploaded_file is not None and target_keyword:
-    try:
+        try:
         # --- Data Preprocessing & Validation ---
         # Read the Excel file, but don't automatically set headers yet
         df = pd.read_excel(uploaded_file)
@@ -1634,6 +1634,8 @@ def google_keyword_planner_analyzer_page():
         df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
         # Convert to numeric and handle errors
         df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+
+
 
             # --- Cosine Similarity Calculation ---
             model = initialize_sentence_transformer()
