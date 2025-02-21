@@ -1423,6 +1423,8 @@ def google_ads_search_term_analyzer_page():
 
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+
 if uploaded_file is not None:
     try:
         # Read the Excel file, skipping the first two rows.
@@ -1488,7 +1490,6 @@ if uploaded_file is not None:
                 skipgrams_list.append(skipgram)
             return skipgrams_list
 
-        # Assumed pre-imported from nltk.
         stop_words = set(stopwords.words('english'))
         lemmatizer = WordNetLemmatizer()
 
@@ -1566,6 +1567,7 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"An error occurred while processing the Excel file: {e}")
+
 
 
           
