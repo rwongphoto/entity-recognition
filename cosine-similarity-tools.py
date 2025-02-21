@@ -1915,7 +1915,7 @@ def main():
         "Keyword Clustering",
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
-        "Google Keyword Planner Analyzer" # Add this line
+        "Google Keyword Planner Analyzer", # Add this line
         "Google Search Console Analyzer" # Add this line
     ])
     if tool == "URL Analysis Dashboard":
