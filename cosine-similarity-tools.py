@@ -1792,7 +1792,7 @@ def google_search_console_analysis_page():
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic and show overall changes, including percentage changes.
-        - Display a dashboard with overall change metrics and a single chart showing *percentage* changes across topics.
+        - Display a dashboard with overall change metrics and a single chart showing *percentage* changes across topics (excluding Average Position % Change).
         """
     )
 
@@ -1919,7 +1919,7 @@ def google_search_console_analysis_page():
                 "Average Position_before": "mean",
                 "Average Position_after": "mean",
                 "Position_YOY": "mean",
-                "Position_YOY_pct": "mean"
+                #Removed "Position_YOY_pct": "mean"  # Keep pct for chart, but not in this table.
             }
             if "Clicks_before" in df.columns:
                 agg_dict.update({
@@ -1944,9 +1944,13 @@ def google_search_console_analysis_page():
 
                 })
             aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
+            # add back in "Position_YOY_pct": "mean"
+            aggregated["Position_YOY_pct"] = aggregated.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
+                                                                if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
+
 
             format_dict_agg = {
-                "Position_YOY_pct": "{:.1f}%",
+                #"Position_YOY_pct": "{:.1f}%", # Removed
                 "Clicks_YOY_pct": "{:.1f}%",
                 "Impressions_YOY_pct": "{:.1f}%",
                 "CTR_YOY_pct": "{:.1f}%",
@@ -2018,7 +2022,6 @@ def google_search_console_analysis_page():
                                  barmode='group',
                                  title="Aggregated % Change by Topic")
             st.plotly_chart(fig_combined)
-
 
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
