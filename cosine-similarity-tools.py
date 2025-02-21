@@ -1789,9 +1789,9 @@ def google_search_console_analysis_page():
         
         - Merge data on query terms.
         - Calculate ranking changes and additional metric comparisons.
-        - Display before and after values side-by-side with a YOY change column for each metric.
-        - **Perform an initial Apriori analysis on query terms to uncover frequent term combinations.**
-        - Classify queries into topics with descriptive labels and aggregate totals by topic.
+        - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
+        - Classify queries into topics with descriptive labels.
+        - Aggregate metrics by topic, with an option to display more rows.
         """
     )
     
@@ -1842,32 +1842,31 @@ def google_search_console_analysis_page():
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                 df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
             
-            # Rearrange columns so that for each metric, before, after, and YOY are adjacent
-            base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY"]
-            if "Clicks_before" in df.columns and "Clicks_after" in df.columns:
-                base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY"]
-            if "Impressions_before" in df.columns and "Impressions_after" in df.columns:
-                base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY"]
-            if "CTR_before" in df.columns and "CTR_after" in df.columns:
-                base_cols += ["CTR_before", "CTR_after", "CTR_YOY"]
+            # Calculate YOY percentage changes
+            df["Position_YOY_pct"] = df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
+                                              if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
+            if "Clicks_before" in df.columns:
+                df["Clicks_YOY_pct"] = df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
+                                                if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1)
+            if "Impressions_before" in df.columns:
+                df["Impressions_YOY_pct"] = df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
+                                                     if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
+            if "CTR_before" in df.columns:
+                df["CTR_YOY_pct"] = df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
+                                             if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+            
+            # Rearrange columns so that for each metric, before, after, YOY change, and YOY % change are adjacent
+            base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
+            if "Clicks_before" in df.columns:
+                base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"]
+            if "Impressions_before" in df.columns:
+                base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"]
+            if "CTR_before" in df.columns:
+                base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             df = df[base_cols]
-            st.subheader("Merged GSC Data with Metric Comparisons")
-            st.dataframe(df.head())
             
-            # --- Initial Apriori Analysis on Query Terms ---
-            st.markdown("### Initial Apriori Analysis on Query Terms")
-            # Tokenize each query into words
-            transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
-            from mlxtend.preprocessing import TransactionEncoder
-            te = TransactionEncoder()
-            te_ary = te.fit(transactions).transform(transactions)
-            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-            from mlxtend.frequent_patterns import apriori
-            freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
-            st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            
-            # --- Topic Classification ---
-            st.markdown("### Topic Classification")
+            # --- Topic Classification (integrated with merged data) ---
+            st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = df["Query"].tolist()
             embeddings = [get_embedding(query, model) for query in queries]
@@ -1903,9 +1902,23 @@ def google_search_console_analysis_page():
                 topic_queries = df[df["Topic_Label"] == topic]["Query"].tolist()
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
-            st.dataframe(df.head())
             
-            # Aggregate totals by topic for key metrics
+            # Display the merged data table with topic classification
+            st.dataframe(df)
+            
+            # --- (Hidden) Initial Apriori Analysis on Query Terms ---
+            with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
+                st.markdown("### Initial Apriori Analysis on Query Terms")
+                transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
+                from mlxtend.preprocessing import TransactionEncoder
+                te = TransactionEncoder()
+                te_ary = te.fit(transactions).transform(transactions)
+                df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+                from mlxtend.frequent_patterns import apriori
+                freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
+                st.dataframe(freq_items.sort_values(by="support", ascending=False))
+            
+            # --- Aggregated Metrics by Topic ---
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
                 "Average Position_before": "mean",
@@ -1931,12 +1944,49 @@ def google_search_console_analysis_page():
                     "CTR_YOY": "mean"
                 })
             aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
-            st.dataframe(aggregated)
+            
+            # Calculate aggregated YOY percentage changes
+            aggregated["Position_YOY_pct"] = aggregated.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
+                                                                if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
+            if "Clicks_before" in aggregated.columns:
+                aggregated["Clicks_YOY_pct"] = aggregated.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
+                                                                if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1)
+            if "Impressions_before" in aggregated.columns:
+                aggregated["Impressions_YOY_pct"] = aggregated.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
+                                                                     if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
+            if "CTR_before" in aggregated.columns:
+                aggregated["CTR_YOY_pct"] = aggregated.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
+                                                             if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+            
+            # Provide an option to display more aggregated rows
+            display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
+            st.dataframe(aggregated.head(display_count))
+            
+            # --- Visualization: Grouped Bar Chart of YOY % Change by Topic for Each Metric ---
+            st.markdown("### YOY % Change by Topic for Each Metric")
+            import plotly.express as px
+            vis_data = []
+            for idx, row in aggregated.iterrows():
+                topic = row["Topic"]
+                if "Position_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "Average Position", "YOY % Change": row["Position_YOY_pct"]})
+                if "Clicks_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "Clicks", "YOY % Change": row["Clicks_YOY_pct"]})
+                if "Impressions_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "Impressions", "YOY % Change": row["Impressions_YOY_pct"]})
+                if "CTR_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "CTR", "YOY % Change": row["CTR_YOY_pct"]})
+            vis_df = pd.DataFrame(vis_data)
+            fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric", barmode="group",
+                         title="YOY % Change by Topic for Each Metric",
+                         labels={"YOY % Change": "YOY % Change (%)"})
+            st.plotly_chart(fig)
             
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
