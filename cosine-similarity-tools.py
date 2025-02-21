@@ -1776,7 +1776,7 @@ def google_keyword_planner_analyzer_page():
             st.error(f"An error occurred: {e}")
 
 # ------------------------------------
-# NEW TOOL: Google Keyword Planner Analyzer
+# NEW TOOL: GSC Analyzer
 # ------------------------------------
 
 def google_search_console_analysis_page():
@@ -1785,11 +1785,12 @@ def google_search_console_analysis_page():
         """
         Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
         this tool lets you compare GSC data from two different time periods.
-        Upload CSV files (e.g., one for the 'Before' period and one for the 'After' period), and the tool will:
+        Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         
         - Merge data on query terms.
         - Calculate ranking changes (e.g., average position change).
-        - Filter queries with significant ranking improvements or declines.
+        - Calculate changes in additional metrics (Clicks, Impressions, CTR).
+        - Filter queries with significant ranking changes.
         - Tokenize queries and apply the Apriori algorithm to extract frequent n-grams or associations.
         - Use BERT embeddings (via SentenceTransformer) to cluster and visualize semantically similar queries.
         """
@@ -1805,44 +1806,67 @@ def google_search_console_analysis_page():
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
             
-            # Expecting at least a "Query" column and an "Average Position" column
-            if "Query" not in df_before.columns or "Average Position" not in df_before.columns:
-                st.error("The 'Before' CSV must contain 'Query' and 'Average Position' columns.")
+            # Check for required columns ("Top queries" and "Position")
+            if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
+                st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                 return
-            if "Query" not in df_after.columns or "Average Position" not in df_after.columns:
-                st.error("The 'After' CSV must contain 'Query' and 'Average Position' columns.")
+            if "Top queries" not in df_after.columns or "Position" not in df_after.columns:
+                st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
                 return
+
+            # Rename columns to match internal naming
+            df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+            df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             
-            # Merge on Query
+            # Merge on Query; pandas will add suffixes for common columns (e.g., Clicks, Impressions, CTR)
             df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
-            # Calculate change: positive value means improvement (i.e., lower average position)
+            
+            # Calculate change in Average Position (positive means improvement – lower position numbers are better)
             df["Position_Change"] = df["Average Position_before"] - df["Average Position_after"]
-            st.subheader("Merged GSC Data with Ranking Changes")
+            
+            # Calculate additional metric changes if the columns exist
+            if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
+                df["Clicks_Change"] = df["Clicks_after"] - df["Clicks_before"]
+            if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
+                df["Impressions_Change"] = df["Impressions_after"] - df["Impressions_before"]
+            if "CTR" in df_before.columns and "CTR" in df_after.columns:
+                # If CTR is stored as a percentage string (e.g., "12.3%"), parse it to float first.
+                def parse_ctr(ctr):
+                    try:
+                        if isinstance(ctr, str) and "%" in ctr:
+                            return float(ctr.replace("%", ""))
+                        else:
+                            return float(ctr)
+                    except:
+                        return None
+                df["CTR_before"] = df["CTR_before"].apply(parse_ctr)
+                df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
+                df["CTR_Change"] = df["CTR_after"] - df["CTR_before"]
+            
+            st.subheader("Merged GSC Data with Ranking & Metric Changes")
             st.dataframe(df.head())
 
-            # Allow the user to set a threshold for significant change
+            # Allow the user to set a threshold for significant position change
             threshold = st.number_input("Enter minimum position change threshold (e.g., 1.0):", value=1.0)
             df_significant = df[abs(df["Position_Change"]) >= threshold]
             st.subheader("Queries with Significant Ranking Change")
             st.dataframe(df_significant)
-
+            
             # --- Apriori Analysis Section ---
             st.markdown("### Apriori Analysis on Query Terms")
-            # For simplicity, break each query into words (you can adjust to n-grams as needed)
-            transactions = df_significant["Query"].apply(lambda x: x.lower().split()).tolist()
+            # Tokenize each query into words
+            transactions = df_significant["Query"].apply(lambda x: str(x).lower().split()).tolist()
             
-            # Create a one-hot encoded DataFrame for the transactions
             from mlxtend.preprocessing import TransactionEncoder
             te = TransactionEncoder()
             te_ary = te.fit(transactions).transform(transactions)
             df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
             
-            # Apply the Apriori algorithm (requires mlxtend library)
             from mlxtend.frequent_patterns import apriori, association_rules
             freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
             st.subheader("Frequent Itemsets")
             st.dataframe(freq_items.sort_values(by="support", ascending=False))
-
+            
             rules = association_rules(freq_items, metric="confidence", min_threshold=0.5)
             st.subheader("Association Rules")
             st.dataframe(rules.sort_values(by="confidence", ascending=False))
@@ -1853,13 +1877,11 @@ def google_search_console_analysis_page():
             query_list = df_significant["Query"].tolist()
             embeddings = [get_embedding(query, model) for query in query_list]
             
-            # Use KMeans clustering (or another clustering algorithm)
             from sklearn.cluster import KMeans
             num_clusters = st.slider("Select number of clusters:", min_value=2, max_value=10, value=3)
             kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
             cluster_labels = kmeans.fit_predict(embeddings)
             
-            # Visualize clusters using Plotly
             from sklearn.decomposition import PCA
             pca = PCA(n_components=2)
             embeddings_2d = pca.fit_transform(embeddings)
@@ -1878,6 +1900,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 # ------------------------------------
