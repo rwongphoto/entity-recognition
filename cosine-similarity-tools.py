@@ -1786,7 +1786,7 @@ def main():
     elif tool == "Google Ads Search Term Analyzer":
         google_ads_search_term_analyzer_page()
     elif tool == "Google Keyword Planner Analyzer":
-    google_keyword_planner_analyzer_page()
+        google_keyword_planner_analyzer_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
