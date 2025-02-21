@@ -1530,13 +1530,13 @@ def google_ads_search_term_analyzer_page():
             # --- Display with Correct Sorting and Formatting ---
             # Get the column to sort by and the sort order from the user.
             sort_column = st.selectbox("Sort by Column:", options=df_ngram_performance.columns)
-            sort_ascending = st.checkbox("Sort Ascending", value=True)  # Default to ascending
+            sort_descending = st.checkbox("Sort Descending", value=True)  # Default to descending
 
             # Sort the DataFrame.  Use na_position to control 'None' placement.
-            if sort_ascending:
-                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=True, na_position='last')
+            if sort_descending:
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, descending=True, na_position='last')
             else:
-                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=False, na_position='first')
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, descending=False, na_position='first')
 
 
             # Apply formatting *after* sorting.
