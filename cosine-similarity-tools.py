@@ -1790,8 +1790,8 @@ def google_search_console_analysis_page():
         - Merge data on query terms.
         - Calculate ranking changes and additional metric comparisons.
         - Display before and after values side-by-side with a YOY change column for each metric.
+        - **Perform an initial Apriori analysis on query terms to uncover frequent term combinations.**
         - Classify queries into topics with descriptive labels and aggregate totals by topic.
-        - Perform Apriori analysis on query terms.
         """
     )
     
@@ -1853,6 +1853,18 @@ def google_search_console_analysis_page():
             df = df[base_cols]
             st.subheader("Merged GSC Data with Metric Comparisons")
             st.dataframe(df.head())
+            
+            # --- Initial Apriori Analysis on Query Terms ---
+            st.markdown("### Initial Apriori Analysis on Query Terms")
+            # Tokenize each query into words
+            transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
+            from mlxtend.preprocessing import TransactionEncoder
+            te = TransactionEncoder()
+            te_ary = te.fit(transactions).transform(transactions)
+            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+            from mlxtend.frequent_patterns import apriori
+            freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
+            st.dataframe(freq_items.sort_values(by="support", ascending=False))
             
             # --- Topic Classification ---
             st.markdown("### Topic Classification")
@@ -1921,30 +1933,11 @@ def google_search_console_analysis_page():
             aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
             st.dataframe(aggregated)
             
-            # --- Apriori Analysis Section ---
-            st.markdown("### Apriori Analysis on Query Terms")
-            transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
-            from mlxtend.preprocessing import TransactionEncoder
-            te = TransactionEncoder()
-            te_ary = te.fit(transactions).transform(transactions)
-            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-            from mlxtend.frequent_patterns import apriori
-            freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
-            st.subheader("Frequent Itemsets")
-            st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            
-            # --- Visualization: Instead of a scatter plot, show a bar chart of Average Position YOY by Topic ---
-            st.markdown("### Average Position YOY Change by Topic")
-            import plotly.express as px
-            fig = px.bar(aggregated, x="Topic", y="Position_YOY", 
-                         title="Average Position YOY Change by Topic",
-                         labels={"Position_YOY": "YOY Change in Position"})
-            st.plotly_chart(fig)
-            
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
