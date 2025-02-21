@@ -40,6 +40,9 @@ from sklearn.feature_extraction.text import CountVectorizer
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -1773,6 +1776,111 @@ def google_keyword_planner_analyzer_page():
             st.error(f"An error occurred: {e}")
 
 # ------------------------------------
+# NEW TOOL: Google Keyword Planner Analyzer
+# ------------------------------------
+
+def google_search_console_analysis_page():
+    st.header("Google Search Console Data Analysis")
+    st.markdown(
+        """
+        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
+        this tool lets you compare GSC data from two different time periods.
+        Upload CSV files (e.g., one for the 'Before' period and one for the 'After' period), and the tool will:
+        
+        - Merge data on query terms.
+        - Calculate ranking changes (e.g., average position change).
+        - Filter queries with significant ranking improvements or declines.
+        - Tokenize queries and apply the Apriori algorithm to extract frequent n-grams or associations.
+        - Use BERT embeddings (via SentenceTransformer) to cluster and visualize semantically similar queries.
+        """
+    )
+    
+    st.markdown("### Upload GSC Data")
+    uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
+    uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
+
+    if uploaded_file_before is not None and uploaded_file_after is not None:
+        try:
+            # Read CSV files
+            df_before = pd.read_csv(uploaded_file_before)
+            df_after = pd.read_csv(uploaded_file_after)
+            
+            # Expecting at least a "Query" column and an "Average Position" column
+            if "Query" not in df_before.columns or "Average Position" not in df_before.columns:
+                st.error("The 'Before' CSV must contain 'Query' and 'Average Position' columns.")
+                return
+            if "Query" not in df_after.columns or "Average Position" not in df_after.columns:
+                st.error("The 'After' CSV must contain 'Query' and 'Average Position' columns.")
+                return
+            
+            # Merge on Query
+            df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+            # Calculate change: positive value means improvement (i.e., lower average position)
+            df["Position_Change"] = df["Average Position_before"] - df["Average Position_after"]
+            st.subheader("Merged GSC Data with Ranking Changes")
+            st.dataframe(df.head())
+
+            # Allow the user to set a threshold for significant change
+            threshold = st.number_input("Enter minimum position change threshold (e.g., 1.0):", value=1.0)
+            df_significant = df[abs(df["Position_Change"]) >= threshold]
+            st.subheader("Queries with Significant Ranking Change")
+            st.dataframe(df_significant)
+
+            # --- Apriori Analysis Section ---
+            st.markdown("### Apriori Analysis on Query Terms")
+            # For simplicity, break each query into words (you can adjust to n-grams as needed)
+            transactions = df_significant["Query"].apply(lambda x: x.lower().split()).tolist()
+            
+            # Create a one-hot encoded DataFrame for the transactions
+            from mlxtend.preprocessing import TransactionEncoder
+            te = TransactionEncoder()
+            te_ary = te.fit(transactions).transform(transactions)
+            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+            
+            # Apply the Apriori algorithm (requires mlxtend library)
+            from mlxtend.frequent_patterns import apriori, association_rules
+            freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
+            st.subheader("Frequent Itemsets")
+            st.dataframe(freq_items.sort_values(by="support", ascending=False))
+
+            rules = association_rules(freq_items, metric="confidence", min_threshold=0.5)
+            st.subheader("Association Rules")
+            st.dataframe(rules.sort_values(by="confidence", ascending=False))
+            
+            # --- BERT Embedding and Clustering Section ---
+            st.markdown("### Query Clustering with BERT Embeddings")
+            model = initialize_sentence_transformer()
+            query_list = df_significant["Query"].tolist()
+            embeddings = [get_embedding(query, model) for query in query_list]
+            
+            # Use KMeans clustering (or another clustering algorithm)
+            from sklearn.cluster import KMeans
+            num_clusters = st.slider("Select number of clusters:", min_value=2, max_value=10, value=3)
+            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
+            cluster_labels = kmeans.fit_predict(embeddings)
+            
+            # Visualize clusters using Plotly
+            from sklearn.decomposition import PCA
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(embeddings)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Query': query_list,
+                'Cluster': cluster_labels.astype(str)
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Query',
+                             title="BERT Embedding Clusters of Queries")
+            fig.update_traces(textposition='top center')
+            st.plotly_chart(fig)
+            
+        except Exception as e:
+            st.error(f"An error occurred while processing the files: {e}")
+    else:
+        st.info("Please upload both GSC CSV files to start the analysis.")
+
+
+# ------------------------------------
 # Main Streamlit App
 # ------------------------------------
 def main():
@@ -1808,6 +1916,7 @@ def main():
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
         "Google Keyword Planner Analyzer" # Add this line
+        "Google Search Console Analyzer" # Add this line
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1835,6 +1944,8 @@ def main():
         google_ads_search_term_analyzer_page()
     elif tool == "Google Keyword Planner Analyzer":
         google_keyword_planner_analyzer_page()
+    elif tool == "Google Search Console Analyzer":
+        google_search_console_analysis_page():
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
