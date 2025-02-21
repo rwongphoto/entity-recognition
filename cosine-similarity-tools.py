@@ -1590,8 +1590,7 @@ def google_keyword_planner_analyzer_page():
 
     if uploaded_file is not None and target_keyword:
         try:
-            # --- Data Preprocessing & Validation ---
-            # (Same as before - the robust data loading code)
+            # --- Data Preprocessing & Validation --- (Same robust data loading)
             df_raw = pd.read_excel(uploaded_file, header=None)
             header_row_index = None
             for i in range(len(df_raw)):
@@ -1650,7 +1649,7 @@ def google_keyword_planner_analyzer_page():
                 return
             filtered_embeddings = np.vstack(filtered_embeddings)
 
-            # --- Topic Modeling (Clustering) --- (Slight change for dendrogram)
+            # --- Topic Modeling (Clustering) --- (Back to original, but with 'clusters' defined early)
             st.subheader("Clustering Settings")
             algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
             n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
@@ -1682,15 +1681,18 @@ def google_keyword_planner_analyzer_page():
                         rep_keyword = cluster_grams[0]
                     rep_keywords[i] = rep_keyword
 
-            # --- NEW: Create Detailed Cluster DataFrame ---
-            df["Cluster"] = -1  # Initialize a 'Cluster' column with -1 (unassigned)
+            # --- Create 'clusters' dictionary HERE (before detailed DF and trend charts) ---
+            clusters = {}
+            for keyword, label in zip(filtered_keywords, cluster_labels):
+                clusters.setdefault(label, []).append(keyword)
+
+            # --- Create Detailed Cluster DataFrame --- (Same as before)
+            df["Cluster"] = -1
             for i, keyword in enumerate(filtered_keywords):
-                # Find the index of the keyword in the *original* DataFrame
                 df.loc[df['Keyword'] == keyword, 'Cluster'] = cluster_labels[i]
+            detailed_cluster_df = df[df["Cluster"] != -1]
 
-            detailed_cluster_df = df[df["Cluster"] != -1]  # Keep only clustered keywords
-
-            # --- NEW: Display Detailed Table ---
+            # --- Display Detailed Table --- (Same as before)
             st.subheader("Keyword Clusters (Detailed View)")
             for cluster_num in sorted(detailed_cluster_df["Cluster"].unique()):
                 st.markdown(f"**Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})**")
@@ -1698,20 +1700,28 @@ def google_keyword_planner_analyzer_page():
                 st.dataframe(cluster_subset)
 
 
-            # --- NEW: Dendrogram Visualization ---
-            st.subheader("Cluster Dendrogram")
-            if len(filtered_keywords) > 1:  # Dendrogram requires at least 2 data points
-                dendrogram = ff.create_dendrogram(filtered_embeddings, orientation='left',
-                                                labels=filtered_keywords)
-                dendrogram.update_layout(width=800, height=600)
-                st.plotly_chart(dendrogram)
-            else:
-                st.write("Not enough keywords for dendrogram visualization.")
+            # --- NEW: Aggregate Cluster Data ---
+            st.subheader("Aggregated Cluster Data")
+            aggregated_data = []
+            for cluster_num, keywords in clusters.items():
+                cluster_df = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
+                total_avg_searches = cluster_df["Avg. monthly searches"].sum()
+                # Add other aggregations as needed (e.g., average competition, etc.)
+                aggregated_data.append({
+                    "Cluster": cluster_num,
+                    "Representative Keyword": rep_keywords.get(cluster_num, 'N/A'),
+                    "Total Avg. Monthly Searches": total_avg_searches,
+                    # Add other aggregated metrics here
+                })
 
-            # --- Trend Visualization --- (Same as before)
+            aggregated_df = pd.DataFrame(aggregated_data)
+            st.dataframe(aggregated_df)
+
+
+            # --- Trend Visualization --- (Now uses 'clusters', defined above)
             month_cols = [col for col in df.columns if "Searches:" in col]
             st.subheader("Cluster Search Trends")
-            for cluster_num, keywords in clusters.items():
+            for cluster_num, keywords in clusters.items():  # 'clusters' is now defined
                 cluster_df = df[df['Keyword'].isin(keywords)].copy()
                 for month_col in month_cols:
                     if month_col not in cluster_df.columns:
@@ -1727,6 +1737,7 @@ def google_keyword_planner_analyzer_page():
                     xaxis_tickangle=-45
                 )
                 st.plotly_chart(fig_trend)
+
         except Exception as e:
             st.error(f"An error occurred: {e}")
 
