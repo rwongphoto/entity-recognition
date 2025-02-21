@@ -1791,24 +1791,22 @@ def google_search_console_analysis_page():
         - Calculate ranking changes and additional metric comparisons.
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
         - Classify queries into topics with descriptive labels (for Query data).
-        - Aggregate metrics by topic (for Query data) or perform Apriori analysis (for Page data).
+        - Aggregate metrics by topic (for Query data) or perform Apriori analysis (for Page data, labeling subdirectories as topics).
         """
     )
 
     st.markdown("### Upload GSC Data")
-    data_type = st.radio("Select Data Type:", ["Query Data", "Page Data"])  # Data type selection
+    data_type = st.radio("Select Data Type:", ["Query Data", "Page Data"])
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
 
     if uploaded_file_before is not None and uploaded_file_after is not None:
         try:
-            # Read CSV files
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
 
-            # --- Data Type Specific Processing ---
             if data_type == "Query Data":
-                # --- Existing Query Data Logic ---
+                # --- Existing Query Data Logic --- (No changes here)
                 if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                     st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                     return
@@ -1839,7 +1837,6 @@ def google_search_console_analysis_page():
                     df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                     df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
 
-                # Calculate YOY percentage changes (with 1 decimal place formatting)
                 df["Position_YOY_pct"] = df.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
                                                   if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
                 if "Clicks_before" in df.columns:
@@ -1861,8 +1858,6 @@ def google_search_console_analysis_page():
                     base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
                 df = df[base_cols]
 
-
-                # --- Topic Classification (Query Data Only) ---
                 st.markdown("### Topic Classification and Combined Data")
                 model = initialize_sentence_transformer()
                 queries = df["Query"].tolist()
@@ -1876,7 +1871,6 @@ def google_search_console_analysis_page():
 
                 import collections
                 import nltk
-                # nltk.download('stopwords')  # This should only be needed once, globally
                 stop_words = set(nltk.corpus.stopwords.words('english'))
 
                 def generate_topic_label(queries_in_topic):
@@ -1899,8 +1893,6 @@ def google_search_console_analysis_page():
                     topic_labels_desc[topic] = generate_topic_label(topic_queries)
                 df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
 
-
-                # Display with 1 decimal place for YOY % change
                 format_dict = {}
                 if "Position_YOY_pct" in df.columns:
                     format_dict["Position_YOY_pct"] = "{:.1f}%"
@@ -1913,11 +1905,10 @@ def google_search_console_analysis_page():
 
                 st.dataframe(df.style.format(format_dict))
 
-
                 with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
                     st.markdown("### Initial Apriori Analysis on Query Terms")
                     transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
-                    from mlxtend.preprocessing import TransactionEncoder  # Import here
+                    from mlxtend.preprocessing import TransactionEncoder
                     te = TransactionEncoder()
                     te_ary = te.fit(transactions).transform(transactions)
                     df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
@@ -1925,7 +1916,6 @@ def google_search_console_analysis_page():
                     freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
                     st.dataframe(freq_items.sort_values(by="support", ascending=False))
 
-                # --- Aggregated Metrics by Topic (Query Data) ---
                 st.markdown("### Aggregated Metrics by Topic")
                 agg_dict = {
                     "Average Position_before": "mean",
@@ -1964,8 +1954,7 @@ def google_search_console_analysis_page():
                     aggregated["CTR_YOY_pct"] = aggregated.apply(lambda row: ((row["CTR_YOY"] / row["CTR_before"] * 100)
                                                                  if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
 
-                # Format YOY % Change columns as percentages (1 decimal place)
-                format_dict_agg = {}  # Separate format_dict for aggregated data
+                format_dict_agg = {}
                 if "Position_YOY_pct" in aggregated.columns:
                     format_dict_agg["Position_YOY_pct"] = "{:.1f}%"
                 if "Clicks_YOY_pct" in aggregated.columns:
@@ -1978,7 +1967,6 @@ def google_search_console_analysis_page():
                 display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
                 st.dataframe(aggregated.head(display_count).style.format(format_dict_agg))
 
-                # --- Visualization: Grouped Bar Chart (Query Data) ---
                 st.markdown("### YOY % Change by Topic for Each Metric")
                 import plotly.express as px
                 vis_data = []
@@ -2012,10 +2000,8 @@ def google_search_console_analysis_page():
                 df_after.rename(columns={"Top pages": "Page", "Position": "Average Position"}, inplace=True)
                 df = pd.merge(df_before, df_after, on="Page", suffixes=("_before", "_after"))
 
-                # Calculate YOY change for Average Position
                 df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
 
-                # Calculate YOY for other metrics if they exist
                 if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
                     df["Clicks_YOY"] = df["Clicks_after"] - df["Clicks_before"]
                 if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
@@ -2034,7 +2020,6 @@ def google_search_console_analysis_page():
                     df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                     df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
 
-                # Calculate YOY percentage changes (1 decimal place)
                 df["Position_YOY_pct"] = df.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
                                                               if row["Average Position_before"] and row["Average Position_before"] != 0 else None),
                                                  axis=1)
@@ -2051,7 +2036,6 @@ def google_search_console_analysis_page():
                                                                if row["CTR_before"] and row["CTR_before"] != 0 else None),
                                                  axis=1)
 
-                # Rearrange columns
                 base_cols = ["Page", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
                 if "Clicks_before" in df.columns:
                     base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"]
@@ -2061,7 +2045,6 @@ def google_search_console_analysis_page():
                     base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
                 df = df[base_cols]
 
-                # Display with 1 decimal place for YOY % Change
                 format_dict = {}
                 if "Position_YOY_pct" in df.columns:
                     format_dict["Position_YOY_pct"] = "{:.1f}%"
@@ -2071,36 +2054,34 @@ def google_search_console_analysis_page():
                     format_dict["Impressions_YOY_pct"] = "{:.1f}%"
                 if "CTR_YOY_pct" in df.columns:
                     format_dict["CTR_YOY_pct"] = "{:.1f}%"
-                st.dataframe(df.style.format(format_dict))  # Apply formatting
+                st.dataframe(df.style.format(format_dict))
 
-                # --- Apriori Analysis for Page Data ---
-                st.markdown("### Apriori Analysis on Page URLs")
-                # Split URLs into segments
+                st.markdown("### Apriori Analysis on Page URLs (Subdirectories as Topics)")
+
                 def segment_url(url):
                     try:
-                        # Remove protocol and domain, create cumulative segments
                         path = url.split("//", 1)[1].split("/", 1)[1]
                         segments = []
                         cumulative_path = ""
                         for part in path.split("/"):
-                            if part:  # Avoid empty segments
+                            if part:
                                 cumulative_path += "/" + part
                                 segments.append(cumulative_path)
                         return segments
                     except IndexError:
-                        return [] # Handle cases where URL structure is unexpected
+                        return []
                     except Exception as e:
                         st.error(f"Error segmenting URL {url}: {e}")
                         return []
 
                 transactions = df["Page"].apply(segment_url).tolist()
 
-                # Apriori parameters (user-configurable)
                 min_support = st.number_input("Minimum Support for Apriori:", min_value=0.01, max_value=1.0, value=0.05, step=0.01)
-                min_confidence = st.number_input("Minimum Confidence for Association Rules:", min_value=0.01, max_value=1.0, value=0.1, step=0.01)
+                # Remove min_confidence
+                # min_confidence = st.number_input("Minimum Confidence for Association Rules:", min_value=0.01, max_value=1.0, value=0.1, step=0.01)
 
-                from mlxtend.preprocessing import TransactionEncoder  # Import here!
-                from mlxtend.frequent_patterns import apriori, association_rules #and here
+                from mlxtend.preprocessing import TransactionEncoder
+                from mlxtend.frequent_patterns import apriori, association_rules
 
                 te = TransactionEncoder()
                 te_ary = te.fit(transactions).transform(transactions)
@@ -2108,25 +2089,29 @@ def google_search_console_analysis_page():
                 freq_items = apriori(df_transactions, min_support=min_support, use_colnames=True)
 
                 if freq_items.empty:
-                    st.warning("No frequent itemsets found with the given minimum support.  Try lowering the minimum support.")
-                else:
-                    st.markdown("#### Frequent Itemsets")
-                    st.dataframe(freq_items.sort_values(by="support", ascending=False))
+                    st.warning("No frequent itemsets found with the given minimum support. Try lowering the minimum support.")
 
-                    rules = association_rules(freq_items, metric="confidence", min_threshold=min_confidence)
+                else:
+                    # --- Create and Display Topics (Frequent Itemsets) ---
+                    st.markdown("#### Frequent Itemsets (Subdirectory Topics)")
+                    freq_items["topic"] = freq_items["itemsets"].apply(lambda x: ", ".join(list(x))).str.replace("/", "", n=1) #Added .str.replace to get rid of leading /
+                    freq_items = freq_items.rename(columns={'support': "Support", "itemsets": "URL Segments"})
+                    st.dataframe(freq_items[["topic", "Support"]].sort_values(by="Support", ascending=False))
+
+
+                    # --- Association Rules (without confidence filtering) ---
+                    rules = association_rules(freq_items, metric="support", min_threshold=0)  # Use support, threshold=0
                     if rules.empty:
-                        st.warning("No association rules found with the given minimum confidence.  Try lowering the minimum confidence.")
+                         st.warning("No association rules were found")
                     else:
                         st.markdown("#### Association Rules")
-                        # Format antecedents and consequents to be more readable
                         rules['antecedents'] = rules['antecedents'].apply(lambda x: list(x))
                         rules['consequents'] = rules['consequents'].apply(lambda x: list(x))
                         st.dataframe(rules)
 
-
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
-            # st.exception(e)  # Optionally show the full traceback for debugging
+
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
 
