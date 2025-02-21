@@ -1413,144 +1413,90 @@ def paa_extraction_clustering_page():
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
 def google_ads_search_term_analyzer_page():
-    st.header("Google Ads Search Term Analyzer")
-    st.markdown(
-        """
-        Upload an Excel file (.xlsx) from your Google Ads search terms report and analyze it.
-        This tool extracts n-grams.
-        """
-    )
-
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-
-    if uploaded_file is not None:
-        try:
-            # Read the Excel file, skipping the first two rows.
-            df = pd.read_excel(uploaded_file, skiprows=2)
-
-            # Rename columns for consistency and readability.
-            df = df.rename(columns={
-                "Search term": "Search term",
-                "Match type": "Match type",
-                "Added/Excluded": "Added/Excluded",
-                "Campaign": "Campaign",
-                "Ad group": "Ad group",
-                "Clicks": "Clicks",
-                "Impr.": "Impressions",
-                "Currency code": "Currency code",
-                "Cost": "Cost",
-                "Avg. CPC": "Avg. CPC",
-                "Conv. rate": "Conversion Rate",
-                "Conversions": "Conversions",
-                "Cost / conv.": "Cost per Conversion"
-            })
-
-           # Input Validation (check for required columns - this part is correct and unchanged)
-            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]  # Add other required columns.
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            if missing_cols:
-                st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-                return  # Stop execution if required columns are missing
-
-            # Convert numeric columns, handling errors (correct and unchanged)
-            for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
-                try:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')  # Convert to numeric, invalid values become NaN
-                    df[col] = df[col].fillna(0)  # Replace NaN with 0
-                except KeyError:  # This should be caught by the previous check, but it's good to be safe
-                    st.error(f"Column '{col}' not found in the uploaded Excel file.")
-                    return
-
-            st.subheader("N-gram Analysis")
-            n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
-            min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
-
-            # --- N-gram Extraction and Aggregation ---
-            stop_words = set(stopwords.words('english'))
-            lemmatizer = WordNetLemmatizer()
-
-            def extract_ngrams(text, n):
-                # Ensure input is a string.
-                text = str(text).lower()
-                tokens = word_tokenize(text)
-                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+    st.header("Google Ads Search Term Analyzer with Topic Modeling")
+    
+    uploaded_file = st.file_uploader("Upload Google Ads Search Term Report (Excel format)", type=["xlsx"])
+    
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file, skiprows=2)
+        df = df.rename(columns={
+            "Search term": "Search Term",
+            "Clicks": "Clicks",
+            "Impr.": "Impressions",
+            "Cost": "Cost",
+            "Conversions": "Conversions"
+        })
+        df.fillna(0, inplace=True)
+        
+        # Compute conversion efficiency
+        df["Conversion Efficiency"] = df["Conversions"] / df["Clicks"]
+        df["Conversion Efficiency"].replace([np.inf, -np.inf], 0, inplace=True)
+        df.sort_values(by="Conversion Efficiency", ascending=False, inplace=True)
+        
+        # User input settings
+        n_value = st.selectbox("Select N-gram size:", options=[1, 2, 3, 4], index=1)
+        use_skip_grams = st.checkbox("Enable Skip-Grams")
+        num_topics = st.slider("Number of Topics:", min_value=2, max_value=10, value=5)
+        min_freq = st.number_input("Minimum Frequency for N-grams:", value=2, min_value=1)
+        
+        stop_words = set(stopwords.words('english'))
+        lemmatizer = WordNetLemmatizer()
+        
+        def extract_ngrams(text, n, skip_grams=False):
+            text = str(text).lower()
+            tokens = word_tokenize(text)
+            tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+            if skip_grams and len(tokens) >= n:
+                return [" ".join(comb) for comb in combinations(tokens, n)]
+            else:
                 ngrams_list = list(nltk.ngrams(tokens, n))
                 return [" ".join(gram) for gram in ngrams_list]
-
-            all_ngrams = []
-            for term in df["Search term"]:
-                all_ngrams.extend(extract_ngrams(term, n_value))
-
-            ngram_counts = Counter(all_ngrams)
-            filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
-
-            if not filtered_ngrams:
-                st.warning("No n-grams found with the specified minimum frequency.")
-                return
-
+        
+        all_ngrams = []
+        for term in df["Search Term"]:
+            all_ngrams.extend(extract_ngrams(term, n_value, use_skip_grams))
+        
+        ngram_counts = Counter(all_ngrams)
+        filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_freq}
+        
+        if not filtered_ngrams:
+            st.warning("No significant n-grams found with the given frequency settings.")
+        else:
+            st.subheader("N-gram Performance Table")
             df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
-
-            search_term_to_ngrams = {}
-            for term in df["Search term"]:
-                search_term_to_ngrams[term] = extract_ngrams(term, n_value)
-
-            ngram_performance = {}
-
-            for index, row in df.iterrows():
-                search_term = row["Search term"]
-                for ngram in search_term_to_ngrams[search_term]:
-                    if ngram in filtered_ngrams:
-                        if ngram not in ngram_performance:
-                            ngram_performance[ngram] = {
-                                "Clicks": 0,
-                                "Impressions": 0,
-                                "Cost": 0,
-                                "Conversions": 0
-                            }
-                        ngram_performance[ngram]["Clicks"] += row["Clicks"]
-                        ngram_performance[ngram]["Impressions"] += row["Impressions"]
-                        ngram_performance[ngram]["Cost"] += row["Cost"]
-                        ngram_performance[ngram]["Conversions"] += row["Conversions"]
-
-
-            df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
-            df_ngram_performance.index.name = "N-gram"
-            df_ngram_performance = df_ngram_performance.reset_index()
-
-            df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
-            df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-           # Calculate "Cost per Conversion," handling division by zero
-            df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
-                lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
-            )
-            # Convert 'Cost per Conversion' to numeric, handling 'None'
-            df_ngram_performance['Cost per Conversion'] = df_ngram_performance['Cost per Conversion'].apply(lambda x: pd.NA if x == 'None' else x)
-            df_ngram_performance['Cost per Conversion'] = pd.to_numeric(df_ngram_performance['Cost per Conversion'], errors='coerce')
-
-            # --- Display with Correct Sorting and Formatting ---
-            # Get the column to sort by and the sort order from the user.
-            sort_column = st.selectbox("Sort by Column:", options=df_ngram_performance.columns)
-            sort_ascending = st.checkbox("Sort Ascending", value=True)  # Default to ascending
-
-            # Sort the DataFrame.  Use na_position to control 'None' placement.
-            if sort_ascending:
-                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=True, na_position='last')
-            else:
-                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=False, na_position='first')
-
-
-            # Apply formatting *after* sorting.
-            st.dataframe(df_ngram_performance.style.format({
-                "Cost": "${:,.2f}",
-                "Cost per Conversion": "${:,.2f}",  # Now correctly formatted
-                "CTR": "{:,.2f}%",
-                "Conversion Rate": "{:,.2f}%",
-                "Conversions":"{:,.1f}"
-            }))
-
-
-        except Exception as e:
-            st.error(f"An error occurred while processing the Excel file: {e}")
+            df_ngrams = df_ngrams.merge(df, left_on="N-gram", right_on="Search Term", how="inner")
+            df_ngrams = df_ngrams[["N-gram", "Frequency", "Clicks", "Impressions", "Cost", "Conversions", "Conversion Efficiency"]]
+            st.dataframe(df_ngrams)
+            
+            vectorizer = CountVectorizer()
+            ngram_matrix = vectorizer.fit_transform(df_ngrams["N-gram"])
+            lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
+            lda.fit(ngram_matrix)
+            
+            topic_scores = lda.transform(ngram_matrix)
+            topic_conversion_efficiency = np.dot(topic_scores.T, df_ngrams["Conversion Efficiency"].values.reshape(-1, 1)).flatten()
+            topic_volume = np.dot(topic_scores.T, df_ngrams["Conversions"].values.reshape(-1, 1)).flatten()
+            
+            topic_data = pd.DataFrame({
+                "Topic": [f"Topic {i+1}" for i in range(num_topics)],
+                "Conversion Efficiency": topic_conversion_efficiency,
+                "Conversion Volume": topic_volume
+            })
+            
+            st.subheader("Topic Modeling Results")
+            st.dataframe(topic_data.sort_values(by="Conversion Efficiency", ascending=False))
+            
+            st.subheader("N-gram Topic Clustering Visualization")
+            pca = PCA(n_components=2)
+            embeddings_2d = pca.fit_transform(lda.components_)
+            df_plot = pd.DataFrame({
+                'x': embeddings_2d[:, 0],
+                'y': embeddings_2d[:, 1],
+                'Topic': [f"Topic {i+1}" for i in range(num_topics)]
+            })
+            fig = px.scatter(df_plot, x='x', y='y', color='Topic', text='Topic', title="N-gram Topic Clusters")
+            fig.update_traces(textposition='top center')
+            st.plotly_chart(fig)
 
           
 
