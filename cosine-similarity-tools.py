@@ -1796,7 +1796,7 @@ def google_search_console_analysis_page():
     )
 
     st.markdown("### Upload GSC Data")
-    data_type = st.radio("Select Data Type:", ["Query Data", "Page Data"])  # NEW: Data type selection
+    data_type = st.radio("Select Data Type:", ["Query Data", "Page Data"])  # Data type selection
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
 
@@ -1808,7 +1808,7 @@ def google_search_console_analysis_page():
 
             # --- Data Type Specific Processing ---
             if data_type == "Query Data":
-                # --- Existing Query Data Logic --- (with minor updates)
+                # --- Existing Query Data Logic ---
                 if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                     st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                     return
@@ -1917,7 +1917,7 @@ def google_search_console_analysis_page():
                 with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
                     st.markdown("### Initial Apriori Analysis on Query Terms")
                     transactions = df["Query"].apply(lambda x: str(x).lower().split()).tolist()
-                    from mlxtend.preprocessing import TransactionEncoder
+                    from mlxtend.preprocessing import TransactionEncoder  # Import here
                     te = TransactionEncoder()
                     te_ary = te.fit(transactions).transform(transactions)
                     df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
@@ -2000,7 +2000,7 @@ def google_search_console_analysis_page():
 
 
             elif data_type == "Page Data":
-                # --- NEW: Page Data Logic ---
+                # --- Page Data Logic ---
                 if "Top pages" not in df_before.columns or "Position" not in df_before.columns:
                     st.error("The 'Before' CSV must contain 'Top pages' and 'Position' columns.")
                     return
@@ -2090,6 +2090,8 @@ def google_search_console_analysis_page():
                 min_support = st.number_input("Minimum Support for Apriori:", min_value=0.01, max_value=1.0, value=0.05, step=0.01)
                 min_confidence = st.number_input("Minimum Confidence for Association Rules:", min_value=0.01, max_value=1.0, value=0.1, step=0.01)
 
+                from mlxtend.preprocessing import TransactionEncoder  # Import here!
+                from mlxtend.frequent_patterns import apriori, association_rules #and here
 
                 te = TransactionEncoder()
                 te_ary = te.fit(transactions).transform(transactions)
@@ -2115,6 +2117,7 @@ def google_search_console_analysis_page():
 
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
+            # st.exception(e)  # Optionally show the full traceback for debugging
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
 
