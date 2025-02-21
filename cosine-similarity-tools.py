@@ -1803,8 +1803,7 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
-        this tool lets you compare GSC data from two different time periods, either by
+        This tool lets you compare GSC data from two different time periods, either by
         fetching data directly from the Google Search Console API or by uploading CSV files.
         """
     )
@@ -1812,9 +1811,7 @@ def google_search_console_analysis_page():
     # --- Data Source Selection ---
     data_source = st.radio("Select Data Source:", ["Google Search Console API", "Upload CSV Files"])
 
-    # Initialize df_before and df_after to None
-    df_before = None
-    df_after = None
+    # Initialize df_before and df_after to None  <- REMOVED
 
     if data_source == "Google Search Console API":
         # --- User Inputs (API) ---
@@ -1879,6 +1876,11 @@ def google_search_console_analysis_page():
                     numeric_cols = ['Clicks', 'Impressions', 'Average Position']
                     df_before[numeric_cols] = df_before[numeric_cols].apply(pd.to_numeric, errors='coerce')
                     df_before['CTR'] = pd.to_numeric(df_before['CTR'].astype(str).str.rstrip('%'), errors='coerce') / 100
+                    # --- Check column names AFTER renaming ---
+                    if "Query" not in df_before.columns or "Average Position" not in df_before.columns:
+                        st.error("The 'Before' data from the API is missing required columns ('Query', 'Average Position').")
+                        return
+
 
                 with st.spinner("Fetching 'After' data from Google Search Console..."):
                     all_data_after = []
@@ -1907,6 +1909,10 @@ def google_search_console_analysis_page():
                     numeric_cols = ['Clicks', 'Impressions', 'Average Position']
                     df_after[numeric_cols] = df_after[numeric_cols].apply(pd.to_numeric, errors='coerce')
                     df_after['CTR'] = pd.to_numeric(df_after['CTR'].astype(str).str.rstrip('%'), errors='coerce') / 100
+                    # --- Check column names AFTER renaming ---
+                    if "Query" not in df_after.columns or "Average Position" not in df_after.columns:
+                        st.error("The 'After' data from the API is missing required columns ('Query', 'Average Position').")
+                        return
 
             except Exception as e:
                 st.error(f"An error occurred during API setup or data retrieval: {e}")
@@ -1927,28 +1933,27 @@ def google_search_console_analysis_page():
         try:
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
+             # --- Check column names BEFORE renaming (for CSV upload) ---
+            if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
+                st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
+                return
+            if "Top queries" not in df_after.columns or "Position" not in df_after.columns:
+                st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
+                return
+
+            df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+            df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+
         except Exception as e:
             st.error(f"Error reading CSV files: {e}")
             return
 
+
+
+
     # --- Common Data Processing (Both API and CSV) ---
-    # Check if df_before and df_after were successfully created
-    if df_before is None or df_after is None:
-        st.error("Data loading failed.  Please check your inputs.")
-        return  # Exit if data loading failed
 
-    try:
-        if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
-            st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
-            return
-        if "Top queries" not in df_after.columns or "Position" not in df_after.columns:
-            st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
-            return
-
-        if "Top queries" in df_before.columns:
-           df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
-        if "Top queries" in df_after.columns:
-            df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+    try:  #Wrap in try/except block
         df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
 
         df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
@@ -1971,10 +1976,8 @@ def google_search_console_analysis_page():
             df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
             df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
 
-        # The rest of your calculations and dataframe setup...
         df["Position_YOY_pct"] = df.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
                                         if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
-
         if "Clicks_before" in df.columns:
             df["Clicks_YOY_pct"] = df.apply(lambda row: ((row["Clicks_YOY"] / row["Clicks_before"] * 100)
                                             if row["Clicks_before"] and row["Clicks_before"] != 0 else None), axis=1)
@@ -1983,16 +1986,15 @@ def google_search_console_analysis_page():
                                                  if row["Impressions_before"] and row["Impressions_before"] != 0 else None), axis=1)
         if "CTR_before" in df.columns:
             df["CTR_YOY_pct"] = df.apply(lambda row: ((row["CTR_YOY"] / row["CTR_before"] * 100)
-                                        if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
-        base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
+                                            if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
 
+        base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
         if "Clicks_before" in df.columns:
             base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"]
         if "Impressions_before" in df.columns:
             base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"]
         if "CTR_before" in df.columns:
             base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
-
         df = df[base_cols]
 
 
