@@ -1450,7 +1450,7 @@ if uploaded_file is not None:
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-            return
+                return
 
         # Convert numeric columns, handling errors.
         for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
