@@ -29,7 +29,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 # Import SentenceTransformer from sentence_transformers
 from sentence_transformers import SentenceTransformer
 
-#NEW IMPORTS
+# NEW IMPORTS
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
@@ -119,7 +119,7 @@ def extract_text_from_url(url):
         else:
             st.error(f"Unexpected error fetching {url}: {error_str}")
         return None
-        
+
 @st.cache_data(ttl=86400)
 def extract_relevant_text_from_url(url):
     try:
@@ -397,7 +397,7 @@ def url_analysis_dashboard_page():
                     for el in custom_elements:
                         custom_words.extend(el.get_text().split())
 
-                    #Also include tables
+                    # Also include tables
                     for table in body.find_all("table"):
                         for row in table.find_all("tr"):
                             for cell in row.find_all(["td", "th"]):
@@ -444,7 +444,6 @@ def url_analysis_dashboard_page():
                     entities = identify_entities(total_text, nlp_model) if total_text and nlp_model else []
                     unique_entity_count = len(set([ent[0] for ent in entities]))
                     flesch_kincaid = textstat.flesch_kincaid_grade(total_text) if total_text else None
-
 
                     data.append([
                         url,
@@ -500,7 +499,6 @@ def url_analysis_dashboard_page():
                 "Lists/Tables Present",
                 "# of Images",
                 "# of Videos",
-
             ]]
 
             df.columns = [
@@ -523,7 +521,6 @@ def url_analysis_dashboard_page():
             # Convert columns to numeric where applicable
             df["Cosine Similarity"] = pd.to_numeric(df["Cosine Similarity"], errors="coerce")
             df["Grade Level"] = pd.to_numeric(df["Grade Level"], errors="coerce")
-
 
             st.dataframe(df)
 
@@ -854,7 +851,6 @@ def named_entity_barchart_page():
                         if text_from_url:
                             st.write(f"**Text from {url}:**")
                             url_entities = identify_entities(text_from_url, nlp_model)
-                            # Count every occurrence for this URL
                             url_entity_counts = count_entities_total(url_entities, nlp_model)
                             for (entity, label), count in url_entity_counts.most_common():
                                 st.write(f"- {entity} ({label}): {count}")
@@ -862,7 +858,6 @@ def named_entity_barchart_page():
                             st.write(f"No text for {url}")
             else:
                 st.warning("No relevant entities found. Please check your text or URL(s).")
-
 
 # ------------------------------------
 # Semantic Gap Analyzer (without clustering)
@@ -1055,11 +1050,6 @@ def ngram_tfidf_analysis_page():
             else:
                 st.write(f"No gap n-grams for competitor: {source}")
 
-
-
-# ------------------------------------
-# Keyword Clustering Tool (with clustering)
-# ------------------------------------
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
     st.markdown(
@@ -1262,7 +1252,6 @@ def keyword_clustering_from_gap_page():
             for gram in gram_list:
                 st.write(f" - {gram}")
 
-
 def paa_extraction_clustering_page():
     st.header("People Also Asked Recommendations")
     st.markdown(
@@ -1278,13 +1267,9 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        # Define user_agent once to use throughout
         user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
                       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
-                      
         
-        # --- Helper function to extract PAA questions for a given query ---
-        # This function clicks on each PAA element recursively up to max_depth times.
         def get_paa(query, max_depth=10):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
@@ -1293,14 +1278,13 @@ def paa_extraction_clustering_page():
             chrome_options.add_argument(f"user-agent={user_agent}")
             driver = webdriver.Chrome(options=chrome_options)
             driver.get("https://www.google.com/search?q=" + query)
-            time.sleep(3)  # Allow page to load
+            time.sleep(3)
             
             paa_set = set()
             def extract_paa_recursive(depth, max_depth):
                 if depth > max_depth:
                     return
                 try:
-                    # Use a CSS selector for PAA questions; update as needed
                     elements = driver.find_elements(By.CSS_SELECTOR, "div[jsname='Cpkphb']")
                     if not elements:
                         elements = driver.find_elements(By.XPATH, "//div[@class='related-question-pair']")
@@ -1310,7 +1294,7 @@ def paa_extraction_clustering_page():
                             paa_set.add(question_text)
                             try:
                                 driver.execute_script("arguments[0].click();", el)
-                                time.sleep(2)  # Allow time for new questions to load
+                                time.sleep(2)
                                 extract_paa_recursive(depth + 1, max_depth)
                             except Exception:
                                 continue
@@ -1321,11 +1305,9 @@ def paa_extraction_clustering_page():
             return paa_set
         
         st.info("I'm researching...")
-        # Extract PAA questions (clicking each element recursively up to 20 times)
         paa_questions = get_paa(search_query, max_depth=20)
         
         st.info("Autocomplete suggestions...")
-        # Scrape autocomplete suggestions using Google's unofficial endpoint
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
         params = {"client": "chrome", "q": search_query}
@@ -1340,7 +1322,6 @@ def paa_extraction_clustering_page():
             suggestions = []
         
         st.info("Related searches...")
-        # Reinitialize a driver to extract related searches from the original query page
         related_searches = []
         try:
             chrome_options = Options()
@@ -1351,7 +1332,6 @@ def paa_extraction_clustering_page():
             driver2 = webdriver.Chrome(options=chrome_options)
             driver2.get("https://www.google.com/search?q=" + search_query)
             time.sleep(3)
-            # Related searches often appear in <p> tags with a specific class (update selector as needed)
             related_elements = driver2.find_elements(By.CSS_SELECTOR, "p.nVcaUb")
             for el in related_elements:
                 text = el.text.strip()
@@ -1361,11 +1341,9 @@ def paa_extraction_clustering_page():
         except Exception as e:
             st.error(f"Error extracting related searches: {e}")
         
-        # Combine all extracted questions: PAA + autocomplete suggestions + related searches
         combined_questions = list(paa_questions) + suggestions + related_searches
         
         st.info("Analyzing similarity...")
-        # Compute cosine similarity using your SentenceTransformer model
         model = initialize_sentence_transformer()
         query_embedding = get_embedding(search_query, model)
         question_similarities = []
@@ -1378,29 +1356,23 @@ def paa_extraction_clustering_page():
             st.warning("No questions were extracted to analyze.")
             return
         
-        # Compute average similarity and filter recommendations (include average and above)
         avg_sim = np.mean([sim for _, sim in question_similarities])
         st.write(f"Average Similarity Score: {avg_sim:.4f}")
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
         
-        # --- Visualization: Horizontal Dendrogram Tree ---
         st.subheader("Topic Tree")
         if recommended:
-            # Build a list of recommended questions only (do not include the original search query)
             rec_texts = [q for q, sim in recommended]
             dendro_labels = rec_texts
             dendro_embeddings = np.vstack([get_embedding(text, model) for text in dendro_labels])
-            
             import plotly.figure_factory as ff
-            # Orientation 'left' produces a horizontal dendrogram tree with leaves on the left side
             dendro = ff.create_dendrogram(dendro_embeddings, orientation='left', labels=dendro_labels)
             dendro.update_layout(width=800, height=600)
             st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
         
-        # --- Results ---
         st.subheader("Most Relevant Related Search Queries")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
@@ -1408,7 +1380,7 @@ def paa_extraction_clustering_page():
         st.subheader("All Related Search Queries")
         for q in combined_questions:
             st.write(f"- {q}")
-            
+
 # ------------------------------------
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
@@ -1423,154 +1395,148 @@ def google_ads_search_term_analyzer_page():
 
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    if uploaded_file is not None:
+        try:
+            # Read the Excel file, skipping the first two rows.
+            df = pd.read_excel(uploaded_file, skiprows=2)
 
-if uploaded_file is not None:
-    try:
-        # Read the Excel file, skipping the first two rows.
-        df = pd.read_excel(uploaded_file, skiprows=2)
+            # Rename columns for consistency and readability.
+            df = df.rename(columns={
+                "Search term": "Search term",
+                "Match type": "Match type",
+                "Added/Excluded": "Added/Excluded",
+                "Campaign": "Campaign",
+                "Ad group": "Ad group",
+                "Clicks": "Clicks",
+                "Impr.": "Impressions",
+                "Currency code": "Currency code",
+                "Cost": "Cost",
+                "Avg. CPC": "Avg. CPC",
+                "Conv. rate": "Conversion Rate",
+                "Conversions": "Conversions",
+                "Cost / conv.": "Cost per Conversion"
+            })
 
-        # Rename columns for consistency and readability.
-        df = df.rename(columns={
-            "Search term": "Search term",
-            "Match type": "Match type",
-            "Added/Excluded": "Added/Excluded",
-            "Campaign": "Campaign",
-            "Ad group": "Ad group",
-            "Clicks": "Clicks",
-            "Impr.": "Impressions",
-            "Currency code": "Currency code",
-            "Cost": "Cost",
-            "Avg. CPC": "Avg. CPC",
-            "Conv. rate": "Conversion Rate",
-            "Conversions": "Conversions",
-            "Cost / conv.": "Cost per Conversion"
-        })
-
-        # Input Validation (check for required columns)
-        required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
-        missing_cols = [col for col in required_columns if col not in df.columns]
-        if missing_cols:
-            st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
-            return
-
-        # Convert numeric columns, handling errors.
-        for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
-            try:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                df[col] = df[col].fillna(0)
-            except KeyError:
-                st.error(f"Column '{col}' not found in the uploaded Excel file.")
+            # Input Validation (check for required columns)
+            required_columns = ["Search term", "Clicks", "Impressions", "Cost", "Conversions"]
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            if missing_cols:
+                st.error(f"The following required columns are missing: {', '.join(missing_cols)}")
                 return
 
-        st.subheader("N-gram Analysis")
-        # New UI option for n-gram extraction method: Contiguous vs Skip-grams
-        extraction_method = st.radio("Select N-gram Extraction Method:", options=["Contiguous n-grams", "Skip-grams"], index=0)
-        n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
-        min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
+            # Convert numeric columns, handling errors.
+            for col in ["Clicks", "Impressions", "Cost", "Conversions"]:
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    df[col] = df[col].fillna(0)
+                except KeyError:
+                    st.error(f"Column '{col}' not found in the uploaded Excel file.")
+                    return
 
-        # Define extraction functions.
-        def extract_ngrams(text, n):
-            text = str(text).lower()
-            tokens = word_tokenize(text)
-            tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-            ngrams_list = list(nltk.ngrams(tokens, n))
-            return [" ".join(gram) for gram in ngrams_list]
+            st.subheader("N-gram Analysis")
+            # New UI option for n-gram extraction method: Contiguous vs Skip-grams
+            extraction_method = st.radio("Select N-gram Extraction Method:", options=["Contiguous n-grams", "Skip-grams"], index=0)
+            n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
+            min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
 
-        def extract_skipgrams(text, n):
-            import itertools
-            text = str(text).lower()
-            tokens = word_tokenize(text)
-            tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-            if len(tokens) < n:
-                return []
-            skipgrams_list = []
-            for combo in itertools.combinations(range(len(tokens)), n):
-                skipgram = " ".join(tokens[i] for i in combo)
-                skipgrams_list.append(skipgram)
-            return skipgrams_list
+            # Define extraction functions.
+            def extract_ngrams(text, n):
+                text = str(text).lower()
+                tokens = word_tokenize(text)
+                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+                ngrams_list = list(nltk.ngrams(tokens, n))
+                return [" ".join(gram) for gram in ngrams_list]
 
-        stop_words = set(stopwords.words('english'))
-        lemmatizer = WordNetLemmatizer()
+            def extract_skipgrams(text, n):
+                import itertools
+                text = str(text).lower()
+                tokens = word_tokenize(text)
+                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+                if len(tokens) < n:
+                    return []
+                skipgrams_list = []
+                for combo in itertools.combinations(range(len(tokens)), n):
+                    skipgram = " ".join(tokens[i] for i in combo)
+                    skipgrams_list.append(skipgram)
+                return skipgrams_list
 
-        # Extract n-grams or skip-grams based on user selection.
-        all_ngrams = []
-        for term in df["Search term"]:
-            if extraction_method == "Contiguous n-grams":
-                all_ngrams.extend(extract_ngrams(term, n_value))
+            stop_words = set(stopwords.words('english'))
+            lemmatizer = WordNetLemmatizer()
+
+            # Extract n-grams or skip-grams based on user selection.
+            all_ngrams = []
+            for term in df["Search term"]:
+                if extraction_method == "Contiguous n-grams":
+                    all_ngrams.extend(extract_ngrams(term, n_value))
+                else:
+                    all_ngrams.extend(extract_skipgrams(term, n_value))
+
+            ngram_counts = Counter(all_ngrams)
+            filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
+
+            if not filtered_ngrams:
+                st.warning("No n-grams found with the specified minimum frequency.")
+                return
+
+            df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
+
+            search_term_to_ngrams = {}
+            for term in df["Search term"]:
+                if extraction_method == "Contiguous n-grams":
+                    search_term_to_ngrams[term] = extract_ngrams(term, n_value)
+                else:
+                    search_term_to_ngrams[term] = extract_skipgrams(term, n_value)
+
+            ngram_performance = {}
+            for index, row in df.iterrows():
+                search_term_text = row["Search term"]
+                for ngram in search_term_to_ngrams[search_term_text]:
+                    if ngram in filtered_ngrams:
+                        if ngram not in ngram_performance:
+                            ngram_performance[ngram] = {
+                                "Clicks": 0,
+                                "Impressions": 0,
+                                "Cost": 0,
+                                "Conversions": 0
+                            }
+                        ngram_performance[ngram]["Clicks"] += row["Clicks"]
+                        ngram_performance[ngram]["Impressions"] += row["Impressions"]
+                        ngram_performance[ngram]["Cost"] += row["Cost"]
+                        ngram_performance[ngram]["Conversions"] += row["Conversions"]
+
+            df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
+            df_ngram_performance.index.name = "N-gram"
+            df_ngram_performance = df_ngram_performance.reset_index()
+
+            df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
+            df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
+            df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
+                lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
+            )
+            df_ngram_performance['Cost per Conversion'] = df_ngram_performance['Cost per Conversion'].apply(lambda x: pd.NA if x == 'None' else x)
+            df_ngram_performance['Cost per Conversion'] = pd.to_numeric(df_ngram_performance['Cost per Conversion'], errors='coerce')
+
+            # --- Updated Sorting Section ---
+            # Default sorting: sort by "Conversions" in descending order.
+            default_sort = "Conversions" if "Conversions" in df_ngram_performance.columns else df_ngram_performance.columns[0]
+            sort_column = st.selectbox("Sort by Column:", options=df_ngram_performance.columns, index=list(df_ngram_performance.columns).index(default_sort))
+            sort_ascending = st.checkbox("Sort Ascending", value=False)
+
+            if sort_ascending:
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=True, na_position='last')
             else:
-                all_ngrams.extend(extract_skipgrams(term, n_value))
+                df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=False, na_position='first')
 
-        ngram_counts = Counter(all_ngrams)
-        filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
+            st.dataframe(df_ngram_performance.style.format({
+                "Cost": "${:,.2f}",
+                "Cost per Conversion": "${:,.2f}",
+                "CTR": "{:,.2f}%",
+                "Conversion Rate": "{:,.2f}%",
+                "Conversions": "{:,.1f}"
+            }))
 
-        if not filtered_ngrams:
-            st.warning("No n-grams found with the specified minimum frequency.")
-            return
-
-        df_ngrams = pd.DataFrame(filtered_ngrams.items(), columns=["N-gram", "Frequency"])
-
-        search_term_to_ngrams = {}
-        for term in df["Search term"]:
-            if extraction_method == "Contiguous n-grams":
-                search_term_to_ngrams[term] = extract_ngrams(term, n_value)
-            else:
-                search_term_to_ngrams[term] = extract_skipgrams(term, n_value)
-
-        ngram_performance = {}
-        for index, row in df.iterrows():
-            search_term_text = row["Search term"]
-            for ngram in search_term_to_ngrams[search_term_text]:
-                if ngram in filtered_ngrams:
-                    if ngram not in ngram_performance:
-                        ngram_performance[ngram] = {
-                            "Clicks": 0,
-                            "Impressions": 0,
-                            "Cost": 0,
-                            "Conversions": 0
-                        }
-                    ngram_performance[ngram]["Clicks"] += row["Clicks"]
-                    ngram_performance[ngram]["Impressions"] += row["Impressions"]
-                    ngram_performance[ngram]["Cost"] += row["Cost"]
-                    ngram_performance[ngram]["Conversions"] += row["Conversions"]
-
-        df_ngram_performance = pd.DataFrame.from_dict(ngram_performance, orient='index')
-        df_ngram_performance.index.name = "N-gram"
-        df_ngram_performance = df_ngram_performance.reset_index()
-
-        df_ngram_performance["CTR"] = (df_ngram_performance["Clicks"] / df_ngram_performance["Impressions"]) * 100
-        df_ngram_performance["Conversion Rate"] = (df_ngram_performance["Conversions"] / df_ngram_performance["Clicks"]) * 100
-        df_ngram_performance["Cost per Conversion"] = df_ngram_performance.apply(
-            lambda row: "None" if row["Conversions"] == 0 else row["Cost"] / row["Conversions"], axis=1
-        )
-        df_ngram_performance['Cost per Conversion'] = df_ngram_performance['Cost per Conversion'].apply(lambda x: pd.NA if x == 'None' else x)
-        df_ngram_performance['Cost per Conversion'] = pd.to_numeric(df_ngram_performance['Cost per Conversion'], errors='coerce')
-
-        # --- Updated Sorting Section ---
-        # Default sorting: sort by "Conversions" in descending order.
-        default_sort = "Conversions" if "Conversions" in df_ngram_performance.columns else df_ngram_performance.columns[0]
-        sort_column = st.selectbox("Sort by Column:", options=df_ngram_performance.columns, index=list(df_ngram_performance.columns).index(default_sort))
-        sort_ascending = st.checkbox("Sort Ascending", value=False)
-
-        if sort_ascending:
-            df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=True, na_position='last')
-        else:
-            df_ngram_performance = df_ngram_performance.sort_values(by=sort_column, ascending=False, na_position='first')
-
-        st.dataframe(df_ngram_performance.style.format({
-            "Cost": "${:,.2f}",
-            "Cost per Conversion": "${:,.2f}",
-            "CTR": "{:,.2f}%",
-            "Conversion Rate": "{:,.2f}%",
-            "Conversions": "{:,.1f}"
-        }))
-
-    except Exception as e:
-        st.error(f"An error occurred while processing the Excel file: {e}")
-
-
-
-          
+        except Exception as e:
+            st.error(f"An error occurred while processing the Excel file: {e}")
 
 # ------------------------------------
 # Main Streamlit App
@@ -1606,7 +1572,7 @@ def main():
         "Semantic Gap Analyzer",
         "Keyword Clustering",
         "People Also Asked",
-        "Google Ads Search Term Analyzer" #New tool
+        "Google Ads Search Term Analyzer"  # New tool
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1636,11 +1602,11 @@ def main():
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    # We only need these downloads now.
     nltk.download('punkt')
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
 
 
 
