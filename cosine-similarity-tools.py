@@ -38,6 +38,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 
 import plotly.graph_objects as go
+import plotly.figure_factory as ff
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -1590,15 +1591,11 @@ def google_keyword_planner_analyzer_page():
     if uploaded_file is not None and target_keyword:
         try:
             # --- Data Preprocessing & Validation ---
-            # Read the Excel file *without* setting a header row initially.
+            # (Same as before - the robust data loading code)
             df_raw = pd.read_excel(uploaded_file, header=None)
-
-            # Find the row where the actual data starts. We look for a row
-            # where the *second* value is "Currency". This is a more reliable
-            # indicator than "keyword" because of the merged cells.
             header_row_index = None
             for i in range(len(df_raw)):
-                if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency": #Check the second value for "Currency"
+                if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency":
                     header_row_index = i
                     break
 
@@ -1607,49 +1604,34 @@ def google_keyword_planner_analyzer_page():
                          "Please ensure the file is a standard Google Keyword Planner export.")
                 return
 
-            # Extract the header row and the row below it.
-            header_row = df_raw.iloc[header_row_index].fillna(method='ffill').tolist()  # forward fill
+            header_row = df_raw.iloc[header_row_index].fillna(method='ffill').tolist()
             sub_header_row = df_raw.iloc[header_row_index + 1].tolist()
-
-            # Combine the two rows to create the final column names
             new_header = []
             for h, sub_h in zip(header_row, sub_header_row):
                 if pd.isna(sub_h):
                   new_header.append(str(h))
                 else:
                   new_header.append(str(h) + ": " + str(sub_h))
-
-            # Now re-read the data, using the combined header
             df = pd.read_excel(uploaded_file, header=header_row_index + 2)
-            df.columns = new_header  # Set the combined header
-
-
-            # Flexible column name matching (still important!):
+            df.columns = new_header
             keyword_col = None
             search_volume_col = None
 
             for col in df.columns:
                 if "keyword" in col.lower():
                     keyword_col = col
-                if "avg" in col.lower() and "monthly search" in col.lower(): # More specific
+                if "avg" in col.lower() and "monthly search" in col.lower():
                     search_volume_col = col
 
             if keyword_col is None or search_volume_col is None:
                 st.error("Could not find the required 'Keyword' and 'Avg. monthly searches' columns. "
-                         "Please ensure the file is from Google Keyword Planner and contains this data.")
+                         "Please ensure your file is from Google Keyword Planner and contains this data.")
                 return
-
-            # Rename the columns for consistent access:
-            df = df.rename(columns={
-                keyword_col: "Keyword",
-                search_volume_col: "Avg. monthly searches"
-            })
-
+            df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches"})
             df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
             df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
 
-
-            # --- Cosine Similarity Calculation --- (Rest of the function is the same)
+            # --- Cosine Similarity Calculation --- (Same as before)
             model = initialize_sentence_transformer()
             target_embedding = get_embedding(target_keyword, model)
             keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
@@ -1659,16 +1641,16 @@ def google_keyword_planner_analyzer_page():
             avg_similarity = df["Cosine Similarity"].mean()
             st.write(f"Average Cosine Similarity: {avg_similarity:.4f}")
 
-            # --- Filtering ---
+            # --- Filtering --- (Same as before)
             filtered_df = df[df["Cosine Similarity"] >= avg_similarity]
             filtered_keywords = filtered_df["Keyword"].tolist()
             filtered_embeddings = [get_embedding(kw, model) for kw in filtered_keywords]
             if not filtered_embeddings:
                 st.warning("No keywords found with above-average similarity.")
                 return
-            filtered_embeddings = np.vstack(filtered_embeddings)  # Convert to NumPy array
+            filtered_embeddings = np.vstack(filtered_embeddings)
 
-            # --- Topic Modeling (Clustering) ---
+            # --- Topic Modeling (Clustering) --- (Slight change for dendrogram)
             st.subheader("Clustering Settings")
             algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
             n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
@@ -1700,65 +1682,43 @@ def google_keyword_planner_analyzer_page():
                         rep_keyword = cluster_grams[0]
                     rep_keywords[i] = rep_keyword
 
+            # --- NEW: Create Detailed Cluster DataFrame ---
+            df["Cluster"] = -1  # Initialize a 'Cluster' column with -1 (unassigned)
+            for i, keyword in enumerate(filtered_keywords):
+                # Find the index of the keyword in the *original* DataFrame
+                df.loc[df['Keyword'] == keyword, 'Cluster'] = cluster_labels[i]
 
-            # --- Cluster Analysis & Output ---
-            clusters = {}
-            for keyword, label in zip(filtered_keywords, cluster_labels):
-                clusters.setdefault(label, []).append(keyword)
+            detailed_cluster_df = df[df["Cluster"] != -1]  # Keep only clustered keywords
 
-            cluster_data = []
-            for label, keyword_list in clusters.items():
-                rep = rep_keywords.get(label, "N/A")
-                total_volume = filtered_df[filtered_df["Keyword"].isin(keyword_list)][
-                    "Avg. monthly searches"].sum()
-                cluster_data.append({
-                    "Cluster": label,
-                    "Representative Keyword": rep,
-                    "Total Avg. Monthly Searches": total_volume,
-                    "Keywords": ", ".join(keyword_list)
-                })
+            # --- NEW: Display Detailed Table ---
+            st.subheader("Keyword Clusters (Detailed View)")
+            for cluster_num in sorted(detailed_cluster_df["Cluster"].unique()):
+                st.markdown(f"**Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})**")
+                cluster_subset = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
+                st.dataframe(cluster_subset)
 
-            df_clusters = pd.DataFrame(cluster_data)
-            st.subheader("Keyword Clusters")
-            st.dataframe(df_clusters)
 
-            # --- Plotly Visualization ---
-            st.markdown("### Interactive Cluster Visualization")
-            pca = PCA(n_components=2)
-            embeddings_2d = pca.fit_transform(filtered_embeddings)
-            df_plot = pd.DataFrame({
-                'x': embeddings_2d[:, 0],
-                'y': embeddings_2d[:, 1],
-                'Keyword': filtered_keywords,
-                'Cluster': [f"Cluster {label}" for label in cluster_labels]
-            })
-            fig = px.scatter(df_plot, x='x', y='y', color='Cluster', text='Keyword',
-                             hover_data=['Keyword'], title="Keyword Clusters")
-            fig.update_traces(textposition='top center')
-            st.plotly_chart(fig)
+            # --- NEW: Dendrogram Visualization ---
+            st.subheader("Cluster Dendrogram")
+            if len(filtered_keywords) > 1:  # Dendrogram requires at least 2 data points
+                dendrogram = ff.create_dendrogram(filtered_embeddings, orientation='left',
+                                                labels=filtered_keywords)
+                dendrogram.update_layout(width=800, height=600)
+                st.plotly_chart(dendrogram)
+            else:
+                st.write("Not enough keywords for dendrogram visualization.")
 
-            # --- Trend Visualization ---
-            # Define month columns.  Handle merged header names.
+            # --- Trend Visualization --- (Same as before)
             month_cols = [col for col in df.columns if "Searches:" in col]
             st.subheader("Cluster Search Trends")
-
-            # Iterate over each cluster to generate trend charts
             for cluster_num, keywords in clusters.items():
-                # Create a DataFrame for the current cluster's keywords
                 cluster_df = df[df['Keyword'].isin(keywords)].copy()
-
-                # Ensure all month columns are present; if not, add with 0 values.
                 for month_col in month_cols:
                     if month_col not in cluster_df.columns:
                         cluster_df[month_col] = 0
-
-                # Convert monthly searches to numeric.
                 for col in month_cols:
                     cluster_df[col] = pd.to_numeric(cluster_df[col], errors='coerce').fillna(0)
-
                 monthly_totals = cluster_df[month_cols].sum()
-
-                # Create the trend chart using Plotly Graph Objects
                 fig_trend = go.Figure(data=[go.Scatter(x=month_cols, y=monthly_totals, mode='lines+markers')])
                 fig_trend.update_layout(
                     title=f"Search Trend for Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})",
@@ -1767,7 +1727,6 @@ def google_keyword_planner_analyzer_page():
                     xaxis_tickangle=-45
                 )
                 st.plotly_chart(fig_trend)
-
         except Exception as e:
             st.error(f"An error occurred: {e}")
 
