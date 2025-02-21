@@ -2077,8 +2077,7 @@ def google_search_console_analysis_page():
                 transactions = df["Page"].apply(segment_url).tolist()
 
                 min_support = st.number_input("Minimum Support for Apriori:", min_value=0.01, max_value=1.0, value=0.05, step=0.01)
-                # Remove min_confidence
-                # min_confidence = st.number_input("Minimum Confidence for Association Rules:", min_value=0.01, max_value=1.0, value=0.1, step=0.01)
+
 
                 from mlxtend.preprocessing import TransactionEncoder
                 from mlxtend.frequent_patterns import apriori, association_rules
@@ -2088,15 +2087,22 @@ def google_search_console_analysis_page():
                 df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
                 freq_items = apriori(df_transactions, min_support=min_support, use_colnames=True)
 
+
                 if freq_items.empty:
                     st.warning("No frequent itemsets found with the given minimum support. Try lowering the minimum support.")
 
                 else:
                     # --- Create and Display Topics (Frequent Itemsets) ---
                     st.markdown("#### Frequent Itemsets (Subdirectory Topics)")
-                    freq_items["topic"] = freq_items["itemsets"].apply(lambda x: ", ".join(list(x))).str.replace("/", "", n=1) #Added .str.replace to get rid of leading /
-                    freq_items = freq_items.rename(columns={'support': "Support", "itemsets": "URL Segments"})
-                    st.dataframe(freq_items[["topic", "Support"]].sort_values(by="Support", ascending=False))
+                    # Correct order:  1. Create 'topic'  2. Rename columns  3. THEN select and display
+                    freq_items["topic"] = freq_items["itemsets"].apply(lambda x: ", ".join(list(x))).str.replace("/", "", n=1)
+                    freq_items = freq_items.rename(columns={'support': 'Support', 'itemsets': 'URL Segments'})
+
+                    if not freq_items.empty:
+                       st.dataframe(freq_items[["topic", "Support"]].sort_values(by="Support", ascending=False))
+                    else:
+                        st.write("No topics to display.")
+
 
 
                     # --- Association Rules (without confidence filtering) ---
@@ -2107,10 +2113,14 @@ def google_search_console_analysis_page():
                         st.markdown("#### Association Rules")
                         rules['antecedents'] = rules['antecedents'].apply(lambda x: list(x))
                         rules['consequents'] = rules['consequents'].apply(lambda x: list(x))
-                        st.dataframe(rules)
+                        if not rules.empty:
+                           st.dataframe(rules)
+                        else:
+                            st.write("No rules to display")
 
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
+            #st.exception(e)
 
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
