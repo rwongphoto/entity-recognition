@@ -40,6 +40,7 @@ MarkupSafe==3.0.2
 matplotlib==3.9.4
 mdurl==0.1.2
 mpmath==1.3.0
+mlxtend
 narwhals==1.26.0
 networkx==3.2.1
 nltk
