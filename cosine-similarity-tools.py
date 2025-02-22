@@ -2064,7 +2064,9 @@ def google_search_console_analysis_page():
             st.plotly_chart(fig)
             
         except Exception as e:
-            st.error(f"An error occurre
+            st.error(f"An error occurrered while processing the files: {e}")
+    else:
+        st.info("Please upload both GSC CSV files to start the analysis.")
 
 
 
