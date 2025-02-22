@@ -1848,7 +1848,7 @@ def google_search_console_analysis_page():
             num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
-            df["Topic_Label"] = topic_labels
+            df["Topic_Label"] = topic_labels  # Keep the numeric label
 
             stop_words = set(nltk.corpus.stopwords.words('english'))
             def generate_topic_label(queries_in_topic):
@@ -1869,7 +1869,7 @@ def google_search_console_analysis_page():
             for topic in range(num_topics):
                 topic_queries = df[df["Topic_Label"] == topic]["Query"].tolist()
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
-            df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
+            df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))  # Descriptive label
 
 
             # --- Aggregated Metrics by Topic ---
@@ -1900,7 +1900,8 @@ def google_search_console_analysis_page():
                     "CTR_Change": "mean"
                 })
 
-            aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
+            # --- Aggregate WITH Topic Labels --- (THIS IS KEY)
+            aggregated = df.groupby(["Topic_Label", "Topic"]).agg(agg_dict).reset_index() # Group by BOTH
 
             # 2. Calculate percentage changes *after* aggregation:
             aggregated["Position_Change_pct"] = aggregated.apply(
@@ -1926,14 +1927,12 @@ def google_search_console_analysis_page():
                 )
 
             # --- Reorder columns for display ---
-            ordered_cols = ["Topic"]
-            if "Average Position_before" in aggregated.columns:
-                ordered_cols += ["Average Position_before", "Average Position_after", "Position_Change", "Position_Change_pct"]
-            if "Clicks_before" in aggregated.columns:
+            ordered_cols = ["Topic", "Average Position_before", "Average Position_after", "Position_Change", "Position_Change_pct"]
+            if "Clicks_before" in df.columns:
                 ordered_cols += ["Clicks_before", "Clicks_after", "Clicks_Change", "Clicks_Change_pct"]
-            if "Impressions_before" in aggregated.columns:
+            if "Impressions_before" in df.columns:
                 ordered_cols += ["Impressions_before", "Impressions_after", "Impressions_Change", "Impressions_Change_pct"]
-            if "CTR_before" in aggregated.columns:
+            if "CTR_before" in df.columns:
                 ordered_cols += ["CTR_before", "CTR_after", "CTR_Change", "CTR_Change_pct"]
             aggregated = aggregated[ordered_cols]
 
