@@ -2014,7 +2014,7 @@ def google_search_console_analysis_page():
             if "Position_YOY" in aggregated.columns:
                 format_dict["Position_YOY"] = "{:.1f}"
             if "Position_YOY_pct" in aggregated.columns:
-                format_dict["Position_YOY_pct"] = "{:.2f}%"
+                format_dict["Position_YOY_pct"] = "{:.1f}%"
             if "Clicks_before" in aggregated.columns:
                 format_dict["Clicks_before"] = "{:,.0f}"
             if "Clicks_after" in aggregated.columns:
@@ -2022,7 +2022,7 @@ def google_search_console_analysis_page():
             if "Clicks_YOY" in aggregated.columns:
                 format_dict["Clicks_YOY"] = "{:,.0f}"
             if "Clicks_YOY_pct" in aggregated.columns:
-                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
+                format_dict["Clicks_YOY_pct"] = "{:.0f}%"
             if "Impressions_before" in aggregated.columns:
                 format_dict["Impressions_before"] = "{:,.0f}"
             if "Impressions_after" in aggregated.columns:
@@ -2030,7 +2030,7 @@ def google_search_console_analysis_page():
             if "Impressions_YOY" in aggregated.columns:
                 format_dict["Impressions_YOY"] = "{:,.0f}"
             if "Impressions_YOY_pct" in aggregated.columns:
-                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
+                format_dict["Impressions_YOY_pct"] = "{:.0f}%"
             if "CTR_before" in aggregated.columns:
                 format_dict["CTR_before"] = "{:.2f}%"
             if "CTR_after" in aggregated.columns:
