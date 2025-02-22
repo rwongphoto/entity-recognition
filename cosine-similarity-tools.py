@@ -2006,7 +2006,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred: {e}")
 
     else:
-        st.info("Please upload both GSC CSV files.")
+        st.info("Please upload both GSC CSV files.") 
 
 
 
