@@ -873,7 +873,7 @@ def ngram_tfidf_analysis_page():
     st.header("Semantic Gap Analyzer")
     st.markdown("""
         Uncover hidden opportunities by comparing your website's content to your top competitors.
-        Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.
+        Identify key phrases and topics they're covering that you might be missing, and prioritize your content creation.  This version also includes Apriori analysis to discover associations between gap n-grams.
     """)
     # Competitor input
     st.subheader("Competitors")
@@ -890,7 +890,7 @@ def ngram_tfidf_analysis_page():
         st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-        
+
     # Target input
     st.subheader("Your Site")
     target_source_option = st.radio(
@@ -903,7 +903,7 @@ def ngram_tfidf_analysis_page():
         target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your target content:", key="target_text", value="", height=200)
-        
+
     # Word options
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5,6,7,8,9,10], index=1)
@@ -911,7 +911,7 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
-    
+
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
@@ -919,7 +919,7 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-        
+
         # Extract competitor content
         competitor_texts = []
         valid_competitor_sources = []
@@ -934,7 +934,7 @@ def ngram_tfidf_analysis_page():
                     competitor_texts.append(text)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
+
         # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
@@ -943,14 +943,14 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
-        
+
         nlp_model = load_spacy_model()
         competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
         target_content = preprocess_text(target_content, nlp_model)
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-        
+
         # Calculate TF-IDF scores
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english")
@@ -960,7 +960,7 @@ def ngram_tfidf_analysis_page():
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
-        
+
         # For each competitor, get its top n-grams (based on TF-IDF)
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
@@ -968,7 +968,7 @@ def ngram_tfidf_analysis_page():
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
-        
+
         model = initialize_sentence_transformer()
         with st.spinner("Calculating SentenceTransformer embedding for target content..."):
             target_embedding = get_embedding(target_content, model)
@@ -977,7 +977,7 @@ def ngram_tfidf_analysis_page():
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
-                
+
         # Compute candidate gap scores – now include competitor source in the tuple
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
@@ -999,18 +999,18 @@ def ngram_tfidf_analysis_page():
                     competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
                     bert_diff = competitor_similarity
                     candidate_scores.append((source, ngram, competitor_tfidf, bert_diff))
-                    
+
         if not candidate_scores:
             st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
             return
-        
+
         tfidf_vals = [item[2] for item in candidate_scores]
         bert_vals = [item[3] for item in candidate_scores]
         min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
         min_bert, max_bert = min(bert_vals), max(bert_vals)
         epsilon = 1e-8
         tfidf_weight = 0.4  # Hard-coded TF-IDF weight
-        
+
         norm_candidates = []
         for source, ngram, tfidf_diff, bert_diff in candidate_scores:
             norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
@@ -1019,12 +1019,12 @@ def ngram_tfidf_analysis_page():
             if combined_score > 0:
                 norm_candidates.append((source, ngram, combined_score))
         norm_candidates.sort(key=lambda x: x[2], reverse=True)
-        
+
         # Display consolidated gap analysis table
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         df_consolidated = pd.DataFrame(norm_candidates, columns=['Competitor', 'N-gram', 'Gap Score'])
         st.dataframe(df_consolidated)
-        
+
         # Display per-competitor gap analysis tables
         st.markdown("### Per-Competitor Semantic Gap Analysis")
         for source in valid_competitor_sources:
@@ -1033,7 +1033,7 @@ def ngram_tfidf_analysis_page():
                 df_source = pd.DataFrame(candidate_list, columns=['Competitor', 'N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
                 st.markdown(f"#### Competitor: {source}")
                 st.dataframe(df_source)
-        
+
         # --- Updated: Use Gap Scores as Weights in the Wordcloud ---
         st.subheader("Combined Semantic Gap Wordcloud")
         gap_scores = {}
@@ -1043,7 +1043,7 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(gap_scores)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
-        
+
         # Display a wordcloud for each competitor using gap score weights
         st.subheader("Per-Competitor Gap Wordclouds")
         for source in valid_competitor_sources:
@@ -1056,6 +1056,61 @@ def ngram_tfidf_analysis_page():
                 display_entity_wordcloud(comp_gap_scores)
             else:
                 st.write(f"No gap n-grams for competitor: {source}")
+
+
+        # --- Apriori Algorithm Integration (Semantic Gap Analyzer) ---
+        st.subheader("Apriori Algorithm for Gap N-gram Associations")
+
+        # 1. Prepare Transaction Data (using gap n-grams per competitor)
+        transactions = []
+        for source in valid_competitor_sources:
+            source_transactions = [ngram for s, ngram, score in norm_candidates if s == source]
+            if source_transactions: # Ensure we don't add empty transactions
+                transactions.append(source_transactions)
+
+
+        # 2. Encode Transactions
+        te = TransactionEncoder()
+        te_ary = te.fit(transactions).transform(transactions)
+        df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+
+        # 3. Run Apriori
+        min_support = st.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_gap")
+        frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
+
+        if frequent_itemsets.empty:
+            st.warning("No frequent itemsets found. Try lowering the minimum support.")
+            return  # Exit if no frequent itemsets
+
+        # 4. Generate Association Rules
+        min_confidence = st.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_gap")
+        rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+
+
+        # 5. Interpret and Display (same as Google Ads example)
+        if rules.empty:
+            st.warning("No association rules found. Try lowering the minimum confidence or support.")
+        else:
+            rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+            rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+            rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
+            rules = rules.rename(columns={
+                "antecedents": "Antecedent (IF)",
+                "consequents": "Consequent (THEN)",
+            })
+
+            st.dataframe(rules)
+            st.markdown(
+                """
+                **Interpreting the Results:**
+
+                *   **Antecedent (IF):**  The gap n-gram(s) on the left-hand side.
+                *   **Consequent (THEN):** The gap n-gram(s) on the right-hand side.
+                *   **Support:** Proportion of competitors having both antecedent and consequent.
+                *   **Confidence:** Given a competitor has the antecedent, probability they also have the consequent.
+                *   **Lift:** How much more likely the consequent is if the antecedent is present. Lift > 1 indicates a positive association.
+                """
+            )
 
 def keyword_clustering_from_gap_page():
     st.header("Keyword Clusters")
