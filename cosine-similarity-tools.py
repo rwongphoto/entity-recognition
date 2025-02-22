@@ -1781,7 +1781,19 @@ def google_keyword_planner_analyzer_page():
 
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
-    # ... (Rest of the initial setup code, file uploads, etc. - as in the previous response)
+    st.markdown(
+        """
+        This tool lets you compare GSC data from two different time periods.
+        Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
+
+        - Merge data on query terms.
+        - Calculate ranking changes and additional metric comparisons.
+        - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
+        - Classify queries into topics with descriptive labels.
+        - Aggregate metrics by topic and show overall changes, including percentage changes.
+        - Display a dashboard with overall change metrics and a single chart showing *percentage* changes across topics (excluding Average Position % Change).
+        """
+    )
 
     st.markdown("### Upload GSC Data")
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
@@ -1792,7 +1804,7 @@ def google_search_console_analysis_page():
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
 
-            # --- Query Data Logic --- (Same as previous response, including outer merge and fillna)
+            # --- Query Data Logic ---
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                 return
