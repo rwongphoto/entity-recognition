@@ -1587,7 +1587,7 @@ def google_keyword_planner_analyzer_page():
         """
         Upload a Google Keyword Planner Excel file (.xlsx) and analyze keywords based on cosine similarity
         to a target keyword.  This tool identifies relevant keywords, groups them into clusters,
-        and visualizes search trends.
+        and visualizes search trends.  It also uses the Apriori algorithm to find associations between keyword n-grams.
         """
     )
 
@@ -1773,6 +1773,69 @@ def google_keyword_planner_analyzer_page():
                 )
                 st.plotly_chart(fig_trend)
 
+            # --- Apriori Algorithm Integration ---
+            st.subheader("Apriori Algorithm for Keyword Associations")
+
+            # 1. Prepare Transaction Data (Keywords as transactions, n-grams as items)
+            n_value = st.selectbox("Select N for N-grams:", options=[1, 2, 3], index=0, key="apriori_n_kwp")
+            transactions = []
+            stop_words = set(stopwords.words('english'))
+            lemmatizer = WordNetLemmatizer()
+
+            def extract_ngrams(text, n):
+                text = str(text).lower()
+                tokens = word_tokenize(text)
+                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+                ngrams_list = list(nltk.ngrams(tokens, n))
+                return [" ".join(gram) for gram in ngrams_list]
+            
+            # Use only the *filtered* keywords for Apriori analysis
+            for keyword in filtered_keywords:
+              transactions.append(extract_ngrams(keyword, n_value))
+
+
+            # 2. Encode Transactions
+            te = TransactionEncoder()
+            te_ary = te.fit(transactions).transform(transactions)
+            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+
+            # 3. Run Apriori
+            min_support = st.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_kwp")
+            frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
+
+            if frequent_itemsets.empty:
+                st.warning("No frequent itemsets found. Try lowering the minimum support.")
+                return  # Important: Exit if no frequent itemsets
+
+            # 4. Generate Association Rules
+            min_confidence = st.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_kwp")
+            rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+
+            # 5. Interpret and Display
+            if rules.empty:
+                st.warning("No association rules found.  Try lowering the minimum confidence or support.")
+            else:
+                rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+                rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+                rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
+                rules = rules.rename(columns={
+                    "antecedents": "Antecedent (IF)",
+                    "consequents": "Consequent (THEN)",
+                })
+                st.dataframe(rules)
+                st.markdown(
+                    """
+                    **Interpreting the Results:**
+
+                    *   **Antecedent (IF):** The n-gram(s) on the left.
+                    *   **Consequent (THEN):** The n-gram(s) on the right.
+                    *   **Support:** Proportion of keywords containing both.
+                    *   **Confidence:** Given a keyword has the antecedent, the probability it also has the consequent.
+                    *   **Lift:** How much more likely the consequent is if the antecedent is present. Lift > 1 indicates positive association.
+                    """
+                )
+
+
         except Exception as e:
             st.error(f"An error occurred: {e}")
 
@@ -1818,7 +1881,7 @@ def google_search_console_analysis_page():
             
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
-            # Rename columns for consistency in original data
+            # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             
@@ -1914,7 +1977,7 @@ def google_search_console_analysis_page():
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
             
-            # Generate descriptive topic labels using common keywords
+            # Generate descriptive topic labels by extracting common keywords per topic
             import collections
             import nltk
             nltk.download('stopwords')
@@ -1940,8 +2003,32 @@ def google_search_console_analysis_page():
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
             
-            # Format YOY % Change columns in the merged table to two decimal places
+            # Define formatting for the "Topic Classification and Combined Data" table
             format_dict_merged = {}
+            if "Average Position_before" in merged_df.columns:
+                format_dict_merged["Average Position_before"] = "{:.1f}"
+            if "Average Position_after" in merged_df.columns:
+                format_dict_merged["Average Position_after"] = "{:.1f}"
+            if "Position_YOY" in merged_df.columns:
+                format_dict_merged["Position_YOY"] = "{:.1f}"
+            if "Clicks_before" in merged_df.columns:
+                format_dict_merged["Clicks_before"] = "{:,.0f}"
+            if "Clicks_after" in merged_df.columns:
+                format_dict_merged["Clicks_after"] = "{:,.0f}"
+            if "Clicks_YOY" in merged_df.columns:
+                format_dict_merged["Clicks_YOY"] = "{:,.0f}"
+            if "Impressions_before" in merged_df.columns:
+                format_dict_merged["Impressions_before"] = "{:,.0f}"
+            if "Impressions_after" in merged_df.columns:
+                format_dict_merged["Impressions_after"] = "{:,.0f}"
+            if "Impressions_YOY" in merged_df.columns:
+                format_dict_merged["Impressions_YOY"] = "{:,.0f}"
+            if "CTR_before" in merged_df.columns:
+                format_dict_merged["CTR_before"] = "{:.2f}%"
+            if "CTR_after" in merged_df.columns:
+                format_dict_merged["CTR_after"] = "{:.2f}%"
+            if "CTR_YOY" in merged_df.columns:
+                format_dict_merged["CTR_YOY"] = "{:.2f}%"
             if "Position_YOY_pct" in merged_df.columns:
                 format_dict_merged["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_YOY_pct" in merged_df.columns:
@@ -1951,7 +2038,6 @@ def google_search_console_analysis_page():
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             
-            # Display the merged data with topic classification using formatting
             st.dataframe(merged_df.style.format(format_dict_merged))
             
             # --- Hidden Initial Apriori Analysis ---
@@ -2072,11 +2158,6 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
-
-
-
 
 
 
