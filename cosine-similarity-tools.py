@@ -1818,7 +1818,7 @@ def google_search_console_analysis_page():
             
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
-            # Rename columns for consistency in original data
+            # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             
@@ -1914,7 +1914,7 @@ def google_search_console_analysis_page():
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
             
-            # Generate descriptive topic labels using common keywords
+            # Generate descriptive topic labels by extracting common keywords per topic
             import collections
             import nltk
             nltk.download('stopwords')
@@ -1940,8 +1940,32 @@ def google_search_console_analysis_page():
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
             
-            # Format YOY % Change columns in the merged table to two decimal places
+            # Define formatting for the "Topic Classification and Combined Data" table
             format_dict_merged = {}
+            if "Average Position_before" in merged_df.columns:
+                format_dict_merged["Average Position_before"] = "{:.1f}"
+            if "Average Position_after" in merged_df.columns:
+                format_dict_merged["Average Position_after"] = "{:.1f}"
+            if "Position_YOY" in merged_df.columns:
+                format_dict_merged["Position_YOY"] = "{:.1f}"
+            if "Clicks_before" in merged_df.columns:
+                format_dict_merged["Clicks_before"] = "{:,.0f}"
+            if "Clicks_after" in merged_df.columns:
+                format_dict_merged["Clicks_after"] = "{:,.0f}"
+            if "Clicks_YOY" in merged_df.columns:
+                format_dict_merged["Clicks_YOY"] = "{:,.0f}"
+            if "Impressions_before" in merged_df.columns:
+                format_dict_merged["Impressions_before"] = "{:,.0f}"
+            if "Impressions_after" in merged_df.columns:
+                format_dict_merged["Impressions_after"] = "{:,.0f}"
+            if "Impressions_YOY" in merged_df.columns:
+                format_dict_merged["Impressions_YOY"] = "{:,.0f}"
+            if "CTR_before" in merged_df.columns:
+                format_dict_merged["CTR_before"] = "{:.2f}%"
+            if "CTR_after" in merged_df.columns:
+                format_dict_merged["CTR_after"] = "{:.2f}%"
+            if "CTR_YOY" in merged_df.columns:
+                format_dict_merged["CTR_YOY"] = "{:.2f}%"
             if "Position_YOY_pct" in merged_df.columns:
                 format_dict_merged["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_YOY_pct" in merged_df.columns:
@@ -1951,7 +1975,6 @@ def google_search_console_analysis_page():
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             
-            # Display the merged data with topic classification using formatting
             st.dataframe(merged_df.style.format(format_dict_merged))
             
             # --- Hidden Initial Apriori Analysis ---
@@ -2072,12 +2095,6 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
-
-
-
-
 
 
 
