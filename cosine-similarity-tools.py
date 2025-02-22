@@ -1783,15 +1783,7 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
-        Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-
-        - Merge data on query terms.
-        - Calculate ranking changes and additional metric comparisons.
-        - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
-        - Classify queries into topics with descriptive labels.
-        - Aggregate metrics by topic and show overall changes, including percentage changes.
-        - Display a dashboard with overall change metrics and a single chart showing *percentage* changes across topics (excluding Average Position % Change).
+        This tool lets you compare GSC data from two different time periods...
         """
     )
 
@@ -1817,8 +1809,9 @@ def google_search_console_analysis_page():
             df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"), how="outer")
             df.fillna(0, inplace=True)
 
+            # --- Calculate YOY *differences* ---
+            # IMPORTANT: We only calculate the raw *differences* here, NOT percentages.
             df["Position_YOY"] = df["Average Position_after"] - df["Average Position_before"]
-
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
                 df["Clicks_YOY"] = df["Clicks_after"] - df["Clicks_before"]
             if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
@@ -1831,30 +1824,24 @@ def google_search_console_analysis_page():
                         else:
                             return float(ctr)
                     except:
-                        return 0  # Handle parsing errors robustly
+                        return 0
                 df["CTR_before"] = df["CTR_before"].apply(parse_ctr)
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
-                df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
+                df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"] #calculate CTR_YOY here
 
-            df["Position_YOY_pct"] = df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100) if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0, axis=1)
+            # --- Prepare base columns ---
+            # IMPORTANT:  We do NOT include percentage change columns here.
+            base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY"]
             if "Clicks_before" in df.columns:
-                df["Clicks_YOY_pct"] = df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100) if (row["Clicks_before"] != 0 and not pd.isna(row["Clicks_before"])) else 0, axis=1)
+                base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY"]
             if "Impressions_before" in df.columns:
-                df["Impressions_YOY_pct"] = df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100) if (row["Impressions_before"] != 0 and not pd.isna(row["Impressions_before"])) else 0, axis=1)
+                base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY"]
             if "CTR_before" in df.columns:
-                df["CTR_YOY_pct"] = df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100) if (row["CTR_before"] != 0 and not pd.isna(row["CTR_before"])) else 0, axis=1)
-
-
-            base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
-            if "Clicks_before" in df.columns:
-                base_cols += ["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"]
-            if "Impressions_before" in df.columns:
-                base_cols += ["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"]
-            if "CTR_before" in df.columns:
-                base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
+                base_cols += ["CTR_before", "CTR_after", "CTR_YOY"]
             df = df[base_cols]
 
-            # Topic Classification (Same as before, but included for completeness)
+
+            # --- Topic Classification --- (Same as before)
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = df["Query"].tolist()
@@ -1885,10 +1872,12 @@ def google_search_console_analysis_page():
                 topic_queries = df[df["Topic_Label"] == topic]["Query"].tolist()
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
-            st.dataframe(df)  # Display the full DataFrame before aggregation
+            st.dataframe(df)
 
-            # --- Aggregated Metrics by Topic and DataFrame --- (THIS IS THE CORRECTED PART)
+            # --- Aggregated Metrics by Topic --- (CORRECTED AGAIN)
             st.markdown("### Aggregated Metrics by Topic")
+
+            # 1. Aggregate the base metrics:
             agg_dict = {
                 "Average Position_before": "mean",
                 "Average Position_after": "mean",
@@ -1899,26 +1888,23 @@ def google_search_console_analysis_page():
                     "Clicks_before": "sum",
                     "Clicks_after": "sum",
                     "Clicks_YOY": "sum",
-                    # We will *not* include "Clicks_YOY_pct": "mean" here.
                 })
             if "Impressions_before" in df.columns:
                 agg_dict.update({
                     "Impressions_before": "sum",
                     "Impressions_after": "sum",
                     "Impressions_YOY": "sum",
-                    # No "Impressions_YOY_pct": "mean"
                 })
             if "CTR_before" in df.columns:
                 agg_dict.update({
-                    "CTR_before": "mean",
-                    "CTR_after": "mean",
-                    "CTR_YOY": "mean",
-                    # No "CTR_YOY_pct": "mean"
+                    "CTR_before":"mean",
+                    "CTR_after":"mean",
+                    "CTR_YOY": "mean"
                 })
 
             aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
 
-            # Correctly calculate percentage changes *after* aggregation:
+            # 2. Calculate percentage changes *after* aggregation, based on the correct aggregated values:
             aggregated["Position_YOY_pct"] = aggregated.apply(
                 lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
                 if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0,
@@ -1938,9 +1924,7 @@ def google_search_console_analysis_page():
                 )
             if "CTR_before" in df.columns:
                 aggregated["CTR_YOY_pct"] = aggregated.apply(
-                    lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
-                    if (row["CTR_before"] != 0 and not pd.isna(row["CTR_before"])) else 0,
-                    axis=1
+                    lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100) if (row["CTR_before"] !=0 and not pd.isna(row["CTR_before"])) else 0, axis=1
                 )
             format_dict_agg = {
                 "Position_YOY_pct": "{:.1f}%",
@@ -1966,11 +1950,14 @@ def google_search_console_analysis_page():
 
 
 
-            # --- Overall Changes (Dashboard) and Chart --- (Same as before, but included for completeness)
+            # --- Overall Changes (Dashboard) --- (Corrected calculations)
             st.markdown("### Overall Changes Dashboard")
+
+            # Calculate overall changes correctly (weighted averages where needed)
             total_clicks_before = df["Clicks_before"].sum()
             total_clicks_after = df["Clicks_after"].sum()
             total_impressions_before = df["Impressions_before"].sum()
+            total_impressions_after = df["Impressions_after"].sum() #calculate total impressions
 
             overall_clicks_change = df["Clicks_YOY"].sum()
             overall_impressions_change = df["Impressions_YOY"].sum()
@@ -1989,7 +1976,6 @@ def google_search_console_analysis_page():
             overall_impressions_pct_change = (overall_impressions_change / total_impressions_before) * 100 if total_impressions_before > 0 else 0
 
 
-
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric(label="Overall Click Change", value=f"{overall_clicks_change:,.0f}", delta=f"{overall_clicks_pct_change:.1f}%")
@@ -2000,6 +1986,7 @@ def google_search_console_analysis_page():
             with col4:
                 st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_pct_change:.1f}%")
 
+            # --- Combined Aggregated Metrics Chart --- (Uses corrected aggregated data)
             st.markdown("### Combined Aggregated Metrics Chart")
             combined_chart_data = pd.DataFrame({
                 'Topic': aggregated['Topic'],
@@ -2014,7 +2001,6 @@ def google_search_console_analysis_page():
                                  barmode='group',
                                  title="Aggregated % Change by Topic")
             st.plotly_chart(fig_combined)
-
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
