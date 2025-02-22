@@ -1792,12 +1792,14 @@ def google_search_console_analysis_page():
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
 
+    run_apriori = st.checkbox("Run Apriori Analysis (for co-ranking queries)") # Add a checkbox
+
     if uploaded_file_before is not None and uploaded_file_after is not None:
         try:
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
 
-            # --- Query Data Logic ---
+            # --- Query Data Logic --- (Same as before)
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                 return
@@ -1839,7 +1841,7 @@ def google_search_console_analysis_page():
                 base_cols += ["CTR_before", "CTR_after", "CTR_Change"]
             df = df[base_cols]
 
-            # --- Topic Classification ---
+            # --- Topic Classification --- (Same as before)
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = df["Query"].tolist()
@@ -1872,7 +1874,7 @@ def google_search_console_analysis_page():
             df["Topic"] = df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
 
 
-            # --- Aggregated Metrics by Topic ---
+            # --- Aggregated Metrics by Topic --- (Same as before)
             st.markdown("### Aggregated Metrics by Topic")
 
             # 1. Aggregate the base metrics:
@@ -1925,8 +1927,7 @@ def google_search_console_analysis_page():
                     lambda row: (row["CTR_Change"] / row["CTR_before"] * 100) if (row["CTR_before"] !=0 and not pd.isna(row["CTR_before"])) else 0, axis=1
                 )
 
-            # --- Reorder columns for display --- (THIS IS NEW)
-            # Create a list to hold the ordered column names
+            # --- Reorder columns for display ---
             ordered_cols = ["Topic"]
             if "Average Position_before" in aggregated.columns:
                 ordered_cols += ["Average Position_before", "Average Position_after", "Position_Change", "Position_Change_pct"]
@@ -1936,7 +1937,7 @@ def google_search_console_analysis_page():
                 ordered_cols += ["Impressions_before", "Impressions_after", "Impressions_Change", "Impressions_Change_pct"]
             if "CTR_before" in aggregated.columns:
                 ordered_cols += ["CTR_before", "CTR_after", "CTR_Change", "CTR_Change_pct"]
-            aggregated = aggregated[ordered_cols]  # Apply the new column order
+            aggregated = aggregated[ordered_cols]
 
 
             format_dict_agg = {
@@ -1960,8 +1961,7 @@ def google_search_console_analysis_page():
             aggregated = aggregated.sort_values(by="Position_Change", ascending=False)
             st.dataframe(aggregated.style.format(format_dict_agg))
 
-
-            # --- Overall Changes (Dashboard) ---
+            # --- Overall Changes (Dashboard) --- (Same as before)
             st.markdown("### Overall Changes Dashboard")
             total_clicks_before = df["Clicks_before"].sum()
             total_clicks_after = df["Clicks_after"].sum()
@@ -1995,10 +1995,8 @@ def google_search_console_analysis_page():
             with col4:
                 st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_pct_change:.1f}%")
 
-            # --- Combined Aggregated Metrics Chart ---
+            # --- Combined Aggregated Metrics Chart --- (Same as before)
             st.markdown("### Combined Aggregated Metrics Chart")
-
-            # Calculate percentage changes for the chart (similar to aggregated, but could be different logic)
             aggregated["Position_Change_pct_chart"] = aggregated.apply(
                 lambda row: (row["Position_Change"] / row["Average Position_before"] * 100)
                 if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0, axis=1)
@@ -2029,6 +2027,77 @@ def google_search_console_analysis_page():
                                  barmode='group',
                                  title="Aggregated % Change by Topic")
             st.plotly_chart(fig_combined)
+
+            # --- Apriori Analysis --- (NEW)
+            if run_apriori:  # Only run if the checkbox is checked
+                st.markdown("### Apriori Analysis for Co-Ranking Queries")
+
+                # 1. Bin the positions (as per the article)
+                def bin_position(position):
+                    if position == 0:  # Handle the filled NaN values
+                        return "NA"
+                    elif position <= 3:
+                        return "1-3"
+                    elif position <= 10:
+                        return "4-10"
+                    elif position <= 20:
+                        return "11-20"
+                    elif position <= 30:
+                        return "21-30"
+                    elif position <= 50:
+                        return "31-50"
+                    else:
+                        return "51+"
+
+                # Apply to both before and after dataframes
+                df_before['Binned Position'] = df_before['Average Position'].apply(bin_position)
+                df_after['Binned Position'] = df_after['Average Position'].apply(bin_position)
+
+                # 2. Prepare data for Apriori (one "transaction" per *day*, items are query:binned_position)
+                # Assuming you have a 'Date' column.  If not, you'll need to create one.
+                # We'll create dummy dates for this example.  REPLACE THIS with your actual date data.
+                if 'Date' not in df_before.columns:
+                    df_before['Date'] = pd.to_datetime('2024-01-01') + pd.to_timedelta(np.arange(len(df_before)), unit='D')
+                if 'Date' not in df_after.columns:
+                    df_after['Date'] = pd.to_datetime('2024-02-01') + pd.to_timedelta(np.arange(len(df_after)), unit='D')
+                df_before['Date'] = pd.to_datetime(df_before['Date'])  # Ensure datetime format
+                df_after['Date'] = pd.to_datetime(df_after['Date'])
+
+
+                transactions_before = []
+                for date, group in df_before.groupby('Date'):
+                    transaction = [f"{query}:{pos}" for query, pos in zip(group['Query'], group['Binned Position'])]
+                    transactions_before.append(transaction)
+
+                transactions_after = []
+                for date, group in df_after.groupby('Date'):
+                    transaction = [f"{query}:{pos}" for query, pos in zip(group['Query'], group['Binned Position'])]
+                    transactions_after.append(transaction)
+
+                # 3. Apply Apriori
+                te = TransactionEncoder()
+                te_ary_before = te.fit(transactions_before).transform(transactions_before)
+                df_apriori_before = pd.DataFrame(te_ary_before, columns=te.columns_)
+                frequent_itemsets_before = apriori(df_apriori_before, min_support=0.1, use_colnames=True) # Adjust min_support as needed
+
+                te_ary_after = te.fit(transactions_after).transform(transactions_after)
+                df_apriori_after = pd.DataFrame(te_ary_after, columns=te.columns_)
+                frequent_itemsets_after = apriori(df_apriori_after, min_support=0.1, use_colnames=True) # Adjust min_support
+
+                # 4. Display Results
+                st.subheader("Frequent Itemsets (Before)")
+                st.dataframe(frequent_itemsets_before)
+                st.subheader("Frequent Itemsets (After)")
+                st.dataframe(frequent_itemsets_after)
+
+                # 5.  (Optional)  Association Rule Mining.  Not strictly needed for the co-ranking analysis.
+                # from mlxtend.frequent_patterns import association_rules
+                # rules_before = association_rules(frequent_itemsets_before, metric="confidence", min_threshold=0.7)
+                # rules_after = association_rules(frequent_itemsets_after, metric="confidence", min_threshold=0.7)
+                # st.subheader("Association Rules (Before)")
+                # st.dataframe(rules_before)
+                # st.subheader("Association Rules (After)")
+                # st.dataframe(rules_after)
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
