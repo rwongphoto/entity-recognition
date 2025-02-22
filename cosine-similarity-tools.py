@@ -1784,7 +1784,8 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
+        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
+        this tool lets you compare GSC data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         
         - Merge data on query terms.
@@ -1915,7 +1916,7 @@ def google_search_console_analysis_page():
             queries = merged_df["Query"].tolist()
             embeddings = [get_embedding(query, model) for query in queries]
             from sklearn.cluster import KMeans
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=3, key="num_topics")
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
@@ -2013,33 +2014,32 @@ def google_search_console_analysis_page():
                 format_dict["Average Position_after"] = "{:.1f}"
             if "Position_YOY" in aggregated.columns:
                 format_dict["Position_YOY"] = "{:.1f}"
-            if "Position_YOY_pct" in aggregated.columns:
-                format_dict["Position_YOY_pct"] = "{:.1f}%"
             if "Clicks_before" in aggregated.columns:
                 format_dict["Clicks_before"] = "{:,.0f}"
             if "Clicks_after" in aggregated.columns:
                 format_dict["Clicks_after"] = "{:,.0f}"
             if "Clicks_YOY" in aggregated.columns:
                 format_dict["Clicks_YOY"] = "{:,.0f}"
-            if "Clicks_YOY_pct" in aggregated.columns:
-                format_dict["Clicks_YOY_pct"] = "{:.0f}%"
             if "Impressions_before" in aggregated.columns:
                 format_dict["Impressions_before"] = "{:,.0f}"
             if "Impressions_after" in aggregated.columns:
                 format_dict["Impressions_after"] = "{:,.0f}"
             if "Impressions_YOY" in aggregated.columns:
                 format_dict["Impressions_YOY"] = "{:,.0f}"
-            if "Impressions_YOY_pct" in aggregated.columns:
-                format_dict["Impressions_YOY_pct"] = "{:.0f}%"
             if "CTR_before" in aggregated.columns:
                 format_dict["CTR_before"] = "{:.2f}%"
             if "CTR_after" in aggregated.columns:
                 format_dict["CTR_after"] = "{:.2f}%"
             if "CTR_YOY" in aggregated.columns:
                 format_dict["CTR_YOY"] = "{:.2f}%"
+            if "Position_YOY_pct" in aggregated.columns:
+                format_dict["Position_YOY_pct"] = "{:.2f}%"
+            if "Clicks_YOY_pct" in aggregated.columns:
+                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
+            if "Impressions_YOY_pct" in aggregated.columns:
+                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
-
             
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
@@ -2065,9 +2065,10 @@ def google_search_console_analysis_page():
             st.plotly_chart(fig)
             
         except Exception as e:
-            st.error(f"An error occurrered while processing the files: {e}")
+            st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
