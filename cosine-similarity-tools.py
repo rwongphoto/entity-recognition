@@ -8,6 +8,7 @@ import time
 import pandas as pd
 import matplotlib.pyplot as plt
 import spacy
+import collections
 from collections import Counter
 from typing import List, Tuple, Dict
 import textstat
