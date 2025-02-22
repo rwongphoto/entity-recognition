@@ -1925,8 +1925,7 @@ def google_search_console_analysis_page():
                     lambda row: (row["CTR_Change"] / row["CTR_before"] * 100) if (row["CTR_before"] !=0 and not pd.isna(row["CTR_before"])) else 0, axis=1
                 )
 
-            # --- Reorder columns for display --- (THIS IS NEW)
-            # Create a list to hold the ordered column names
+            # --- Reorder columns for display ---
             ordered_cols = ["Topic"]
             if "Average Position_before" in aggregated.columns:
                 ordered_cols += ["Average Position_before", "Average Position_after", "Position_Change", "Position_Change_pct"]
@@ -1936,7 +1935,7 @@ def google_search_console_analysis_page():
                 ordered_cols += ["Impressions_before", "Impressions_after", "Impressions_Change", "Impressions_Change_pct"]
             if "CTR_before" in aggregated.columns:
                 ordered_cols += ["CTR_before", "CTR_after", "CTR_Change", "CTR_Change_pct"]
-            aggregated = aggregated[ordered_cols]  # Apply the new column order
+            aggregated = aggregated[ordered_cols]
 
 
             format_dict_agg = {
@@ -1995,10 +1994,10 @@ def google_search_console_analysis_page():
             with col4:
                 st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_pct_change:.1f}%")
 
-            # --- Combined Aggregated Metrics Chart ---
+            # --- Combined Aggregated Metrics Chart --- (WITH TOGGLE)
             st.markdown("### Combined Aggregated Metrics Chart")
 
-            # Calculate percentage changes for the chart (similar to aggregated, but could be different logic)
+            # Calculate percentage changes for the chart
             aggregated["Position_Change_pct_chart"] = aggregated.apply(
                 lambda row: (row["Position_Change"] / row["Average Position_before"] * 100)
                 if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0, axis=1)
@@ -2016,12 +2015,20 @@ def google_search_console_analysis_page():
                 aggregated["CTR_Change_pct_chart"] = aggregated.apply(lambda row: (row["CTR_Change"] / row["CTR_before"] * 100)
                                                                   if row["CTR_before"] != 0 and not pd.isna(row["CTR_before"]) else 0, axis=1)
 
+            # Create a list of topics for the multiselect
+            available_topics = aggregated['Topic'].tolist()
+            # Use a multiselect to allow the user to choose which topics to display
+            selected_topics = st.multiselect("Select Topics to Display:", available_topics, default=available_topics)
+
+            # Filter the aggregated data based on the selected topics
+            filtered_aggregated = aggregated[aggregated['Topic'].isin(selected_topics)]
+
             combined_chart_data = pd.DataFrame({
-                'Topic': aggregated['Topic'],
-                'Clicks % Change': aggregated['Clicks_Change_pct_chart'] if 'Clicks_Change_pct_chart' in aggregated else 0,
-                'Impressions % Change': aggregated['Impressions_Change_pct_chart'] if 'Impressions_Change_pct_chart' in aggregated else 0,
-                'Avg Position % Change': aggregated['Position_Change_pct_chart'],
-                'CTR % Change': aggregated['CTR_Change_pct_chart'] if 'CTR_Change_pct_chart' in aggregated else 0
+                'Topic': filtered_aggregated['Topic'],  # Use filtered data
+                'Clicks % Change': filtered_aggregated['Clicks_Change_pct_chart'] if 'Clicks_Change_pct_chart' in filtered_aggregated else 0,
+                'Impressions % Change': filtered_aggregated['Impressions_Change_pct_chart'] if 'Impressions_Change_pct_chart' in filtered_aggregated else 0,
+                'Avg Position % Change': filtered_aggregated['Position_Change_pct_chart'],
+                'CTR % Change': filtered_aggregated['CTR_Change_pct_chart'] if 'CTR_Change_pct_chart' in filtered_aggregated else 0
             })
 
             combined_chart_data = combined_chart_data.melt(id_vars='Topic', var_name='Metric', value_name='Change')
