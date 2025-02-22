@@ -666,7 +666,8 @@ def top_bottom_embeddings_page():
 
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
-    st.markdown("Analyze multiple sources to identify common entities missing on your site, *and* unique entities on your site.")
+    st.markdown("Analyze multiple sources to identify common entities missing on your site, *and* unique entities on your site.  This version also includes Apriori analysis to find associations between entities within the same content source.")
+
     competitor_source_option = st.radio(
         "Select competitor content source:",
         options=["Extract from URL", "Paste Content"],
@@ -680,6 +681,7 @@ def entity_analysis_page():
         st.markdown("Paste competitor content below. For multiple sources, separate each with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="entity_competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
+
     st.markdown("#### Target Site")
     target_option = st.radio(
         "Select target content source:",
@@ -691,6 +693,7 @@ def entity_analysis_page():
         target_input = st.text_input("Enter Target URL:", key="target_url", value="")
     else:
         target_input = st.text_area("Paste target content:", key="target_text", value="", height=100)
+
     st.markdown("#### Exclude Content (Paste Only)")
     exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
     exclude_types = st.multiselect("Select entity types to exclude:",
@@ -699,6 +702,7 @@ def entity_analysis_page():
                                             "FAC", "LOC", "PRODUCT", "EVENT", "WORK_OF_ART",
                                             "LAW", "LANGUAGE", "MISC"],
                                    default=["CARDINAL", "DATE", "TIME", "PERCENT", "MONEY", "QUANTITY", "ORDINAL"])
+
     if st.button("Analyze", key="entity_button"):
         if not competitor_list:
             st.warning("Please provide at least one competitor content or URL.")
@@ -706,10 +710,12 @@ def entity_analysis_page():
         if not target_input:
             st.warning("Please provide target content or URL.")
             return
+
         with st.spinner("Extracting content and analyzing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
+
             if target_option == "Extract from URL":
                 target_text = extract_text_from_url(target_input) if target_input else ""
             else:
@@ -718,7 +724,9 @@ def entity_analysis_page():
             filtered_target_entities = [(entity, label) for entity, label in target_entities if label not in exclude_types]
             target_entity_counts = count_entities(filtered_target_entities, nlp_model)
             target_entities_set = set(target_entity_counts.keys())
+
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
+
             all_competitor_entities = []
             entity_counts_per_source = {}
             for source in competitor_list:
@@ -734,15 +742,19 @@ def entity_analysis_page():
                     entity_counts_per_source[source] = source_counts
                     for (lemma, label) in source_counts:
                         all_competitor_entities.append((lemma, label))
+
             competitor_entity_counts = Counter(all_competitor_entities)
+
             gap_entities = Counter()
             for (entity, label), count in competitor_entity_counts.items():
                 if (entity, label) not in target_entities_set:
                     gap_entities[(entity, label)] = count
+
             unique_target_entities = Counter()
             for (entity, label), count in target_entity_counts.items():
                 if (entity, label) not in competitor_entity_counts:
                     unique_target_entities[(entity, label)] = count
+
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
             if gap_entities:
                 for (entity, label), count in gap_entities.most_common(50):
@@ -750,6 +762,7 @@ def entity_analysis_page():
                 display_entity_barchart(gap_entities)
             else:
                 st.write("No significant gap entities found.")
+
             st.markdown("### Entities Unique to Target Site")
             if unique_target_entities:
                 for (entity, label), count in unique_target_entities.most_common(50):
@@ -757,6 +770,7 @@ def entity_analysis_page():
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
+
             if exclude_input:
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
                 exclude_doc = nlp_model(exclude_input)
@@ -764,6 +778,7 @@ def entity_analysis_page():
                 exclude_entity_counts = count_entities(exclude_entities_list, nlp_model)
                 for (entity, label), count in exclude_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
+
             st.markdown("### Entities Per Competitor Source")
             for source, entity_counts_local in entity_counts_per_source.items():
                 st.markdown(f"#### Source: {source}")
@@ -772,6 +787,69 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
+            
+            # --- Apriori Algorithm Integration ---
+            st.subheader("Apriori Algorithm for Entity Associations")
+
+            # 1. Prepare Transaction Data
+            transactions = []
+            all_sources = competitor_list + ([target_input] if target_option == "Extract from URL" else [target_text]) # Include target
+            for source in all_sources:
+                if source.startswith("http"):  # It's a URL
+                    text = extract_text_from_url(source)
+                else: # It is text
+                    text = source
+                if text:
+                    entities = identify_entities(text, nlp_model)
+                    # Filter, lemmatize, and get unique entities *per source*
+                    filtered_entities = [(entity, label) for entity, label in entities if label not in exclude_types]
+                    source_entity_counts = count_entities(filtered_entities, nlp_model) # Use count_entities for unique, lemmatized
+                    transaction = [f"{entity} ({label})" for entity, label in source_entity_counts] # List of "entity (label)"
+                    if transaction: # Avoid empty
+                        transactions.append(transaction)
+
+
+            # 2. Encode Transactions
+            te = TransactionEncoder()
+            te_ary = te.fit(transactions).transform(transactions)
+            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+
+            # 3. Run Apriori
+            min_support = st.number_input("Minimum Support:", value=0.05, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_entity")
+            frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
+
+            if frequent_itemsets.empty:
+                st.warning("No frequent itemsets found. Try lowering the minimum support.")
+                return  # Important: Exit if no frequent itemsets
+
+            # 4. Generate Association Rules
+            min_confidence = st.number_input("Minimum Confidence:", value=0.3, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_entity")
+            rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+
+            # 5. Interpret and Display
+            if rules.empty:
+                st.warning("No association rules found.  Try lowering the minimum confidence or support.")
+            else:
+                rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+                rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+                rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
+                rules = rules.rename(columns={
+                    "antecedents": "Antecedent (IF)",
+                    "consequents": "Consequent (THEN)",
+                })
+
+                st.dataframe(rules)
+                st.markdown(
+                    """
+                    **Interpreting the Results:**
+
+                    *   **Antecedent (IF):** The entity/entities on the left-hand side.
+                    *   **Consequent (THEN):** The entity/entities on the right-hand side.
+                    *   **Support:** The proportion of content sources containing *both* the antecedent and consequent.
+                    *   **Confidence:** Given a source contains the antecedent, the probability it also contains the consequent.
+                    *   **Lift:** How much more likely the consequent is to appear if the antecedent is present, compared to its overall likelihood.  A lift > 1 indicates a positive association.
+                    """
+                )
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
