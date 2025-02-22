@@ -2013,32 +2013,33 @@ def google_search_console_analysis_page():
                 format_dict["Average Position_after"] = "{:.1f}"
             if "Position_YOY" in aggregated.columns:
                 format_dict["Position_YOY"] = "{:.1f}"
+            if "Position_YOY_pct" in aggregated.columns:
+                format_dict["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_before" in aggregated.columns:
                 format_dict["Clicks_before"] = "{:,.0f}"
             if "Clicks_after" in aggregated.columns:
                 format_dict["Clicks_after"] = "{:,.0f}"
             if "Clicks_YOY" in aggregated.columns:
                 format_dict["Clicks_YOY"] = "{:,.0f}"
+            if "Clicks_YOY_pct" in aggregated.columns:
+                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
             if "Impressions_before" in aggregated.columns:
                 format_dict["Impressions_before"] = "{:,.0f}"
             if "Impressions_after" in aggregated.columns:
                 format_dict["Impressions_after"] = "{:,.0f}"
             if "Impressions_YOY" in aggregated.columns:
                 format_dict["Impressions_YOY"] = "{:,.0f}"
+            if "Impressions_YOY_pct" in aggregated.columns:
+                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_before" in aggregated.columns:
                 format_dict["CTR_before"] = "{:.2f}%"
             if "CTR_after" in aggregated.columns:
                 format_dict["CTR_after"] = "{:.2f}%"
             if "CTR_YOY" in aggregated.columns:
                 format_dict["CTR_YOY"] = "{:.2f}%"
-            if "Position_YOY_pct" in aggregated.columns:
-                format_dict["Position_YOY_pct"] = "{:.2f}%"
-            if "Clicks_YOY_pct" in aggregated.columns:
-                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
-            if "Impressions_YOY_pct" in aggregated.columns:
-                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
+
             
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
