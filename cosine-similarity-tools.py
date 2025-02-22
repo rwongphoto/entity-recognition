@@ -1582,114 +1582,199 @@ def clean_search_volume(volume_str):
 import plotly.figure_factory as ff  # Keep this, even though we're not using dendrograms *now*
 
 def google_keyword_planner_analyzer_page():
-    st.header("Google Keyword Planner & SEMrush Analyzer")
+    st.header("Google Keyword Planner Analyzer")
     st.markdown(
         """
-        Upload an Excel file (.xlsx) from your keyword data report.
-        You can choose to analyze data from Google Keyword Planner or SEMrush.
-        This tool extracts n-grams from the keyword data and provides frequency insights.
+        Upload a Google Keyword Planner Excel file (.xlsx) and analyze keywords based on cosine similarity
+        to a target keyword.  This tool identifies relevant keywords, groups them into clusters,
+        and visualizes search trends.
         """
     )
-    
-    # Select the data source
-    data_source = st.radio("Select Data Source:", options=["Google Keyword Planner", "SEMRush"], index=0)
-    
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-    
-    if uploaded_file is not None:
-        try:
-            # Read the Excel file
-            df = pd.read_excel(uploaded_file)
-            st.subheader("Keyword Data Preview")
-            st.dataframe(df.head())
-            
-            if data_source == "Google Keyword Planner":
-                st.markdown("Processing Google Keyword Planner data...")
-                # Assume the Google Keyword Planner data has columns "Keyword", "Volume", etc.
-                # You might rename or process these columns as needed.
-                # For example, if needed:
-                df.rename(columns=lambda x: x.strip(), inplace=True)
-            else:  # SEMRush selected
-                st.markdown("Processing SEMrush keyword data...")
-                # For SEMrush, we expect columns such as "Keyword", "Volume", "KD", "CPC", etc.
-                # Clean column names (remove extra spaces)
-                df.rename(columns=lambda x: x.strip(), inplace=True)
-                # Example: Clean the "Volume" column (remove commas and convert to integer)
-                def clean_volume(volume_str):
-                    try:
-                        # Remove commas and convert to integer
-                        return int(str(volume_str).replace(',', '').strip())
-                    except Exception:
-                        return 0
-                if "Volume" in df.columns:
-                    df["Volume"] = df["Volume"].apply(clean_volume)
-                # You may want to rename "Volume" to a consistent name if needed.
-                st.markdown("SEMRush data processed. Ensure that your file contains a 'Keyword' column and a 'Volume' column, among others.")
-            
-            # Continue with n-gram extraction
-            st.subheader("N-gram Analysis")
-            extraction_method = st.radio("Select N-gram Extraction Method:", options=["Contiguous n-grams", "Skip-grams"], index=0)
-            n_value = st.selectbox("Select N (number of words in phrase):", options=[1, 2, 3, 4], index=1)
-            min_frequency = st.number_input("Minimum Frequency:", value=2, min_value=1)
-            
-            # Import nltk and set up stopwords and lemmatizer
-            import nltk
-            from nltk.tokenize import word_tokenize
-            from nltk.stem import WordNetLemmatizer
-            from nltk.corpus import stopwords
-            nltk.download('punkt')
-            nltk.download('wordnet')
-            nltk.download('stopwords')
-            stop_words = set(stopwords.words('english'))
-            lemmatizer = WordNetLemmatizer()
-            
-            def extract_ngrams(text, n):
-                text = str(text).lower()
-                tokens = word_tokenize(text)
-                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-                ngrams_list = list(nltk.ngrams(tokens, n))
-                return [" ".join(gram) for gram in ngrams_list]
-            
-            def extract_skipgrams(text, n):
-                import itertools
-                text = str(text).lower()
-                tokens = word_tokenize(text)
-                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-                if len(tokens) < n:
-                    return []
-                skipgrams_list = []
-                for combo in itertools.combinations(range(len(tokens)), n):
-                    skipgram = " ".join(tokens[i] for i in combo)
-                    skipgrams_list.append(skipgram)
-                return skipgrams_list
-            
-            all_ngrams = []
-            # Assume that the keyword data has a "Keyword" column in both formats.
-            for keyword in df["Keyword"]:
-                if extraction_method == "Contiguous n-grams":
-                    all_ngrams.extend(extract_ngrams(keyword, n_value))
-                else:
-                    all_ngrams.extend(extract_skipgrams(keyword, n_value))
-            
-            from collections import Counter
-            ngram_counts = Counter(all_ngrams)
-            filtered_ngrams = {ngram: count for ngram, count in ngram_counts.items() if count >= min_frequency}
-            
-            if not filtered_ngrams:
-                st.warning("No n-grams found with the specified minimum frequency.")
-                return
-            
-            df_ngrams = pd.DataFrame(list(filtered_ngrams.items()), columns=["N-gram", "Frequency"])
-            st.subheader("N-gram Frequency Analysis")
-            st.dataframe(df_ngrams.sort_values(by="Frequency", ascending=False))
-            
-            # You can further integrate additional visualizations or analysis as desired.
-            
-        except Exception as e:
-            st.error(f"An error occurred while processing the file: {e}")
-    else:
-        st.info("Please upload an Excel file.")
 
+    uploaded_file = st.file_uploader("Upload Keyword Planner Excel File", type=["xlsx"])
+    target_keyword = st.text_input("Enter Your Target Keyword:", "")
+
+    if uploaded_file is not None and target_keyword:
+        try:
+            # --- Data Preprocessing & Validation --- (Same robust data loading)
+            df_raw = pd.read_excel(uploaded_file, header=None)
+            header_row_index = None
+            for i in range(len(df_raw)):
+                if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency":
+                    header_row_index = i
+                    break
+
+            if header_row_index is None:
+                st.error("Could not find the header row in the Excel file. "
+                         "Please ensure the file is a standard Google Keyword Planner export.")
+                return
+
+            header_row = df_raw.iloc[header_row_index].fillna(method='ffill').tolist()
+            sub_header_row = df_raw.iloc[header_row_index + 1].tolist()
+            new_header = []
+            for h, sub_h in zip(header_row, sub_header_row):
+                if pd.isna(sub_h):
+                  new_header.append(str(h))
+                else:
+                  new_header.append(str(h) + ": " + str(sub_h))
+            df = pd.read_excel(uploaded_file, header=header_row_index + 2)
+            df.columns = new_header
+            keyword_col = None
+            search_volume_col = None
+            three_month_col = None  # New: Column for three-month change
+            yoy_col = None  # New: Column for YoY change
+
+
+            for col in df.columns:
+                if "keyword" in col.lower():
+                    keyword_col = col
+                if "avg" in col.lower() and "monthly search" in col.lower():
+                    search_volume_col = col
+                if "three" in col.lower() and "month" in col.lower() and "change" in col.lower():
+                    three_month_col = col
+                if "yoy" in col.lower() and "change" in col.lower():
+                    yoy_col = col
+
+            if keyword_col is None or search_volume_col is None or three_month_col is None or yoy_col is None:
+                st.error("Could not find the required 'Keyword', 'Avg. monthly searches', 'Three month change', and 'YoY change' columns. "
+                         "Please ensure your file is from Google Keyword Planner and contains this data.")
+                return
+
+            df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches",
+                                    three_month_col: "Three Month Change", yoy_col: "YoY Change"}) #Rename
+
+            df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
+            df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+
+            # Convert percentage strings to numeric values (e.g., "20%" -> 0.20)
+            def convert_percentage(perc_str):
+                try:
+                    return float(str(perc_str).replace('%', '')) / 100
+                except (ValueError, TypeError):
+                    return 0.0  # Or np.nan, if you prefer to represent missing values as NaN
+
+            df["Three Month Change"] = df["Three Month Change"].apply(convert_percentage)
+            df["YoY Change"] = df["YoY Change"].apply(convert_percentage)
+
+            # --- Cosine Similarity Calculation --- (Same as before)
+            model = initialize_sentence_transformer()
+            target_embedding = get_embedding(target_keyword, model)
+            keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
+            similarities = [cosine_similarity([target_embedding], [kw_emb])[0][0]
+                            for kw_emb in keyword_embeddings]
+            df["Cosine Similarity"] = similarities
+            avg_similarity = df["Cosine Similarity"].mean()
+            st.write(f"Average Cosine Similarity: {avg_similarity:.4f}")
+
+            # --- Filtering --- (Same as before)
+            filtered_df = df[df["Cosine Similarity"] >= avg_similarity]
+            filtered_keywords = filtered_df["Keyword"].tolist()
+            filtered_embeddings = [get_embedding(kw, model) for kw in filtered_keywords]
+            if not filtered_embeddings:
+                st.warning("No keywords found with above-average similarity.")
+                return
+            filtered_embeddings = np.vstack(filtered_embeddings)
+
+            # --- Topic Modeling (Clustering) --- (Back to original, but with 'clusters' defined early)
+            st.subheader("Clustering Settings")
+            algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
+            n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
+
+            if algorithm == "Kindred Spirit":
+                clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
+                centers = clustering_model.cluster_centers_
+                rep_keywords = {}
+                for i in range(n_clusters):
+                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
+                    if not cluster_grams:
+                        continue
+                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
+                    distances = np.linalg.norm(cluster_embeddings_local - centers[i], axis=1)
+                    rep_keyword = cluster_grams[np.argmin(distances)]
+                    rep_keywords[i] = rep_keyword
+            elif algorithm == "Affinity Stack":
+                clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
+                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
+                rep_keywords = {}
+                for i in range(n_clusters):
+                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
+                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
+                    if len(cluster_embeddings_local) > 1:
+                        sims = cosine_similarity(cluster_embeddings_local, cluster_embeddings_local)
+                        rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
+                    else:
+                        rep_keyword = cluster_grams[0]
+                    rep_keywords[i] = rep_keyword
+
+            # --- Create 'clusters' dictionary HERE (before detailed DF and trend charts) ---
+            clusters = {}
+            for keyword, label in zip(filtered_keywords, cluster_labels):
+                clusters.setdefault(label, []).append(keyword)
+
+            # --- Create Detailed Cluster DataFrame --- (Same as before)
+            df["Cluster"] = -1
+            for i, keyword in enumerate(filtered_keywords):
+                df.loc[df['Keyword'] == keyword, 'Cluster'] = cluster_labels[i]
+            detailed_cluster_df = df[df["Cluster"] != -1]
+
+            # --- Display Detailed Table --- (Same as before)
+            st.subheader("Keyword Clusters (Detailed View)")
+            for cluster_num in sorted(detailed_cluster_df["Cluster"].unique()):
+                st.markdown(f"**Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})**")
+                cluster_subset = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
+                st.dataframe(cluster_subset)
+
+
+            # --- Aggregate Cluster Data (NOW INCLUDES 3-MONTH AND YOY CHANGE) ---
+            st.subheader("Aggregated Cluster Data")
+            aggregated_data = []
+            for cluster_num, keywords in clusters.items():
+                cluster_df = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
+                total_avg_searches = cluster_df["Avg. monthly searches"].sum()
+
+                # Calculate *weighted average* for Three Month and YoY Change
+                total_volume = cluster_df["Avg. monthly searches"].sum()
+                weighted_avg_three_month = (cluster_df["Three Month Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
+                weighted_avg_yoy = (cluster_df["YoY Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
+
+                aggregated_data.append({
+                    "Cluster": cluster_num,
+                    "Representative Keyword": rep_keywords.get(cluster_num, 'N/A'),
+                    "Total Avg. Monthly Searches": total_avg_searches,
+                    "Weighted Avg. Three Month Change": weighted_avg_three_month,  # Add to aggregated data
+                    "Weighted Avg. YoY Change": weighted_avg_yoy,  # Add to aggregated data
+                })
+
+            aggregated_df = pd.DataFrame(aggregated_data)
+            # Format as percentages:
+            aggregated_df["Weighted Avg. Three Month Change"] = aggregated_df["Weighted Avg. Three Month Change"].map('{:.2%}'.format)
+            aggregated_df["Weighted Avg. YoY Change"] = aggregated_df["Weighted Avg. YoY Change"].map('{:.2%}'.format)
+            st.dataframe(aggregated_df)
+
+
+            # --- Trend Visualization --- (Now uses 'clusters', defined above)
+            month_cols = [col for col in df.columns if "Searches:" in col]
+            st.subheader("Cluster Search Trends")
+            for cluster_num, keywords in clusters.items():  # 'clusters' is now defined
+                cluster_df = df[df['Keyword'].isin(keywords)].copy()
+                for month_col in month_cols:
+                    if month_col not in cluster_df.columns:
+                        cluster_df[month_col] = 0
+                for col in month_cols:
+                    cluster_df[col] = pd.to_numeric(cluster_df[col], errors='coerce').fillna(0)
+                monthly_totals = cluster_df[month_cols].sum()
+                fig_trend = go.Figure(data=[go.Scatter(x=month_cols, y=monthly_totals, mode='lines+markers')])
+                fig_trend.update_layout(
+                    title=f"Search Trend for Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})",
+                    xaxis_title="Month",
+                    yaxis_title="Total Search Volume",
+                    xaxis_tickangle=-45
+                )
+                st.plotly_chart(fig_trend)
+
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 # ------------------------------------
 # NEW TOOL: GSC Analyzer
@@ -1699,7 +1784,8 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
+        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
+        this tool lets you compare GSC data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         
         - Merge data on query terms.
