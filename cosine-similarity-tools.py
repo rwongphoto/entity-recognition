@@ -1784,13 +1784,13 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        Inspired by [this article](https://searchengineland.com/using-the-apriori-algorithm-and-bert-embeddings-to-visualize-change-in-search-console-rankings-328702),
-        this tool lets you compare GSC data from two different time periods.
+        This tool lets you compare GSC data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         
         - Merge data on query terms.
         - Calculate ranking changes and additional metric comparisons.
         - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
+        - Show a dashboard summary of key metric changes.
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
@@ -1841,7 +1841,7 @@ def google_search_console_analysis_page():
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                 df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
             
-            # Calculate YOY percentage changes
+            # Calculate YOY percentage changes for each metric
             df["Position_YOY_pct"] = df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
                                               if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
             if "Clicks_before" in df.columns:
@@ -1864,6 +1864,34 @@ def google_search_console_analysis_page():
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             df = df[base_cols]
             
+            # --- Dashboard Summary ---
+            st.markdown("## Dashboard Summary")
+            # Use st.columns to display four key metrics
+            cols = st.columns(4)
+            if "Clicks_before" in df.columns:
+                total_clicks_before = df["Clicks_before"].sum()
+                total_clicks_after = df["Clicks_after"].sum()
+                overall_clicks_change = total_clicks_after - total_clicks_before
+                overall_clicks_change_pct = (overall_clicks_change / total_clicks_before * 100) if total_clicks_before != 0 else 0
+                cols[0].metric(label="Clicks Change", value=f"{overall_clicks_change:,.0f}", delta=f"{overall_clicks_change_pct:.1f}%")
+            if "Impressions_before" in df.columns:
+                total_impressions_before = df["Impressions_before"].sum()
+                total_impressions_after = df["Impressions_after"].sum()
+                overall_impressions_change = total_impressions_after - total_impressions_before
+                overall_impressions_change_pct = (overall_impressions_change / total_impressions_before * 100) if total_impressions_before != 0 else 0
+                cols[1].metric(label="Impressions Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_change_pct:.1f}%")
+            overall_avg_position_before = df["Average Position_before"].mean()
+            overall_avg_position_after = df["Average Position_after"].mean()
+            overall_position_change = overall_avg_position_before - overall_avg_position_after
+            overall_position_change_pct = (overall_position_change / overall_avg_position_before * 100) if overall_avg_position_before != 0 else 0
+            cols[2].metric(label="Avg. Position Change", value=f"{overall_position_change:.1f}", delta=f"{overall_position_change_pct:.1f}%")
+            if "CTR_before" in df.columns:
+                overall_ctr_before = df["CTR_before"].mean()
+                overall_ctr_after = df["CTR_after"].mean()
+                overall_ctr_change = overall_ctr_after - overall_ctr_before
+                overall_ctr_change_pct = (overall_ctr_change / overall_ctr_before * 100) if overall_ctr_before != 0 else 0
+                cols[3].metric(label="CTR Change", value=f"{overall_ctr_change:.2f}", delta=f"{overall_ctr_change_pct:.1f}%")
+            
             # --- Topic Classification ---
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
@@ -1875,7 +1903,7 @@ def google_search_console_analysis_page():
             topic_labels = kmeans.fit_predict(embeddings)
             df["Topic_Label"] = topic_labels
             
-            # Generate descriptive topic labels by extracting the most common keywords per topic
+            # Generate descriptive topic labels by extracting common keywords per topic
             import collections
             import nltk
             nltk.download('stopwords')
@@ -2022,6 +2050,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
