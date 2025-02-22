@@ -1814,9 +1814,12 @@ def google_search_console_analysis_page():
 
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
-            df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+            df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"), how="outer") # Outer merge
 
-            df["Position_YOY"] = df["Average Position_before"] - df["Average Position_after"]
+            # Handle missing data after the merge
+            df.fillna(0, inplace=True) # Fill NaN with 0
+
+            df["Position_YOY"] = df["Average Position_after"] - df["Average Position_before"] # After - Before
 
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
                 df["Clicks_YOY"] = df["Clicks_after"] - df["Clicks_before"]
@@ -1835,17 +1838,14 @@ def google_search_console_analysis_page():
                 df["CTR_after"] = df["CTR_after"].apply(parse_ctr)
                 df["CTR_YOY"] = df["CTR_after"] - df["CTR_before"]
 
-            df["Position_YOY_pct"] = df.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
-                                              if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
+            # Calculate % changes, handling division by zero and missing values.
+            df["Position_YOY_pct"] = df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100) if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0, axis=1) # check for NaN
             if "Clicks_before" in df.columns:
-                df["Clicks_YOY_pct"] = df.apply(lambda row: ((row["Clicks_YOY"] / row["Clicks_before"] * 100)
-                                                if row["Clicks_before"] and row["Clicks_before"] != 0 else None), axis=1)
+                df["Clicks_YOY_pct"] = df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100) if (row["Clicks_before"] != 0 and not pd.isna(row["Clicks_before"])) else 0, axis=1) # check for NaN
             if "Impressions_before" in df.columns:
-                df["Impressions_YOY_pct"] = df.apply(lambda row: ((row["Impressions_YOY"] / row["Impressions_before"] * 100)
-                                                     if row["Impressions_before"] and row["Impressions_before"] != 0 else None), axis=1)
+                df["Impressions_YOY_pct"] = df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100) if (row["Impressions_before"] != 0 and not pd.isna(row["Impressions_before"])) else 0, axis=1) # check for NaN
             if "CTR_before" in df.columns:
-                df["CTR_YOY_pct"] = df.apply(lambda row: ((row["CTR_YOY"] / row["CTR_before"] * 100)
-                                             if row["CTR_before"] and row["CTR_before"] != 0 else None), axis=1)
+                df["CTR_YOY_pct"] = df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100) if (row["CTR_before"] != 0 and not pd.isna(row["CTR_before"])) else 0, axis=1)  # check for NaN
 
             base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
             if "Clicks_before" in df.columns:
@@ -1944,8 +1944,9 @@ def google_search_console_analysis_page():
                 })
             aggregated = df.groupby("Topic").agg(agg_dict).reset_index()
             # add back in "Position_YOY_pct": "mean"
-            aggregated["Position_YOY_pct"] = aggregated.apply(lambda row: ((row["Position_YOY"] / row["Average Position_before"] * 100)
-                                                                if row["Average Position_before"] and row["Average Position_before"] != 0 else None), axis=1)
+            # Corrected Position_YOY_pct calculation for aggregated data:
+            aggregated["Position_YOY_pct"] = aggregated.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100) if (row["Average Position_before"] != 0 and not pd.isna(row["Average Position_before"])) else 0, axis=1)
+
 
 
             format_dict_agg = {
@@ -1966,30 +1967,35 @@ def google_search_console_analysis_page():
                 "Impressions_after": "{:,.0f}",
                 "Impressions_YOY": "{:,.0f}",
                 }
-            aggregated = aggregated.sort_values(by="Position_YOY", ascending=False)
+            aggregated = aggregated.sort_values(by="Position_YOY", ascending=False)  # Corrected sorting
             st.dataframe(aggregated.style.format(format_dict_agg))
 
 
             # --- Overall Changes (Dashboard) ---
             st.markdown("### Overall Changes Dashboard")
+            # Handle cases where data might be missing
+            total_clicks_before = df["Clicks_before"].sum()
+            total_clicks_after = df["Clicks_after"].sum()
+            total_impressions_before = df["Impressions_before"].sum()
 
             overall_clicks_change = df["Clicks_YOY"].sum()
             overall_impressions_change = df["Impressions_YOY"].sum()
             overall_position_change = df["Position_YOY"].mean()
-            total_clicks_before = df["Clicks_before"].sum()
-            total_clicks_after = df["Clicks_after"].sum()
 
-            if total_clicks_before > 0:
-                overall_ctr_change = (((df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after) -
-                                      ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before))
-                overall_ctr_pct_change = (overall_ctr_change / ((df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before)) * 100 if (df["CTR_before"] * df["Clicks_before"]).sum() != 0 else 0  #fixed
+
+            # Corrected overall CTR change and percentage change calculations:
+            if total_clicks_before > 0 and total_clicks_after > 0:
+                overall_ctr_before = (df["CTR_before"] * df["Clicks_before"]).sum() / total_clicks_before if total_clicks_before !=0 else 0
+                overall_ctr_after = (df["CTR_after"] * df["Clicks_after"]).sum() / total_clicks_after if total_clicks_after !=0 else 0
+                overall_ctr_change = overall_ctr_after - overall_ctr_before
+                overall_ctr_pct_change = (overall_ctr_change / overall_ctr_before) * 100 if overall_ctr_before != 0 else 0
             else:
                 overall_ctr_change = 0
                 overall_ctr_pct_change = 0
 
-
             overall_clicks_pct_change = (overall_clicks_change / total_clicks_before) * 100 if total_clicks_before > 0 else 0
-            overall_impressions_pct_change = (overall_impressions_change / df["Impressions_before"].sum()) * 100 if df["Impressions_before"].sum() > 0 else 0
+            overall_impressions_pct_change = (overall_impressions_change / total_impressions_before) * 100 if total_impressions_before > 0 else 0
+
 
 
             col1, col2, col3, col4 = st.columns(4)
@@ -1998,7 +2004,7 @@ def google_search_console_analysis_page():
             with col2:
                 st.metric(label="Avg Position Change", value=f"{overall_position_change:.1f}")
             with col3:
-                st.metric(label="Overall CTR Change", value=f"{overall_ctr_change:.1f}%", delta=f"{overall_ctr_pct_change:.1f}%")
+                st.metric(label="Overall CTR Change", value=f"{overall_ctr_change:.1f}%", delta=f"{overall_ctr_pct_change:.1f}%") # Show % change
             with col4:
                 st.metric(label="Overall Impression Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_pct_change:.1f}%")
 
