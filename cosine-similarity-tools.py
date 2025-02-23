@@ -1560,7 +1560,7 @@ def google_search_console_analysis_page():
         The goal is to identify key topics that are contributing to your SEO performance.
         This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-        - Classify queries into topics with descriptive labels.
+        - Classify queries into topics with descriptive labels.  **Including an option to create a topic group for brand.**
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
         """
@@ -1569,6 +1569,12 @@ def google_search_console_analysis_page():
     st.markdown("### Upload GSC Data")
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
+
+    # --- ADD BRAND NAME INPUT ---
+    st.markdown("### Brand Name(s)")
+    brand_names_input = st.text_input("Enter your brand name(s) (comma-separated):", "")
+    brand_names = [name.strip().lower() for name in brand_names_input.split(",") if name.strip()]
+
     
     if uploaded_file_before is not None and uploaded_file_after is not None:
         # Initialize the progress bar
@@ -1683,12 +1689,33 @@ def google_search_console_analysis_page():
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+
+            # --- BRAND TOPIC IDENTIFICATION ---
+            if brand_names:
+                brand_queries = [q for q in queries if any(brand_name in q.lower() for brand_name in brand_names)]
+                non_brand_queries = [q for q in queries if q not in brand_queries]
+            else:
+                brand_queries = []
+                non_brand_queries = queries
+
+            num_topics = st.slider("Select number of topics (excluding brand):", min_value=2, max_value=25, value=5, key="num_topics")
             from sklearn.cluster import KMeans
-            embeddings = [get_embedding(query, model) for query in queries]
-            kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
-            topic_labels = kmeans.fit_predict(embeddings)
-            merged_df["Topic_Label"] = topic_labels
+
+             # --- CLUSTERING (with Brand Handling) ---
+            if non_brand_queries:
+                embeddings = [get_embedding(query, model) for query in non_brand_queries]
+                kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
+                topic_labels = kmeans.fit_predict(embeddings)
+                # Add +1 to topic labels to reserve 0 for brand
+                topic_labels = [label + 1 for label in topic_labels]
+            else:
+                topic_labels = []  # No non-brand queries
+
+            # Combine brand and non-brand labels
+            combined_labels = [0] * len(brand_queries) + topic_labels  # 0 for brand
+            combined_queries = brand_queries + non_brand_queries
+            merged_df["Topic_Label"] = combined_labels # Assign labels to the *original* merged_df
+
             
             # Generate descriptive topic labels by extracting common keywords per topic
             import collections
@@ -1709,13 +1736,19 @@ def google_search_console_analysis_page():
                     return label.capitalize()
                 else:
                     return "N/A"
-            
-            topic_labels_desc = {}
-            for topic in range(num_topics):
-                topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
+
+            # --- DESCRIPTIVE LABELS (with Brand) ---
+            topic_labels_desc = {0: "Brand"}  # Label 0 as "Brand"
+            for topic in range(1, num_topics + 1):  # Start from 1
+                topic_queries = [q for q, label in zip(non_brand_queries, topic_labels) if label == topic]
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
-            merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
+
+
+            merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x}"))
             progress_bar.progress(55)
+
+
+
             
             # Define formatting for the "Topic Classification and Combined Data" table
             format_dict_merged = {}
