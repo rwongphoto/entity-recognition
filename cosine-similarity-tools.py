@@ -1545,15 +1545,6 @@ def google_ads_search_term_analyzer_page():
         except Exception as e:
             st.error(f"An error occurred while processing the Excel file: {e}")
 
-
-# ------------------------------------
-# NEW TOOL: GSC Analyzer
-# ------------------------------------
-
-# ------------------------------------
-# NEW TOOL: GSC Analyzer
-# ------------------------------------
-
 # ------------------------------------
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
