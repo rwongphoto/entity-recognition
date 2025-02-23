@@ -29,7 +29,6 @@ google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
 h11==0.14.0
-hashlib
 huggingface-hub==0.28.1
 idna==3.10
 importlib_resources==6.5.2
