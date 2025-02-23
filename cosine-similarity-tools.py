@@ -1877,7 +1877,23 @@ def google_search_console_analysis_page():
                 if "Position_YOY_pct" in aggregated.columns:
                     vis_data.append({"Topic": topic, "Metric": "Average Position", "YOY % Change": row["Position_YOY_pct"]})
                 if "Clicks_YOY_pct" in aggregated.columns:
-                    vis_data.append({"Topi
+                    vis_data.append({"Topic": topic, "Metric": "Clicks", "YOY % Change": row["Clicks_YOY_pct"]})
+                if "Impressions_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "Impressions", "YOY % Change": row["Impressions_YOY_pct"]})
+                if "CTR_YOY_pct" in aggregated.columns:
+                    vis_data.append({"Topic": topic, "Metric": "CTR", "YOY % Change": row["CTR_YOY_pct"]})
+            vis_df = pd.DataFrame(vis_data)
+            fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric", barmode="group",
+                         title="YOY % Change by Topic for Each Metric",
+                         labels={"YOY % Change": "YOY % Change (%)"})
+            st.plotly_chart(fig)
+            progress_bar.progress(100)
+            
+        except Exception as e:
+            st.error(f"An error occurred while processing the files: {e}")
+    else:
+        st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
