@@ -44,6 +44,8 @@ import plotly.figure_factory as ff
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 
+import hashlib
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -348,6 +350,160 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     top_sections = sorted_sections[:top_n]
     bottom_sections = sorted_sections[-top_n:]
     return top_sections, bottom_sections
+
+# --- Helper Functions (Reusable) ---
+
+def extract_ngrams(text, n):
+    """Extracts n-grams from a given text."""
+    text = str(text).lower()
+    tokens = word_tokenize(text)
+    tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
+    ngrams_list = list(nltk.ngrams(tokens, n))
+    return [" ".join(gram) for gram in ngrams_list]
+
+def extract_and_filter_ngrams(texts, n, min_freq):
+    """Extracts and filters n-grams based on minimum frequency."""
+    all_ngrams = []
+    for text in texts:
+        all_ngrams.extend(extract_ngrams(text, n))
+
+    ngram_counts = Counter(all_ngrams)
+    filtered_ngrams = {ngram for ngram, count in ngram_counts.items() if count >= min_freq}
+    return filtered_ngrams
+
+@st.cache_data
+def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support, min_confidence, min_ngram_frequency,
+                         clicks_yoy_pct_threshold, impressions_yoy_pct_threshold, position_yoy_threshold,
+                         selected_metrics):
+    """Cached Apriori analysis function for GSC data."""
+
+    df_before = df_before_global  # Access the global DataFrames
+    df_after = df_after_global
+
+    if df_before is None or df_after is None:
+        return None  # Or handle appropriately
+
+    # --- Data Merging and Change Calculation (Same as your original tool) ---
+    merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+
+    # Calculate YOY changes
+    merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
+    if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
+        merged_df["Clicks_YOY"] = merged_df["Clicks_after"] - merged_df["Clicks_before"]
+    if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
+        merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
+    if "CTR" in df_before.columns and "CTR" in df_after.columns:
+        merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr) #parse_ctr needs to be defined
+        merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
+        merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
+
+    # Calculate YOY percentage changes
+    merged_df["Position_YOY_pct"] = merged_df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
+                                                    if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
+    if "Clicks" in df_before.columns:
+        merged_df["Clicks_YOY_pct"] = merged_df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
+                                                      if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1)
+    if "Impressions" in df_before.columns:
+        merged_df["Impressions_YOY_pct"] = merged_df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
+                                                           if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
+    if "CTR" in df_before.columns:
+        merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
+                                                   if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+
+
+    # --- Filtering ---
+    filtered_df = merged_df.copy()
+
+    if "Clicks_YOY_pct" in filtered_df.columns:
+        filtered_df = filtered_df[
+            (filtered_df["Clicks_YOY_pct"] >= clicks_yoy_pct_threshold) |
+            (filtered_df["Clicks_YOY_pct"] <= -clicks_yoy_pct_threshold)
+        ]
+    if "Impressions_YOY_pct" in filtered_df.columns:
+        filtered_df = filtered_df[
+            (filtered_df["Impressions_YOY_pct"] >= impressions_yoy_pct_threshold) |
+            (filtered_df["Impressions_YOY_pct"] <= -impressions_yoy_pct_threshold)
+        ]
+    if "Position_YOY" in filtered_df.columns:
+        filtered_df = filtered_df[
+            (filtered_df["Position_YOY"] >= position_yoy_threshold) |
+            (filtered_df["Position_YOY"] <= -position_yoy_threshold)
+        ]
+    if filtered_df.empty:
+        return pd.DataFrame() # Return empty if no data
+
+    # --- N-gram Extraction and Pre-filtering ---
+    filtered_ngrams = extract_and_filter_ngrams(filtered_df["Query"], n_value, min_ngram_frequency)
+
+    transactions = []
+    for keyword in filtered_df["Query"]:
+        ngrams = extract_ngrams(keyword, n_value)
+        transactions.append([ngram for ngram in ngrams if ngram in filtered_ngrams])
+
+    # --- Run Apriori ---
+    te = TransactionEncoder()
+    te_ary = te.fit(transactions).transform(transactions)
+    df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+
+    frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
+    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+    # --- Prepare Results (with YOY changes) ---
+
+    if rules.empty:
+      return pd.DataFrame() # Handle empty
+
+    rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+    rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+    rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
+
+    # Create a helper function to get change metrics for n-grams, handling missing columns
+    def get_change_metrics(ngram):
+        relevant_queries = filtered_df[filtered_df["Query"].str.contains(ngram, case=False)]
+        avg_changes = {}
+
+        for metric in selected_metrics:  # Use selected metrics
+            column_name = metric + "_YOY_pct"
+            if column_name in relevant_queries.columns:
+                avg_changes[metric] = relevant_queries[column_name].mean()
+            else:
+                avg_changes[metric] = None  # Handle missing metric
+
+        return avg_changes
+
+    rules["Antecedent Metrics"] = rules["antecedents"].apply(get_change_metrics)
+    rules["Consequent Metrics"] = rules["consequents"].apply(get_change_metrics)
+
+    # Expand the dictionaries into separate columns
+    rules = pd.concat([rules.drop(['Antecedent Metrics'], axis=1), rules['Antecedent Metrics'].apply(pd.Series)], axis=1)
+    rules = pd.concat([rules.drop(['Consequent Metrics'], axis=1), rules['Consequent Metrics'].apply(pd.Series)], axis=1)
+
+    return rules
+
+@st.cache_data
+def load_gsc_data(uploaded_file):
+    """Loads GSC data and returns the DataFrame and a hash of its contents."""
+    if uploaded_file is not None:
+        file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
+        try:
+            df = pd.read_csv(uploaded_file)
+             # --- Data Cleaning (Consistent with your original tool) ---
+            if "Top queries" not in df.columns or "Position" not in df.columns:
+                return None, None  # Or raise an exception
+            df.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+            return df, file_hash
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            return None, None
+    return None, None
+
+def parse_ctr(ctr): #Needed for CTR parsing
+    try:
+        if isinstance(ctr, str) and "%" in ctr:
+            return float(ctr.replace("%", ""))
+        else:
+            return float(ctr)
+    except:
+        return None
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -1895,7 +2051,84 @@ def google_search_console_analysis_page():
         st.info("Please upload both GSC CSV files to start the analysis.")
 
 
+def apriori_gsc_analyzer_page():
+    """Streamlit page for the Apriori-based GSC analyzer."""
+    st.header("Apriori GSC Analyzer (Trend Analysis)")
+    st.markdown(
+        """
+        This tool analyzes changes in your Google Search Console data between two time periods using the Apriori algorithm.
+        It identifies associations between n-grams in search queries that have experienced significant changes in clicks, impressions, or position.
+        """
+    )
 
+    st.sidebar.markdown("### Data Upload")
+    uploaded_file_before = st.sidebar.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before_apriori")
+    uploaded_file_after = st.sidebar.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after_apriori")
+
+    st.sidebar.markdown("### Apriori Settings")
+    n_value = st.sidebar.selectbox("Select N for N-grams:", options=[1, 2, 3], index=0, key="apriori_n_gsc_new")
+    min_ngram_frequency = st.sidebar.number_input("Minimum N-gram Frequency (Pre-Apriori):", value=2, min_value=1, key="apriori_pre_freq_gsc_new")
+    min_support = st.sidebar.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_gsc_new")
+    min_confidence = st.sidebar.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_gsc_new")
+
+    st.sidebar.markdown("### Filtering Criteria")
+    clicks_yoy_pct_threshold = st.sidebar.number_input("Clicks YOY % Change Threshold (+/-):", value=20, min_value=0, step=5)
+    impressions_yoy_pct_threshold = st.sidebar.number_input("Impressions YOY % Change Threshold (+/-):", value=15, min_value=0, step=5)
+    position_yoy_threshold = st.sidebar.number_input("Position YOY Threshold (+/-):", value=2, min_value=1, step=1)
+
+    st.sidebar.markdown("### Metric Selection")
+    available_metrics = ["Clicks", "Impressions", "Position", "CTR"]  # Add CTR
+    selected_metrics = st.sidebar.multiselect("Select Metrics for Analysis:", available_metrics, default=["Clicks", "Impressions", "Position"])
+
+    if uploaded_file_before is not None and uploaded_file_after is not None:
+        df_before, file_hash_before = load_gsc_data(uploaded_file_before)
+        df_after, file_hash_after = load_gsc_data(uploaded_file_after)
+
+        if df_before is None or df_after is None:
+            st.error("Error loading data. Please check the uploaded files.")
+            return
+        # Store in global
+        global df_before_global, df_after_global
+        df_before_global = df_before
+        df_after_global = df_after
+
+        if st.button("Run Apriori Analysis"):
+            with st.spinner("Running Apriori analysis..."):
+                rules = run_apriori_analysis(
+                    file_hash_before, file_hash_after, n_value, min_support, min_confidence, min_ngram_frequency,
+                    clicks_yoy_pct_threshold, impressions_yoy_pct_threshold, position_yoy_threshold,
+                    selected_metrics
+                )
+                if rules.empty:
+                    st.warning("No association rules found or filtering criteria too strict.  Try adjusting the parameters.")
+                else:
+
+                    # Select and rename columns for display based on selected_metrics
+                    display_columns = ["antecedents", "consequents", "support", "confidence", "lift"]
+                    rename_dict = {
+                        "antecedents": "Antecedent (IF)",
+                        "consequents": "Consequent (THEN)",
+                    }
+
+                    for metric in selected_metrics:
+                        display_columns.append(metric + "_x") # Add metrics
+                        display_columns.append(metric + "_y")
+                        rename_dict[metric + "_x"] = f"Avg. {metric} YOY% (Antecedent)"  # Rename
+                        rename_dict[metric + "_y"] = f"Avg. {metric} YOY% (Consequent)"
+
+                    rules = rules[display_columns]
+                    rules = rules.rename(columns=rename_dict)
+
+                    st.dataframe(rules)
+
+    else:
+        st.info("Please upload both 'Before' and 'After' GSC CSV files.")
+
+# Initialize global variables and NLTK resources
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
+df_before_global = None
+df_after_global = None
 
 
 # ------------------------------------
@@ -1932,8 +2165,8 @@ def main():
         "Semantic Gap Analyzer",
         "Keyword Clustering",
         "People Also Asked",
-        "Google Ads Search Term Analyzer",  # New tool
-        "Google Search Console Analyzer" # Add this line
+        "Google Search Console Analyzer",
+        "Apriori GSC Analyzer",  # Add this
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -1961,6 +2194,8 @@ def main():
         google_ads_search_term_analyzer_page()
     elif tool == "Google Search Console Analyzer":
         google_search_console_analysis_page()
+    elif tool == "Apriori GSC Analyzer":  # Add this block
+        apriori_gsc_analyzer_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
