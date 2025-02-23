@@ -1679,9 +1679,10 @@ def google_search_console_analysis_page():
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
-            embeddings = [get_embedding(query, model) for query in queries]
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+            # Compute embeddings and cluster queries using KMeans
             from sklearn.cluster import KMeans
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=5, key="num_topics")
+            embeddings = [get_embedding(query, model) for query in queries]
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
@@ -1809,6 +1810,18 @@ def google_search_console_analysis_page():
                     if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
             progress_bar.progress(75)
             
+            # Reorder columns so that each % Change is immediately next to its related metric columns.
+            new_order = ["Topic"]
+            if "Average Position_before" in aggregated.columns:
+                new_order.extend(["Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"])
+            if "Clicks_before" in aggregated.columns:
+                new_order.extend(["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"])
+            if "Impressions_before" in aggregated.columns:
+                new_order.extend(["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"])
+            if "CTR_before" in aggregated.columns:
+                new_order.extend(["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"])
+            aggregated = aggregated[new_order]
+            
             # Define formatting for aggregated metrics display
             format_dict = {}
             if "Average Position_before" in aggregated.columns:
@@ -1817,30 +1830,30 @@ def google_search_console_analysis_page():
                 format_dict["Average Position_after"] = "{:.1f}"
             if "Position_YOY" in aggregated.columns:
                 format_dict["Position_YOY"] = "{:.1f}"
+            if "Position_YOY_pct" in aggregated.columns:
+                format_dict["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_before" in aggregated.columns:
                 format_dict["Clicks_before"] = "{:,.0f}"
             if "Clicks_after" in aggregated.columns:
                 format_dict["Clicks_after"] = "{:,.0f}"
             if "Clicks_YOY" in aggregated.columns:
                 format_dict["Clicks_YOY"] = "{:,.0f}"
+            if "Clicks_YOY_pct" in aggregated.columns:
+                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
             if "Impressions_before" in aggregated.columns:
                 format_dict["Impressions_before"] = "{:,.0f}"
             if "Impressions_after" in aggregated.columns:
                 format_dict["Impressions_after"] = "{:,.0f}"
             if "Impressions_YOY" in aggregated.columns:
                 format_dict["Impressions_YOY"] = "{:,.0f}"
+            if "Impressions_YOY_pct" in aggregated.columns:
+                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_before" in aggregated.columns:
                 format_dict["CTR_before"] = "{:.2f}%"
             if "CTR_after" in aggregated.columns:
                 format_dict["CTR_after"] = "{:.2f}%"
             if "CTR_YOY" in aggregated.columns:
                 format_dict["CTR_YOY"] = "{:.2f}%"
-            if "Position_YOY_pct" in aggregated.columns:
-                format_dict["Position_YOY_pct"] = "{:.2f}%"
-            if "Clicks_YOY_pct" in aggregated.columns:
-                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
-            if "Impressions_YOY_pct" in aggregated.columns:
-                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
             
@@ -1852,35 +1865,20 @@ def google_search_console_analysis_page():
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
             
-            # New: Allow user to disable specific topics from the chart
+            # Allow user to disable specific topics from the chart
             available_topics = aggregated["Topic"].unique().tolist()
             selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=available_topics)
             
             vis_data = []
             for idx, row in aggregated.iterrows():
                 topic = row["Topic"]
-                # Only include topics that are selected
                 if topic not in selected_topics:
                     continue
                 if "Position_YOY_pct" in aggregated.columns:
                     vis_data.append({"Topic": topic, "Metric": "Average Position", "YOY % Change": row["Position_YOY_pct"]})
                 if "Clicks_YOY_pct" in aggregated.columns:
-                    vis_data.append({"Topic": topic, "Metric": "Clicks", "YOY % Change": row["Clicks_YOY_pct"]})
-                if "Impressions_YOY_pct" in aggregated.columns:
-                    vis_data.append({"Topic": topic, "Metric": "Impressions", "YOY % Change": row["Impressions_YOY_pct"]})
-                if "CTR_YOY_pct" in aggregated.columns:
-                    vis_data.append({"Topic": topic, "Metric": "CTR", "YOY % Change": row["CTR_YOY_pct"]})
-            vis_df = pd.DataFrame(vis_data)
-            fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric", barmode="group",
-                         title="YOY % Change by Topic for Each Metric",
-                         labels={"YOY % Change": "YOY % Change (%)"})
-            st.plotly_chart(fig)
-            progress_bar.progress(100)
-            
-        except Exception as e:
-            st.error(f"An error occurred while processing the files: {e}")
-    else:
-        st.info("Please upload both GSC CSV files to start the analysis.")
+                    vis_data.append({"Topi
+
 
 
 
