@@ -1554,6 +1554,10 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
+# ------------------------------------
+# NEW TOOL: GSC Analyzer
+# ------------------------------------
+
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -1686,7 +1690,7 @@ def google_search_console_analysis_page():
             queries = merged_df["Query"].tolist()
             embeddings = [get_embedding(query, model) for query in queries]
             from sklearn.cluster import KMeans
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=5, key="num_topics")
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
@@ -1856,9 +1860,17 @@ def google_search_console_analysis_page():
             # Step 6: Visualization - Grouped Bar Chart of YOY % Change by Topic for Each Metric
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
+            
+            # New: Allow user to disable specific topics from the chart
+            available_topics = aggregated["Topic"].unique().tolist()
+            selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=available_topics)
+            
             vis_data = []
             for idx, row in aggregated.iterrows():
                 topic = row["Topic"]
+                # Only include topics that are selected
+                if topic not in selected_topics:
+                    continue
                 if "Position_YOY_pct" in aggregated.columns:
                     vis_data.append({"Topic": topic, "Metric": "Average Position", "YOY % Change": row["Position_YOY_pct"]})
                 if "Clicks_YOY_pct" in aggregated.columns:
@@ -1878,8 +1890,6 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
 
 
 
