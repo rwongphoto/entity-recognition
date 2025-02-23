@@ -393,7 +393,7 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
     if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
         merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
     if "CTR" in df_before.columns and "CTR" in df_after.columns:
-        merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr) #parse_ctr needs to be defined
+        merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
         merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
         merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
 
@@ -447,16 +447,16 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
 
     frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
     rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
-    # --- Prepare Results (with YOY changes) ---
 
+    # --- Prepare Results (with YOY changes) ---
     if rules.empty:
-      return pd.DataFrame() # Handle empty
+        return pd.DataFrame() # Handle empty case
 
     rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
     rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
     rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
 
-    # Create a helper function to get change metrics for n-grams, handling missing columns
+    # Create a helper function to get change metrics for n-grams
     def get_change_metrics(ngram):
         relevant_queries = filtered_df[filtered_df["Query"].str.contains(ngram, case=False)]
         avg_changes = {}
@@ -476,7 +476,6 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
     # Expand the dictionaries into separate columns
     rules = pd.concat([rules.drop(['Antecedent Metrics'], axis=1), rules['Antecedent Metrics'].apply(pd.Series)], axis=1)
     rules = pd.concat([rules.drop(['Consequent Metrics'], axis=1), rules['Consequent Metrics'].apply(pd.Series)], axis=1)
-
     return rules
 
 @st.cache_data
@@ -486,9 +485,8 @@ def load_gsc_data(uploaded_file):
         file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         try:
             df = pd.read_csv(uploaded_file)
-             # --- Data Cleaning (Consistent with your original tool) ---
             if "Top queries" not in df.columns or "Position" not in df.columns:
-                return None, None  # Or raise an exception
+                return None, None
             df.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             return df, file_hash
         except Exception as e:
@@ -496,7 +494,7 @@ def load_gsc_data(uploaded_file):
             return None, None
     return None, None
 
-def parse_ctr(ctr): #Needed for CTR parsing
+def parse_ctr(ctr):
     try:
         if isinstance(ctr, str) and "%" in ctr:
             return float(ctr.replace("%", ""))
@@ -504,6 +502,96 @@ def parse_ctr(ctr): #Needed for CTR parsing
             return float(ctr)
     except:
         return None
+
+@st.cache_resource
+def load_cached_sentence_transformer():
+    """Loads and caches the SentenceTransformer model."""
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+@st.cache_data
+def perform_topic_classification(file_hash_before, file_hash_after, num_topics, clustering_algo):
+    """Performs topic classification and caches the results."""
+    df_before = df_before_global
+    df_after = df_after_global
+
+    if df_before is None or df_after is None:
+        return None, None
+
+    merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+
+    # Calculate changes (you can reuse the change calculations from run_apriori_analysis)
+    merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
+    if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
+        merged_df["Clicks_YOY"] = merged_df["Clicks_after"] - merged_df["Clicks_before"]
+        merged_df["Clicks_YOY_pct"] = merged_df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
+                                                      if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1) # Calculate here
+    if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
+        merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
+        merged_df["Impressions_YOY_pct"] = merged_df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
+                                                           if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
+    if "CTR" in df_before.columns and "CTR" in df_after.columns:
+        merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
+        merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
+        merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
+        merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
+                                               if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+
+    model = load_cached_sentence_transformer()
+    queries = merged_df["Query"].tolist()
+    embeddings = [get_embedding(query, model) for query in queries]
+
+    if clustering_algo == "Kindred Spirit":
+        clustering_model = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
+        cluster_labels = clustering_model.fit_predict(embeddings)
+        centers = clustering_model.cluster_centers_
+        rep_keywords = {}
+        for i in range(num_topics):
+            cluster_queries = [q for q, label in zip(queries, cluster_labels) if label == i]
+            if not cluster_queries:
+                continue
+            cluster_embeddings = [emb for emb, label in zip(embeddings, cluster_labels) if label == i]
+            distances = np.linalg.norm(cluster_embeddings - centers[i], axis=1)
+            rep_keyword = cluster_queries[np.argmin(distances)]
+            rep_keywords[i] = rep_keyword
+
+    elif clustering_algo == "Affinity Stack":
+        clustering_model = AgglomerativeClustering(n_clusters=num_topics)
+        cluster_labels = clustering_model.fit_predict(embeddings)
+        rep_keywords = {}
+        for i in range(num_topics):
+            cluster_queries = [q for q, label in zip(queries, cluster_labels) if label == i]
+            cluster_embeddings = [emb for emb, label in zip(embeddings, cluster_labels) if label == i]
+            if len(cluster_embeddings) > 1:
+                sims = cosine_similarity(cluster_embeddings, cluster_embeddings)
+                rep_keyword = cluster_queries[np.argmax(np.sum(sims, axis=1))]
+            else:
+                rep_keyword = cluster_queries[0]
+            rep_keywords[i] = rep_keyword
+
+    merged_df["Topic_Label"] = cluster_labels
+    topic_labels_desc = {}
+    for topic in range(num_topics):
+        topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
+        topic_labels_desc[topic] = generate_topic_label(topic_queries)  # Your existing function
+    merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
+
+    return merged_df, rep_keywords
+
+
+def generate_topic_label(queries_in_topic):
+    """Generates a descriptive topic label from a list of queries."""
+    words = []
+    for query in queries_in_topic:
+        tokens = query.lower().split()
+        filtered = [t for t in tokens if t not in stop_words]
+        words.extend(filtered)
+    if words:
+        freq = collections.Counter(words)
+        common = freq.most_common(2)
+        label = ", ".join([word for word, count in common])
+        return label.capitalize()
+    else:
+        return "N/A"
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -2051,34 +2139,43 @@ def google_search_console_analysis_page():
         st.info("Please upload both GSC CSV files to start the analysis.")
 
 
-def apriori_gsc_analyzer_page():
-    """Streamlit page for the Apriori-based GSC analyzer."""
-    st.header("Apriori GSC Analyzer (Trend Analysis)")
+def combined_gsc_analyzer_page():
+    """Combines Apriori trend analysis and topic classification."""
+    st.header("Combined GSC Analyzer (Trends and Topics)")
     st.markdown(
         """
-        This tool analyzes changes in your Google Search Console data between two time periods using the Apriori algorithm.
-        It identifies associations between n-grams in search queries that have experienced significant changes in clicks, impressions, or position.
+        This tool combines Apriori analysis for identifying trends in search query changes
+        with topic classification to group queries semantically.
         """
     )
 
+    # --- Sidebar: Data Upload ---
     st.sidebar.markdown("### Data Upload")
-    uploaded_file_before = st.sidebar.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before_apriori")
-    uploaded_file_after = st.sidebar.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after_apriori")
+    uploaded_file_before = st.sidebar.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before_combined")
+    uploaded_file_after = st.sidebar.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after_combined")
 
-    st.sidebar.markdown("### Apriori Settings")
-    n_value = st.sidebar.selectbox("Select N for N-grams:", options=[1, 2, 3], index=0, key="apriori_n_gsc_new")
-    min_ngram_frequency = st.sidebar.number_input("Minimum N-gram Frequency (Pre-Apriori):", value=2, min_value=1, key="apriori_pre_freq_gsc_new")
-    min_support = st.sidebar.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_gsc_new")
-    min_confidence = st.sidebar.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_gsc_new")
+    # --- Sidebar: Apriori Settings ---
+    st.sidebar.markdown("### Apriori Settings (for Trend Analysis)")
+    n_value = st.sidebar.selectbox("Select N for N-grams:", options=[1, 2, 3], index=0, key="apriori_n_gsc_combined")
+    min_ngram_frequency = st.sidebar.number_input("Minimum N-gram Frequency (Pre-Apriori):", value=2, min_value=1, key="apriori_pre_freq_gsc_combined")
+    min_support = st.sidebar.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_gsc_combined")
+    min_confidence = st.sidebar.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_gsc_combined")
 
-    st.sidebar.markdown("### Filtering Criteria")
+    # --- Sidebar: Filtering Criteria ---
+    st.sidebar.markdown("### Filtering Criteria (for Trend Analysis)")
     clicks_yoy_pct_threshold = st.sidebar.number_input("Clicks YOY % Change Threshold (+/-):", value=20, min_value=0, step=5)
     impressions_yoy_pct_threshold = st.sidebar.number_input("Impressions YOY % Change Threshold (+/-):", value=15, min_value=0, step=5)
     position_yoy_threshold = st.sidebar.number_input("Position YOY Threshold (+/-):", value=2, min_value=1, step=1)
 
-    st.sidebar.markdown("### Metric Selection")
-    available_metrics = ["Clicks", "Impressions", "Position", "CTR"]  # Add CTR
+    # --- Sidebar: Metric Selection ---
+    st.sidebar.markdown("### Metric Selection (for Trend Analysis)")
+    available_metrics = ["Clicks", "Impressions", "Position", "CTR"]
     selected_metrics = st.sidebar.multiselect("Select Metrics for Analysis:", available_metrics, default=["Clicks", "Impressions", "Position"])
+
+    # --- Sidebar: Topic Classification Settings ---
+    st.sidebar.markdown("### Topic Classification Settings")
+    num_topics = st.sidebar.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics_combined")
+    clustering_algo = st.sidebar.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_combined")
 
     if uploaded_file_before is not None and uploaded_file_after is not None:
         df_before, file_hash_before = load_gsc_data(uploaded_file_before)
@@ -2087,23 +2184,76 @@ def apriori_gsc_analyzer_page():
         if df_before is None or df_after is None:
             st.error("Error loading data. Please check the uploaded files.")
             return
-        # Store in global
         global df_before_global, df_after_global
         df_before_global = df_before
         df_after_global = df_after
 
-        if st.button("Run Apriori Analysis"):
+        # --- Run Topic Classification ---
+        if st.button("Run Topic Classification"):
+            with st.spinner("Performing topic classification..."):
+                merged_df, rep_keywords = perform_topic_classification(file_hash_before, file_hash_after, num_topics, clustering_algo)
+                if merged_df is not None:
+                    # Display Topic Classification Results (Similar to your original tool)
+                    st.subheader("Topic Classification Results")
+                    st.dataframe(merged_df)  # Display the full DataFrame
+
+                    # --- Aggregated Metrics by Topic (like original tool) ---
+                    st.markdown("#### Aggregated Metrics by Topic")
+                    agg_dict = {
+                        "Average Position_before": "mean",
+                        "Average Position_after": "mean",
+                        "Position_YOY": "mean",
+                        "Position_YOY_pct": "mean"
+                    }
+                    if "Clicks_before" in merged_df:
+                        agg_dict.update({
+                            "Clicks_before": "sum",
+                            "Clicks_after": "sum",
+                            "Clicks_YOY": "sum",
+                            "Clicks_YOY_pct": "mean",
+                        })
+                    if "Impressions_before" in merged_df:
+                        agg_dict.update({
+                            "Impressions_before": "sum",
+                            "Impressions_after": "sum",
+                            "Impressions_YOY": "sum",
+                            "Impressions_YOY_pct": "mean"
+                        })
+                    if "CTR_before" in merged_df:
+                        agg_dict.update({
+                            "CTR_before": "mean",
+                            "CTR_after": "mean",
+                            "CTR_YOY": "mean",
+                            "CTR_YOY_pct": "mean"
+                        })
+
+                    aggregated = merged_df.groupby("Topic").agg(agg_dict).reset_index()
+
+                    #Define display
+                    display_format = {col: "{:.2f}" for col in aggregated.select_dtypes("number")}
+                    display_format.update({
+                        col: "{:,.0f}" for col in aggregated.columns if "before" in col or "after" in col or "YOY" in col
+                    })
+                    display_format.update({
+                       col: "{:.2f}%" for col in aggregated.columns if "_pct" in col
+                    })
+
+                    st.dataframe(aggregated.style.format(display_format))
+
+                else:
+                    st.warning("Could not perform topic classification.")
+
+        # --- Run Apriori Analysis ---
+        if st.button("Run Apriori Analysis for Trend Identification"):
             with st.spinner("Running Apriori analysis..."):
                 rules = run_apriori_analysis(
                     file_hash_before, file_hash_after, n_value, min_support, min_confidence, min_ngram_frequency,
                     clicks_yoy_pct_threshold, impressions_yoy_pct_threshold, position_yoy_threshold,
                     selected_metrics
                 )
-                if rules.empty:
-                    st.warning("No association rules found or filtering criteria too strict.  Try adjusting the parameters.")
-                else:
 
-                    # Select and rename columns for display based on selected_metrics
+                if rules is not None and not rules.empty : #Check if None
+                    # Select and rename columns for display
                     display_columns = ["antecedents", "consequents", "support", "confidence", "lift"]
                     rename_dict = {
                         "antecedents": "Antecedent (IF)",
@@ -2111,24 +2261,31 @@ def apriori_gsc_analyzer_page():
                     }
 
                     for metric in selected_metrics:
-                        display_columns.append(metric + "_x") # Add metrics
-                        display_columns.append(metric + "_y")
-                        rename_dict[metric + "_x"] = f"Avg. {metric} YOY% (Antecedent)"  # Rename
-                        rename_dict[metric + "_y"] = f"Avg. {metric} YOY% (Consequent)"
+                        if metric + "_x" in rules.columns:
+                           display_columns.append(metric + "_x")
+                           rename_dict[metric + "_x"] = f"Avg. {metric} YOY% (Antecedent)"
+                        if metric + "_y" in rules.columns:
+                           display_columns.append(metric + "_y")
+                           rename_dict[metric + "_y"] = f"Avg. {metric} YOY% (Consequent)"
 
                     rules = rules[display_columns]
                     rules = rules.rename(columns=rename_dict)
 
+                    st.subheader("Apriori Analysis Results (Trends)")
                     st.dataframe(rules)
+                else:
+                    st.warning("No association rules found or filtering criteria too strict.  Try adjusting the parameters.")
 
     else:
         st.info("Please upload both 'Before' and 'After' GSC CSV files.")
 
-# Initialize global variables and NLTK resources
+
+# Initialize global variables, SentenceTransformer and NLTK resources
 stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 df_before_global = None
 df_after_global = None
+# sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2') #Moved to function
 
 
 # ------------------------------------
@@ -2166,7 +2323,7 @@ def main():
         "Keyword Clustering",
         "People Also Asked",
         "Google Search Console Analyzer",
-        "Apriori GSC Analyzer",  # Add this
+        "Combined GSC Analyzer", # Add this
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2194,8 +2351,8 @@ def main():
         google_ads_search_term_analyzer_page()
     elif tool == "Google Search Console Analyzer":
         google_search_console_analysis_page()
-    elif tool == "Apriori GSC Analyzer":  # Add this block
-        apriori_gsc_analyzer_page()
+    elif tool == "Combined GSC Analyzer": # Add this block
+        combined_gsc_analyzer_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
