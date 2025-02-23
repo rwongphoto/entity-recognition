@@ -383,7 +383,7 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
     if df_before is None or df_after is None:
         return None  # Or handle appropriately
 
-    # --- Data Merging and Change Calculation (Same as your original tool) ---
+    # --- Data Merging and Change Calculation ---
     merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
 
     # Calculate YOY changes
@@ -396,20 +396,6 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
         merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
         merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
         merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
-
-    # Calculate YOY percentage changes
-    merged_df["Position_YOY_pct"] = merged_df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
-                                                    if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
-    if "Clicks" in df_before.columns:
-        merged_df["Clicks_YOY_pct"] = merged_df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
-                                                      if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1)
-    if "Impressions" in df_before.columns:
-        merged_df["Impressions_YOY_pct"] = merged_df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
-                                                           if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
-    if "CTR" in df_before.columns:
-        merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
-                                                   if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
-
 
     # --- Filtering ---
     filtered_df = merged_df.copy()
@@ -430,7 +416,10 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
             (filtered_df["Position_YOY"] <= -position_yoy_threshold)
         ]
     if filtered_df.empty:
-        return pd.DataFrame() # Return empty if no data
+        # CRITICAL FIX: Return an empty DataFrame with the *expected* columns
+        return pd.DataFrame(columns=["antecedents", "consequents", "support", "confidence", "lift"] +
+                            [metric + "_x" for metric in selected_metrics] +
+                            [metric + "_y" for metric in selected_metrics])
 
     # --- N-gram Extraction and Pre-filtering ---
     filtered_ngrams = extract_and_filter_ngrams(filtered_df["Query"], n_value, min_ngram_frequency)
@@ -450,7 +439,10 @@ def run_apriori_analysis(file_hash_before, file_hash_after, n_value, min_support
 
     # --- Prepare Results (with YOY changes) ---
     if rules.empty:
-        return pd.DataFrame() # Handle empty case
+        # CRITICAL FIX: Return an empty DataFrame with the *expected* columns
+        return pd.DataFrame(columns=["antecedents", "consequents", "support", "confidence", "lift"] +
+                            [metric + "_x" for metric in selected_metrics] +
+                            [metric + "_y" for metric in selected_metrics])
 
     rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
     rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
@@ -519,22 +511,17 @@ def perform_topic_classification(file_hash_before, file_hash_after, num_topics, 
 
     merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
 
-    # Calculate changes (you can reuse the change calculations from run_apriori_analysis)
+    # Calculate changes (now calculate *all* potential metrics)
     merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
     if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
         merged_df["Clicks_YOY"] = merged_df["Clicks_after"] - merged_df["Clicks_before"]
-        merged_df["Clicks_YOY_pct"] = merged_df.apply(lambda row: (row["Clicks_YOY"] / row["Clicks_before"] * 100)
-                                                      if row["Clicks_before"] and row["Clicks_before"] != 0 else None, axis=1) # Calculate here
     if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
         merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
-        merged_df["Impressions_YOY_pct"] = merged_df.apply(lambda row: (row["Impressions_YOY"] / row["Impressions_before"] * 100)
-                                                           if row["Impressions_before"] and row["Impressions_before"] != 0 else None, axis=1)
     if "CTR" in df_before.columns and "CTR" in df_after.columns:
         merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
         merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
         merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
-        merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
-                                               if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+
 
     model = load_cached_sentence_transformer()
     queries = merged_df["Query"].tolist()
@@ -2203,31 +2190,41 @@ def combined_gsc_analyzer_page():
                         "Average Position_before": "mean",
                         "Average Position_after": "mean",
                         "Position_YOY": "mean",
-                        "Position_YOY_pct": "mean"
+                        # "Position_YOY_pct": "mean"  # Removed: Calculated inside the agg
                     }
                     if "Clicks_before" in merged_df:
                         agg_dict.update({
                             "Clicks_before": "sum",
                             "Clicks_after": "sum",
                             "Clicks_YOY": "sum",
-                            "Clicks_YOY_pct": "mean",
+                            # "Clicks_YOY_pct": "mean", # Removed: Calculated inside the agg
                         })
                     if "Impressions_before" in merged_df:
                         agg_dict.update({
                             "Impressions_before": "sum",
                             "Impressions_after": "sum",
                             "Impressions_YOY": "sum",
-                            "Impressions_YOY_pct": "mean"
+                            # "Impressions_YOY_pct": "mean" # Removed: Calculated inside the agg
                         })
                     if "CTR_before" in merged_df:
                         agg_dict.update({
                             "CTR_before": "mean",
                             "CTR_after": "mean",
                             "CTR_YOY": "mean",
-                            "CTR_YOY_pct": "mean"
+                            # "CTR_YOY_pct": "mean" # Removed: Calculated inside the agg
                         })
+                    # Dynamically add percentage change calculations
+                    if "Position_YOY" in merged_df.columns and "Average Position_before" in merged_df.columns:
+                        agg_dict["Position_YOY_pct"] = (lambda x: (x["Position_YOY"].fillna(0) / x["Average Position_before"].fillna(1) * 100).mean())
+                    if "Clicks_YOY" in merged_df.columns and "Clicks_before" in merged_df.columns:
+                        agg_dict["Clicks_YOY_pct"] = (lambda x: (x["Clicks_YOY"].fillna(0)  / x["Clicks_before"].fillna(1) * 100).mean())
+                    if "Impressions_YOY" in merged_df.columns and "Impressions_before" in merged_df.columns:
+                        agg_dict["Impressions_YOY_pct"] = (lambda x: (x["Impressions_YOY"].fillna(0) / x["Impressions_before"].fillna(1) * 100).mean())
+                    if "CTR_YOY" in merged_df.columns and "CTR_before" in merged_df.columns:
+                        agg_dict["CTR_YOY_pct"] = (lambda x: (x["CTR_YOY"].fillna(0)  / x["CTR_before"].fillna(1) * 100).mean())
 
                     aggregated = merged_df.groupby("Topic").agg(agg_dict).reset_index()
+
 
                     #Define display
                     display_format = {col: "{:.2f}" for col in aggregated.select_dtypes("number")}
