@@ -67,13 +67,13 @@ def load_spacy_model():
     global nlp
     if nlp is None:
         try:
-            nlp = spacy.load("en_core_web_lg")
+            nlp = spacy.load("en_core_web_md")
             print("spaCy model loaded successfully")
         except OSError:
-            print("Downloading en_core_web_lg model...")
-            spacy.cli.download("en_core_web_lg")
-            nlp = spacy.load("en_core_web_lg")
-            print("en_core_web_lg downloaded and loaded")
+            print("Downloading en_core_web_md model...")
+            spacy.cli.download("en_core_web_md")
+            nlp = spacy.load("en_core_web_md")
+            print("en_core_web_md downloaded and loaded")
         except Exception as e:
             st.error(f"Failed to load spaCy model: {e}")
             return None
@@ -1546,300 +1546,6 @@ def google_ads_search_term_analyzer_page():
             st.error(f"An error occurred while processing the Excel file: {e}")
 
 # ------------------------------------
-# NEW TOOL: Google Keyword Planner Analyzer
-# ------------------------------------
-def clean_search_volume(volume_str):
-    """
-    Cleans the search volume string and returns the average as an integer.
-    Handles ranges (e.g., "100 - 1K") and plain numbers.
-    """
-    try:
-        # Remove any characters that are not digits, spaces, or hyphens
-        volume_str = re.sub(r'[^\d\s\-]', '', str(volume_str))
-
-        if '-' in volume_str:
-            low, high = volume_str.split('-')
-            low = int(low.strip())
-            high = high.strip()
-            if 'K' in high.upper():
-                high = int(float(high.upper().replace('K', '')) * 1000)
-            elif 'M' in high.upper():
-                high = int(float(high.upper().replace('M', '')) * 1000000)
-            else:
-                high = int(high)
-            return int((low + high) / 2)
-        else:
-            # Handle single numbers with 'K' or 'M'
-            volume = volume_str.strip().upper()
-            if 'K' in volume:
-                return int(float(volume.replace('K', '')) * 1000)
-            if 'M' in volume:
-                return int(float(volume.replace('M', '')) * 1000000)
-            return int(volume)
-    except Exception:
-        return 0  # Default to 0 for any parsing errors
-
-import plotly.figure_factory as ff  # Keep this, even though we're not using dendrograms *now*
-
-def google_keyword_planner_analyzer_page():
-    st.header("Google Keyword Planner Analyzer")
-    st.markdown(
-        """
-        Upload a Google Keyword Planner Excel file (.xlsx) and analyze keywords based on cosine similarity
-        to a target keyword.  This tool identifies relevant keywords, groups them into clusters,
-        and visualizes search trends.  It also uses the Apriori algorithm to find associations between keyword n-grams.
-        """
-    )
-
-    uploaded_file = st.file_uploader("Upload Keyword Planner Excel File", type=["xlsx"])
-    target_keyword = st.text_input("Enter Your Target Keyword:", "")
-
-    if uploaded_file is not None and target_keyword:
-        try:
-            # --- Data Preprocessing & Validation --- (Same robust data loading)
-            df_raw = pd.read_excel(uploaded_file, header=None)
-            header_row_index = None
-            for i in range(len(df_raw)):
-                if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency":
-                    header_row_index = i
-                    break
-
-            if header_row_index is None:
-                st.error("Could not find the header row in the Excel file. "
-                         "Please ensure the file is a standard Google Keyword Planner export.")
-                return
-
-            header_row = df_raw.iloc[header_row_index].fillna(method='ffill').tolist()
-            sub_header_row = df_raw.iloc[header_row_index + 1].tolist()
-            new_header = []
-            for h, sub_h in zip(header_row, sub_header_row):
-                if pd.isna(sub_h):
-                  new_header.append(str(h))
-                else:
-                  new_header.append(str(h) + ": " + str(sub_h))
-            df = pd.read_excel(uploaded_file, header=header_row_index + 2)
-            df.columns = new_header
-            keyword_col = None
-            search_volume_col = None
-            three_month_col = None  # New: Column for three-month change
-            yoy_col = None  # New: Column for YoY change
-
-
-            for col in df.columns:
-                if "keyword" in col.lower():
-                    keyword_col = col
-                if "avg" in col.lower() and "monthly search" in col.lower():
-                    search_volume_col = col
-                if "three" in col.lower() and "month" in col.lower() and "change" in col.lower():
-                    three_month_col = col
-                if "yoy" in col.lower() and "change" in col.lower():
-                    yoy_col = col
-
-            if keyword_col is None or search_volume_col is None or three_month_col is None or yoy_col is None:
-                st.error("Could not find the required 'Keyword', 'Avg. monthly searches', 'Three month change', and 'YoY change' columns. "
-                         "Please ensure your file is from Google Keyword Planner and contains this data.")
-                return
-
-            df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches",
-                                    three_month_col: "Three Month Change", yoy_col: "YoY Change"}) #Rename
-
-            df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
-            df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
-
-            # Convert percentage strings to numeric values (e.g., "20%" -> 0.20)
-            def convert_percentage(perc_str):
-                try:
-                    return float(str(perc_str).replace('%', '')) / 100
-                except (ValueError, TypeError):
-                    return 0.0  # Or np.nan, if you prefer to represent missing values as NaN
-
-            df["Three Month Change"] = df["Three Month Change"].apply(convert_percentage)
-            df["YoY Change"] = df["YoY Change"].apply(convert_percentage)
-
-            # --- Cosine Similarity Calculation --- (Same as before)
-            model = initialize_sentence_transformer()
-            target_embedding = get_embedding(target_keyword, model)
-            keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
-            similarities = [cosine_similarity([target_embedding], [kw_emb])[0][0]
-                            for kw_emb in keyword_embeddings]
-            df["Cosine Similarity"] = similarities
-            avg_similarity = df["Cosine Similarity"].mean()
-            st.write(f"Average Cosine Similarity: {avg_similarity:.4f}")
-
-            # --- Filtering --- (Same as before)
-            filtered_df = df[df["Cosine Similarity"] >= avg_similarity]
-            filtered_keywords = filtered_df["Keyword"].tolist()
-            filtered_embeddings = [get_embedding(kw, model) for kw in filtered_keywords]
-            if not filtered_embeddings:
-                st.warning("No keywords found with above-average similarity.")
-                return
-            filtered_embeddings = np.vstack(filtered_embeddings)
-
-            # --- Topic Modeling (Clustering) --- (Back to original, but with 'clusters' defined early)
-            st.subheader("Clustering Settings")
-            algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
-            n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
-
-            if algorithm == "Kindred Spirit":
-                clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
-                centers = clustering_model.cluster_centers_
-                rep_keywords = {}
-                for i in range(n_clusters):
-                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
-                    if not cluster_grams:
-                        continue
-                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
-                    distances = np.linalg.norm(cluster_embeddings_local - centers[i], axis=1)
-                    rep_keyword = cluster_grams[np.argmin(distances)]
-                    rep_keywords[i] = rep_keyword
-            elif algorithm == "Affinity Stack":
-                clustering_model = AgglomerativeClustering(n_clusters=n_clusters)
-                cluster_labels = clustering_model.fit_predict(filtered_embeddings)
-                rep_keywords = {}
-                for i in range(n_clusters):
-                    cluster_grams = [ng for ng, label in zip(filtered_keywords, cluster_labels) if label == i]
-                    cluster_embeddings_local = filtered_embeddings[cluster_labels == i]
-                    if len(cluster_embeddings_local) > 1:
-                        sims = cosine_similarity(cluster_embeddings_local, cluster_embeddings_local)
-                        rep_keyword = cluster_grams[np.argmax(np.sum(sims, axis=1))]
-                    else:
-                        rep_keyword = cluster_grams[0]
-                    rep_keywords[i] = rep_keyword
-
-            # --- Create 'clusters' dictionary HERE (before detailed DF and trend charts) ---
-            clusters = {}
-            for keyword, label in zip(filtered_keywords, cluster_labels):
-                clusters.setdefault(label, []).append(keyword)
-
-            # --- Create Detailed Cluster DataFrame --- (Same as before)
-            df["Cluster"] = -1
-            for i, keyword in enumerate(filtered_keywords):
-                df.loc[df['Keyword'] == keyword, 'Cluster'] = cluster_labels[i]
-            detailed_cluster_df = df[df["Cluster"] != -1]
-
-            # --- Display Detailed Table --- (Same as before)
-            st.subheader("Keyword Clusters (Detailed View)")
-            for cluster_num in sorted(detailed_cluster_df["Cluster"].unique()):
-                st.markdown(f"**Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})**")
-                cluster_subset = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
-                st.dataframe(cluster_subset)
-
-
-            # --- Aggregate Cluster Data (NOW INCLUDES 3-MONTH AND YOY CHANGE) ---
-            st.subheader("Aggregated Cluster Data")
-            aggregated_data = []
-            for cluster_num, keywords in clusters.items():
-                cluster_df = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
-                total_avg_searches = cluster_df["Avg. monthly searches"].sum()
-
-                # Calculate *weighted average* for Three Month and YoY Change
-                total_volume = cluster_df["Avg. monthly searches"].sum()
-                weighted_avg_three_month = (cluster_df["Three Month Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
-                weighted_avg_yoy = (cluster_df["YoY Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
-
-                aggregated_data.append({
-                    "Cluster": cluster_num,
-                    "Representative Keyword": rep_keywords.get(cluster_num, 'N/A'),
-                    "Total Avg. Monthly Searches": total_avg_searches,
-                    "Weighted Avg. Three Month Change": weighted_avg_three_month,  # Add to aggregated data
-                    "Weighted Avg. YoY Change": weighted_avg_yoy,  # Add to aggregated data
-                })
-
-            aggregated_df = pd.DataFrame(aggregated_data)
-            # Format as percentages:
-            aggregated_df["Weighted Avg. Three Month Change"] = aggregated_df["Weighted Avg. Three Month Change"].map('{:.2%}'.format)
-            aggregated_df["Weighted Avg. YoY Change"] = aggregated_df["Weighted Avg. YoY Change"].map('{:.2%}'.format)
-            st.dataframe(aggregated_df)
-
-
-            # --- Trend Visualization --- (Now uses 'clusters', defined above)
-            month_cols = [col for col in df.columns if "Searches:" in col]
-            st.subheader("Cluster Search Trends")
-            for cluster_num, keywords in clusters.items():  # 'clusters' is now defined
-                cluster_df = df[df['Keyword'].isin(keywords)].copy()
-                for month_col in month_cols:
-                    if month_col not in cluster_df.columns:
-                        cluster_df[month_col] = 0
-                for col in month_cols:
-                    cluster_df[col] = pd.to_numeric(cluster_df[col], errors='coerce').fillna(0)
-                monthly_totals = cluster_df[month_cols].sum()
-                fig_trend = go.Figure(data=[go.Scatter(x=month_cols, y=monthly_totals, mode='lines+markers')])
-                fig_trend.update_layout(
-                    title=f"Search Trend for Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})",
-                    xaxis_title="Month",
-                    yaxis_title="Total Search Volume",
-                    xaxis_tickangle=-45
-                )
-                st.plotly_chart(fig_trend)
-
-            # --- Apriori Algorithm Integration ---
-            st.subheader("Apriori Algorithm for Keyword Associations")
-
-            # 1. Prepare Transaction Data (Keywords as transactions, n-grams as items)
-            n_value = st.selectbox("Select N for N-grams:", options=[1, 2, 3], index=0, key="apriori_n_kwp")
-            transactions = []
-            stop_words = set(stopwords.words('english'))
-            lemmatizer = WordNetLemmatizer()
-
-            def extract_ngrams(text, n):
-                text = str(text).lower()
-                tokens = word_tokenize(text)
-                tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalnum() and t not in stop_words]
-                ngrams_list = list(nltk.ngrams(tokens, n))
-                return [" ".join(gram) for gram in ngrams_list]
-            
-            # Use only the *filtered* keywords for Apriori analysis
-            for keyword in filtered_keywords:
-              transactions.append(extract_ngrams(keyword, n_value))
-
-
-            # 2. Encode Transactions
-            te = TransactionEncoder()
-            te_ary = te.fit(transactions).transform(transactions)
-            df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-
-            # 3. Run Apriori
-            min_support = st.number_input("Minimum Support:", value=0.01, min_value=0.001, max_value=1.0, step=0.01, format="%.3f", key="apriori_support_kwp")
-            frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True)
-
-            if frequent_itemsets.empty:
-                st.warning("No frequent itemsets found. Try lowering the minimum support.")
-                return  # Important: Exit if no frequent itemsets
-
-            # 4. Generate Association Rules
-            min_confidence = st.number_input("Minimum Confidence:", value=0.1, min_value=0.0, max_value=1.0, step=0.05, format="%.2f", key="apriori_confidence_kwp")
-            rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
-
-            # 5. Interpret and Display
-            if rules.empty:
-                st.warning("No association rules found.  Try lowering the minimum confidence or support.")
-            else:
-                rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
-                rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
-                rules = rules[["antecedents", "consequents", "support", "confidence", "lift"]]
-                rules = rules.rename(columns={
-                    "antecedents": "Antecedent (IF)",
-                    "consequents": "Consequent (THEN)",
-                })
-                st.dataframe(rules)
-                st.markdown(
-                    """
-                    **Interpreting the Results:**
-
-                    *   **Antecedent (IF):** The n-gram(s) on the left.
-                    *   **Consequent (THEN):** The n-gram(s) on the right.
-                    *   **Support:** Proportion of keywords containing both.
-                    *   **Confidence:** Given a keyword has the antecedent, the probability it also has the consequent.
-                    *   **Lift:** How much more likely the consequent is if the antecedent is present. Lift > 1 indicates positive association.
-                    """
-                )
-
-
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-# ------------------------------------
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
@@ -1847,13 +1553,9 @@ def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
+        The goal is to identify key topics that are contributing to your SEO performance.
+        This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-        
-        - Merge data on query terms.
-        - Calculate ranking changes and additional metric comparisons.
-        - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
-        - Show a dashboard summary of key metric changes (calculated from all original data).
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
@@ -1865,24 +1567,29 @@ def google_search_console_analysis_page():
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
     
     if uploaded_file_before is not None and uploaded_file_after is not None:
+        # Initialize the progress bar
+        progress_bar = st.progress(0)
         try:
-            # Read the original CSV files
+            # Step 1: Read the original CSV files
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
+            progress_bar.progress(10)
             
-            # Check required columns
+            # Step 2: Check required columns
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                 return
             if "Top queries" not in df_after.columns or "Position" not in df_after.columns:
                 st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
                 return
+            progress_bar.progress(15)
             
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
-            # Rename columns for consistency in original data
+            # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+            progress_bar.progress(20)
             
             cols = st.columns(4)
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
@@ -1927,9 +1634,11 @@ def google_search_console_analysis_page():
                 cols[3].metric(label="CTR Change", value=f"{overall_ctr_change:.2f}", delta=f"{overall_ctr_change_pct:.1f}%")
             else:
                 cols[3].metric(label="CTR Change", value="N/A")
+            progress_bar.progress(30)
             
-            # --- Merge Data for Further Analysis ---
+            # Step 3: Merge Data for Further Analysis
             merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+            progress_bar.progress(35)
             
             # Calculate YOY changes from merged data
             merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
@@ -1964,19 +1673,21 @@ def google_search_console_analysis_page():
             if "CTR" in df_before.columns:
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             merged_df = merged_df[base_cols]
+            progress_bar.progress(40)
             
-            # --- Topic Classification ---
+            # Step 4: Topic Classification
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
-            embeddings = [get_embedding(query, model) for query in queries]
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+            # Compute embeddings and cluster queries using KMeans
             from sklearn.cluster import KMeans
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=3, key="num_topics")
+            embeddings = [get_embedding(query, model) for query in queries]
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
             topic_labels = kmeans.fit_predict(embeddings)
             merged_df["Topic_Label"] = topic_labels
             
-            # Generate descriptive topic labels using common keywords
+            # Generate descriptive topic labels by extracting common keywords per topic
             import collections
             import nltk
             nltk.download('stopwords')
@@ -2001,9 +1712,34 @@ def google_search_console_analysis_page():
                 topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
+            progress_bar.progress(55)
             
-            # Format YOY % Change columns in the merged table to two decimal places
+            # Define formatting for the "Topic Classification and Combined Data" table
             format_dict_merged = {}
+            if "Average Position_before" in merged_df.columns:
+                format_dict_merged["Average Position_before"] = "{:.1f}"
+            if "Average Position_after" in merged_df.columns:
+                format_dict_merged["Average Position_after"] = "{:.1f}"
+            if "Position_YOY" in merged_df.columns:
+                format_dict_merged["Position_YOY"] = "{:.1f}"
+            if "Clicks_before" in merged_df.columns:
+                format_dict_merged["Clicks_before"] = "{:,.0f}"
+            if "Clicks_after" in merged_df.columns:
+                format_dict_merged["Clicks_after"] = "{:,.0f}"
+            if "Clicks_YOY" in merged_df.columns:
+                format_dict_merged["Clicks_YOY"] = "{:,.0f}"
+            if "Impressions_before" in merged_df.columns:
+                format_dict_merged["Impressions_before"] = "{:,.0f}"
+            if "Impressions_after" in merged_df.columns:
+                format_dict_merged["Impressions_after"] = "{:,.0f}"
+            if "Impressions_YOY" in merged_df.columns:
+                format_dict_merged["Impressions_YOY"] = "{:,.0f}"
+            if "CTR_before" in merged_df.columns:
+                format_dict_merged["CTR_before"] = "{:.2f}%"
+            if "CTR_after" in merged_df.columns:
+                format_dict_merged["CTR_after"] = "{:.2f}%"
+            if "CTR_YOY" in merged_df.columns:
+                format_dict_merged["CTR_YOY"] = "{:.2f}%"
             if "Position_YOY_pct" in merged_df.columns:
                 format_dict_merged["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_YOY_pct" in merged_df.columns:
@@ -2013,8 +1749,8 @@ def google_search_console_analysis_page():
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             
-            # Display the merged data with topic classification using formatting
             st.dataframe(merged_df.style.format(format_dict_merged))
+            progress_bar.progress(60)
             
             # --- Hidden Initial Apriori Analysis ---
             with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
@@ -2027,8 +1763,9 @@ def google_search_console_analysis_page():
                 from mlxtend.frequent_patterns import apriori
                 freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
                 st.dataframe(freq_items.sort_values(by="support", ascending=False))
+            progress_bar.progress(65)
             
-            # --- Aggregated Metrics by Topic ---
+            # Step 5: Aggregated Metrics by Topic
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
                 "Average Position_before": "mean",
@@ -2071,6 +1808,19 @@ def google_search_console_analysis_page():
                 aggregated["CTR_YOY_pct"] = aggregated.apply(
                     lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                     if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+            progress_bar.progress(75)
+            
+            # Reorder columns so that each % Change is immediately next to its related metric columns.
+            new_order = ["Topic"]
+            if "Average Position_before" in aggregated.columns:
+                new_order.extend(["Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"])
+            if "Clicks_before" in aggregated.columns:
+                new_order.extend(["Clicks_before", "Clicks_after", "Clicks_YOY", "Clicks_YOY_pct"])
+            if "Impressions_before" in aggregated.columns:
+                new_order.extend(["Impressions_before", "Impressions_after", "Impressions_YOY", "Impressions_YOY_pct"])
+            if "CTR_before" in aggregated.columns:
+                new_order.extend(["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"])
+            aggregated = aggregated[new_order]
             
             # Define formatting for aggregated metrics display
             format_dict = {}
@@ -2080,42 +1830,50 @@ def google_search_console_analysis_page():
                 format_dict["Average Position_after"] = "{:.1f}"
             if "Position_YOY" in aggregated.columns:
                 format_dict["Position_YOY"] = "{:.1f}"
+            if "Position_YOY_pct" in aggregated.columns:
+                format_dict["Position_YOY_pct"] = "{:.2f}%"
             if "Clicks_before" in aggregated.columns:
                 format_dict["Clicks_before"] = "{:,.0f}"
             if "Clicks_after" in aggregated.columns:
                 format_dict["Clicks_after"] = "{:,.0f}"
             if "Clicks_YOY" in aggregated.columns:
                 format_dict["Clicks_YOY"] = "{:,.0f}"
+            if "Clicks_YOY_pct" in aggregated.columns:
+                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
             if "Impressions_before" in aggregated.columns:
                 format_dict["Impressions_before"] = "{:,.0f}"
             if "Impressions_after" in aggregated.columns:
                 format_dict["Impressions_after"] = "{:,.0f}"
             if "Impressions_YOY" in aggregated.columns:
                 format_dict["Impressions_YOY"] = "{:,.0f}"
+            if "Impressions_YOY_pct" in aggregated.columns:
+                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_before" in aggregated.columns:
                 format_dict["CTR_before"] = "{:.2f}%"
             if "CTR_after" in aggregated.columns:
                 format_dict["CTR_after"] = "{:.2f}%"
             if "CTR_YOY" in aggregated.columns:
                 format_dict["CTR_YOY"] = "{:.2f}%"
-            if "Position_YOY_pct" in aggregated.columns:
-                format_dict["Position_YOY_pct"] = "{:.2f}%"
-            if "Clicks_YOY_pct" in aggregated.columns:
-                format_dict["Clicks_YOY_pct"] = "{:.2f}%"
-            if "Impressions_YOY_pct" in aggregated.columns:
-                format_dict["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
             
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
+            progress_bar.progress(80)
             
-            # --- Visualization: Grouped Bar Chart of YOY % Change by Topic for Each Metric ---
+            # Step 6: Visualization - Grouped Bar Chart of YOY % Change by Topic for Each Metric
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
+            
+            # Allow user to disable specific topics from the chart
+            available_topics = aggregated["Topic"].unique().tolist()
+            selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=available_topics)
+            
             vis_data = []
             for idx, row in aggregated.iterrows():
                 topic = row["Topic"]
+                if topic not in selected_topics:
+                    continue
                 if "Position_YOY_pct" in aggregated.columns:
                     vis_data.append({"Topic": topic, "Metric": "Average Position", "YOY % Change": row["Position_YOY_pct"]})
                 if "Clicks_YOY_pct" in aggregated.columns:
@@ -2129,15 +1887,12 @@ def google_search_console_analysis_page():
                          title="YOY % Change by Topic for Each Metric",
                          labels={"YOY % Change": "YOY % Change (%)"})
             st.plotly_chart(fig)
+            progress_bar.progress(100)
             
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
-
-
 
 
 
@@ -2178,7 +1933,6 @@ def main():
         "Keyword Clustering",
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
-        "Google Keyword Planner Analyzer", # Add this line
         "Google Search Console Analyzer" # Add this line
     ])
     if tool == "URL Analysis Dashboard":
@@ -2205,8 +1959,6 @@ def main():
         paa_extraction_clustering_page()
     elif tool == "Google Ads Search Term Analyzer":
         google_ads_search_term_analyzer_page()
-    elif tool == "Google Keyword Planner Analyzer":
-        google_keyword_planner_analyzer_page()
     elif tool == "Google Search Console Analyzer":
         google_search_console_analysis_page()
     st.markdown("---")
@@ -2218,22 +1970,5 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
