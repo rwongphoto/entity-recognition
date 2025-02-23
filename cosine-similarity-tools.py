@@ -1550,17 +1550,17 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
+# ------------------------------------
+# NEW TOOL: GSC Analyzer
+# ------------------------------------
+
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
-        This tool lets you compare GSC data from two different time periods.
+        The goal is to identify key topics that are contributing to your SEO performance.
+        This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-        
-        - Merge data on query terms.
-        - Calculate ranking changes and additional metric comparisons.
-        - Display before and after values side-by-side with a YOY change and YOY % change for each metric.
-        - Show a dashboard summary of key metric changes (calculated from all original data).
         - Classify queries into topics with descriptive labels.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
@@ -1572,24 +1572,29 @@ def google_search_console_analysis_page():
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
     
     if uploaded_file_before is not None and uploaded_file_after is not None:
+        # Initialize the progress bar
+        progress_bar = st.progress(0)
         try:
-            # Read the original CSV files
+            # Step 1: Read the original CSV files
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
+            progress_bar.progress(10)
             
-            # Check required columns
+            # Step 2: Check required columns
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
                 return
             if "Top queries" not in df_after.columns or "Position" not in df_after.columns:
                 st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
                 return
+            progress_bar.progress(15)
             
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
             # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
+            progress_bar.progress(20)
             
             cols = st.columns(4)
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
@@ -1634,9 +1639,11 @@ def google_search_console_analysis_page():
                 cols[3].metric(label="CTR Change", value=f"{overall_ctr_change:.2f}", delta=f"{overall_ctr_change_pct:.1f}%")
             else:
                 cols[3].metric(label="CTR Change", value="N/A")
+            progress_bar.progress(30)
             
-            # --- Merge Data for Further Analysis ---
+            # Step 3: Merge Data for Further Analysis
             merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
+            progress_bar.progress(35)
             
             # Calculate YOY changes from merged data
             merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
@@ -1671,8 +1678,9 @@ def google_search_console_analysis_page():
             if "CTR" in df_before.columns:
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             merged_df = merged_df[base_cols]
+            progress_bar.progress(40)
             
-            # --- Topic Classification ---
+            # Step 4: Topic Classification
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
@@ -1708,6 +1716,7 @@ def google_search_console_analysis_page():
                 topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
                 topic_labels_desc[topic] = generate_topic_label(topic_queries)
             merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
+            progress_bar.progress(55)
             
             # Define formatting for the "Topic Classification and Combined Data" table
             format_dict_merged = {}
@@ -1745,6 +1754,7 @@ def google_search_console_analysis_page():
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             
             st.dataframe(merged_df.style.format(format_dict_merged))
+            progress_bar.progress(60)
             
             # --- Hidden Initial Apriori Analysis ---
             with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
@@ -1757,8 +1767,9 @@ def google_search_console_analysis_page():
                 from mlxtend.frequent_patterns import apriori
                 freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
                 st.dataframe(freq_items.sort_values(by="support", ascending=False))
+            progress_bar.progress(65)
             
-            # --- Aggregated Metrics by Topic ---
+            # Step 5: Aggregated Metrics by Topic
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
                 "Average Position_before": "mean",
@@ -1801,6 +1812,7 @@ def google_search_console_analysis_page():
                 aggregated["CTR_YOY_pct"] = aggregated.apply(
                     lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                     if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
+            progress_bar.progress(75)
             
             # Define formatting for aggregated metrics display
             format_dict = {}
@@ -1839,8 +1851,9 @@ def google_search_console_analysis_page():
             
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
+            progress_bar.progress(80)
             
-            # --- Visualization: Grouped Bar Chart of YOY % Change by Topic for Each Metric ---
+            # Step 6: Visualization - Grouped Bar Chart of YOY % Change by Topic for Each Metric
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
             vis_data = []
@@ -1859,11 +1872,13 @@ def google_search_console_analysis_page():
                          title="YOY % Change by Topic for Each Metric",
                          labels={"YOY % Change": "YOY % Change (%)"})
             st.plotly_chart(fig)
+            progress_bar.progress(100)
             
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
