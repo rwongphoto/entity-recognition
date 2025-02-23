@@ -1586,7 +1586,7 @@ def google_keyword_planner_analyzer_page():
     st.markdown(
         """
         Upload a Google Keyword Planner Excel file (.xlsx) and analyze keywords based on cosine similarity
-        to a target keyword.  This tool identifies relevant keywords, groups them into clusters,
+        to a target keyword. This tool identifies relevant keywords, groups them into clusters,
         and visualizes search trends.
         """
     )
@@ -1595,14 +1595,18 @@ def google_keyword_planner_analyzer_page():
     target_keyword = st.text_input("Enter Your Target Keyword:", "")
 
     if uploaded_file is not None and target_keyword:
+        progress_bar = st.progress(0)
         try:
-            # --- Data Preprocessing & Validation --- (Same robust data loading)
+            # --- Data Preprocessing & Validation ---
             df_raw = pd.read_excel(uploaded_file, header=None)
+            progress_bar.progress(5)
+
             header_row_index = None
             for i in range(len(df_raw)):
                 if df_raw.iloc[i].notna().any() and str(df_raw.iloc[i, 1]).lower() == "currency":
                     header_row_index = i
                     break
+            progress_bar.progress(10)
 
             if header_row_index is None:
                 st.error("Could not find the header row in the Excel file. "
@@ -1614,16 +1618,19 @@ def google_keyword_planner_analyzer_page():
             new_header = []
             for h, sub_h in zip(header_row, sub_header_row):
                 if pd.isna(sub_h):
-                  new_header.append(str(h))
+                    new_header.append(str(h))
                 else:
-                  new_header.append(str(h) + ": " + str(sub_h))
+                    new_header.append(str(h) + ": " + str(sub_h))
+            progress_bar.progress(20)
+
             df = pd.read_excel(uploaded_file, header=header_row_index + 2)
             df.columns = new_header
+            progress_bar.progress(25)
+
             keyword_col = None
             search_volume_col = None
             three_month_col = None  # New: Column for three-month change
-            yoy_col = None  # New: Column for YoY change
-
+            yoy_col = None         # New: Column for YoY change
 
             for col in df.columns:
                 if "keyword" in col.lower():
@@ -1634,6 +1641,7 @@ def google_keyword_planner_analyzer_page():
                     three_month_col = col
                 if "yoy" in col.lower() and "change" in col.lower():
                     yoy_col = col
+            progress_bar.progress(30)
 
             if keyword_col is None or search_volume_col is None or three_month_col is None or yoy_col is None:
                 st.error("Could not find the required 'Keyword', 'Avg. monthly searches', 'Three month change', and 'YoY change' columns. "
@@ -1641,22 +1649,25 @@ def google_keyword_planner_analyzer_page():
                 return
 
             df = df.rename(columns={keyword_col: "Keyword", search_volume_col: "Avg. monthly searches",
-                                    three_month_col: "Three Month Change", yoy_col: "YoY Change"}) #Rename
+                                    three_month_col: "Three Month Change", yoy_col: "YoY Change"})
+            progress_bar.progress(35)
 
             df["Avg. monthly searches"] = df["Avg. monthly searches"].apply(clean_search_volume)
             df["Avg. monthly searches"] = pd.to_numeric(df["Avg. monthly searches"], errors='coerce').fillna(0)
+            progress_bar.progress(40)
 
             # Convert percentage strings to numeric values (e.g., "20%" -> 0.20)
             def convert_percentage(perc_str):
                 try:
                     return float(str(perc_str).replace('%', '')) / 100
                 except (ValueError, TypeError):
-                    return 0.0  # Or np.nan, if you prefer to represent missing values as NaN
+                    return 0.0
 
             df["Three Month Change"] = df["Three Month Change"].apply(convert_percentage)
             df["YoY Change"] = df["YoY Change"].apply(convert_percentage)
+            progress_bar.progress(45)
 
-            # --- Cosine Similarity Calculation --- (Same as before)
+            # --- Cosine Similarity Calculation ---
             model = initialize_sentence_transformer()
             target_embedding = get_embedding(target_keyword, model)
             keyword_embeddings = [get_embedding(kw, model) for kw in df["Keyword"]]
@@ -1665,20 +1676,24 @@ def google_keyword_planner_analyzer_page():
             df["Cosine Similarity"] = similarities
             avg_similarity = df["Cosine Similarity"].mean()
             st.write(f"Average Cosine Similarity: {avg_similarity:.4f}")
+            progress_bar.progress(55)
 
-            # --- Filtering --- (Same as before)
+            # --- Filtering ---
             filtered_df = df[df["Cosine Similarity"] >= avg_similarity]
             filtered_keywords = filtered_df["Keyword"].tolist()
             filtered_embeddings = [get_embedding(kw, model) for kw in filtered_keywords]
             if not filtered_embeddings:
                 st.warning("No keywords found with above-average similarity.")
+                progress_bar.progress(100)
                 return
             filtered_embeddings = np.vstack(filtered_embeddings)
+            progress_bar.progress(60)
 
-            # --- Topic Modeling (Clustering) --- (Back to original, but with 'clusters' defined early)
+            # --- Topic Modeling (Clustering) ---
             st.subheader("Clustering Settings")
             algorithm = st.selectbox("Clustering Algorithm:", ["Kindred Spirit", "Affinity Stack"], key="cluster_algo_kwp")
             n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="n_clusters_kwp")
+            progress_bar.progress(65)
 
             if algorithm == "Kindred Spirit":
                 clustering_model = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
@@ -1706,25 +1721,28 @@ def google_keyword_planner_analyzer_page():
                     else:
                         rep_keyword = cluster_grams[0]
                     rep_keywords[i] = rep_keyword
+            progress_bar.progress(75)
 
-            # --- Create 'clusters' dictionary HERE (before detailed DF and trend charts) ---
+            # --- Create 'clusters' dictionary ---
             clusters = {}
             for keyword, label in zip(filtered_keywords, cluster_labels):
                 clusters.setdefault(label, []).append(keyword)
+            progress_bar.progress(80)
 
-            # --- Create Detailed Cluster DataFrame --- (Same as before)
+            # --- Create Detailed Cluster DataFrame ---
             df["Cluster"] = -1
             for i, keyword in enumerate(filtered_keywords):
                 df.loc[df['Keyword'] == keyword, 'Cluster'] = cluster_labels[i]
             detailed_cluster_df = df[df["Cluster"] != -1]
+            progress_bar.progress(85)
 
-            # --- Display Detailed Table --- (Same as before)
+            # --- Display Detailed Table ---
             st.subheader("Keyword Clusters (Detailed View)")
             for cluster_num in sorted(detailed_cluster_df["Cluster"].unique()):
                 st.markdown(f"**Cluster {cluster_num} (Representative: {rep_keywords.get(cluster_num, 'N/A')})**")
                 cluster_subset = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
                 st.dataframe(cluster_subset)
-
+            progress_bar.progress(90)
 
             # --- Aggregate Cluster Data (NOW INCLUDES 3-MONTH AND YOY CHANGE) ---
             st.subheader("Aggregated Cluster Data")
@@ -1732,9 +1750,7 @@ def google_keyword_planner_analyzer_page():
             for cluster_num, keywords in clusters.items():
                 cluster_df = detailed_cluster_df[detailed_cluster_df["Cluster"] == cluster_num]
                 total_avg_searches = cluster_df["Avg. monthly searches"].sum()
-
-                # Calculate *weighted average* for Three Month and YoY Change
-                total_volume = cluster_df["Avg. monthly searches"].sum()
+                total_volume = total_avg_searches
                 weighted_avg_three_month = (cluster_df["Three Month Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
                 weighted_avg_yoy = (cluster_df["YoY Change"] * cluster_df["Avg. monthly searches"]).sum() / total_volume if total_volume > 0 else 0
 
@@ -1742,8 +1758,8 @@ def google_keyword_planner_analyzer_page():
                     "Cluster": cluster_num,
                     "Representative Keyword": rep_keywords.get(cluster_num, 'N/A'),
                     "Total Avg. Monthly Searches": total_avg_searches,
-                    "Weighted Avg. Three Month Change": weighted_avg_three_month,  # Add to aggregated data
-                    "Weighted Avg. YoY Change": weighted_avg_yoy,  # Add to aggregated data
+                    "Weighted Avg. Three Month Change": weighted_avg_three_month,
+                    "Weighted Avg. YoY Change": weighted_avg_yoy,
                 })
 
             aggregated_df = pd.DataFrame(aggregated_data)
@@ -1751,12 +1767,12 @@ def google_keyword_planner_analyzer_page():
             aggregated_df["Weighted Avg. Three Month Change"] = aggregated_df["Weighted Avg. Three Month Change"].map('{:.2%}'.format)
             aggregated_df["Weighted Avg. YoY Change"] = aggregated_df["Weighted Avg. YoY Change"].map('{:.2%}'.format)
             st.dataframe(aggregated_df)
+            progress_bar.progress(95)
 
-
-            # --- Trend Visualization --- (Now uses 'clusters', defined above)
+            # --- Trend Visualization ---
             month_cols = [col for col in df.columns if "Searches:" in col]
             st.subheader("Cluster Search Trends")
-            for cluster_num, keywords in clusters.items():  # 'clusters' is now defined
+            for cluster_num, keywords in clusters.items():
                 cluster_df = df[df['Keyword'].isin(keywords)].copy()
                 for month_col in month_cols:
                     if month_col not in cluster_df.columns:
@@ -1772,9 +1788,11 @@ def google_keyword_planner_analyzer_page():
                     xaxis_tickangle=-45
                 )
                 st.plotly_chart(fig_trend)
+            progress_bar.progress(100)
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
+
 
 # ------------------------------------
 # NEW TOOL: GSC Analyzer
