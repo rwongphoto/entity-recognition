@@ -1679,7 +1679,7 @@ def google_search_console_analysis_page():
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
+            num_topics = st.slider("Select number of topics:", min_value=2, max_value=10, value=5, key="num_topics")
             # Compute embeddings and cluster queries using KMeans
             from sklearn.cluster import KMeans
             embeddings = [get_embedding(query, model) for query in queries]
