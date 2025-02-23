@@ -3100,6 +3100,10 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
+# ------------------------------------
+# NEW TOOL: GSC Analyzer
+# ------------------------------------
+
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -3226,12 +3230,11 @@ def google_search_console_analysis_page():
             merged_df = merged_df[base_cols]
             progress_bar.progress(40)
             
-            # Step 4: Topic Classification
+            # Step 4: Topic Classification using BERT Embeddings
             st.markdown("### Topic Classification and Combined Data")
             model = initialize_sentence_transformer()
             queries = merged_df["Query"].tolist()
             num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
-            # Compute embeddings and cluster queries using KMeans
             from sklearn.cluster import KMeans
             embeddings = [get_embedding(query, model) for query in queries]
             kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
@@ -3303,16 +3306,47 @@ def google_search_console_analysis_page():
             st.dataframe(merged_df.style.format(format_dict_merged))
             progress_bar.progress(60)
             
-            # --- Hidden Initial Apriori Analysis ---
-            with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
-                st.markdown("### Initial Apriori Analysis on Query Terms")
-                transactions = merged_df["Query"].apply(lambda x: str(x).lower().split()).tolist()
+            # --- Hidden Enhanced Apriori Analysis ---
+            with st.expander("Show Enhanced Apriori Analysis on Query Terms", expanded=False):
+                st.markdown("### Enhanced Apriori Analysis on Query Terms")
+                # Enhanced Text Preprocessing: Lowercase, Remove Stopwords, Lemmatization, and N-gram extraction
+                import nltk
+                nltk.download('punkt')
+                nltk.download('wordnet')
+                from nltk.tokenize import word_tokenize
+                from nltk.corpus import stopwords
+                from nltk.stem import WordNetLemmatizer
+                lemmatizer = WordNetLemmatizer()
+                stop_words = set(stopwords.words('english'))
+                
+                def preprocess_query(query):
+                    tokens = word_tokenize(query.lower())
+                    # Keep only alphabetic tokens that are not stopwords
+                    tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalpha() and t not in stop_words]
+                    return tokens
+                
+                # Generate transactions with unigrams, bigrams, and trigrams
+                from nltk.util import ngrams
+                def generate_ngrams(tokens, n):
+                    return [' '.join(gram) for gram in ngrams(tokens, n)]
+                
+                transactions = []
+                for query in merged_df["Query"]:
+                    tokens = preprocess_query(query)
+                    unigrams = tokens
+                    bigrams = generate_ngrams(tokens, 2)
+                    trigrams = generate_ngrams(tokens, 3)
+                    transactions.append(unigrams + bigrams + trigrams)
+                
+                # Transform transactions into a one-hot encoded DataFrame
                 from mlxtend.preprocessing import TransactionEncoder
                 te = TransactionEncoder()
                 te_ary = te.fit(transactions).transform(transactions)
                 df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+                
+                # Apply the Apriori algorithm with a lower min_support to capture more associations
                 from mlxtend.frequent_patterns import apriori
-                freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
+                freq_items = apriori(df_transactions, min_support=0.05, use_colnames=True)
                 st.dataframe(freq_items.sort_values(by="support", ascending=False))
             progress_bar.progress(65)
             
@@ -3444,6 +3478,7 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
+
 
 
 
