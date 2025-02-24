@@ -312,6 +312,20 @@ def display_entity_wordcloud(entity_counts):
     plt.tight_layout()
     st.pyplot(fig)
 
+def generate_topic_label(queries_in_topic):
+    words = []
+    for query in queries_in_topic:
+        tokens = query.lower().split()
+        filtered = [t for t in tokens if t not in stop_words]
+        words.extend(filtered)
+    if words:
+        freq = collections.Counter(words)
+        common = freq.most_common(2) # Top 2 most common words
+        label = ", ".join([word for word, count in common])
+        return label.capitalize()
+    else:
+        return "N/A"
+
 # ------------------------------------
 # Cosine Similarity Functions
 # ------------------------------------
