@@ -919,7 +919,7 @@ def entity_analysis_page():
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
             if gap_entities:
                 for (entity, label), count in gap_entities.most_common(50):
-                display_entity_barchart(gap_entities)
+            display_entity_barchart(gap_entities)
             else:
                 st.write("No significant gap entities found.")
 
