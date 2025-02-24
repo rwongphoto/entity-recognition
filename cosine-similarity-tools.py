@@ -931,17 +931,23 @@ def entity_analysis_page():
             if aggregated_site_count:
                 for (entity, label), site_count in aggregated_site_count.items():
                     wikidata_url = get_wikidata_link(entity)
+                    if wikidata_url:
+                        # Format the URL as an HTML link
+                        link_html = f'<a href="{wikidata_url}" target="_blank">{wikidata_url}</a>'
+                    else:
+                        link_html = "Not found"
+
                     aggregated_gap_table.append({
                         "Entity": entity,
                         "Label": label,
                         "# of Sites": site_count,
-                        "Wikidata URL": wikidata_url if wikidata_url else "Not found"
+                        "Wikidata URL": link_html  # Use the HTML link here
                     })
                 if aggregated_gap_table:
                     df_aggregated_gap = pd.DataFrame(aggregated_gap_table)
                     # Sort DataFrame by '# of Sites' in descending order
                     df_aggregated_gap = df_aggregated_gap.sort_values(by='# of Sites', ascending=False)
-                    st.dataframe(df_aggregated_gap) # Use st.dataframe for sortable columns
+                    st.dataframe(df_aggregated_gap, unsafe_allow_html=True) # Enable HTML rendering
                 else:
                     st.write("No gap entities available for Wikidata linking.")
             else:
