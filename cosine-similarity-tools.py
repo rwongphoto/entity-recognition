@@ -1287,26 +1287,26 @@ def paa_extraction_clustering_page():
         You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
         """
     )
-    
+
     search_query = st.text_input("Enter Search Query:", "")
     if st.button("Analyze"):
         if not search_query:
             st.warning("Please enter a search query.")
             return
 
-            user_agent = get_random_user_agent()
-            chrome_options.add_argument(f"user-agent={user_agent}")
-        
+        # user_agent definition removed from here
+
         def get_paa(query, max_depth=10):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
+            user_agent = get_random_user_agent()  # Define user_agent HERE
             chrome_options.add_argument(f"user-agent={user_agent}")
             driver = webdriver.Chrome(options=chrome_options)
             driver.get("https://www.google.com/search?q=" + query)
             time.sleep(3)
-            
+
             paa_set = set()
             def extract_paa_recursive(depth, max_depth):
                 if depth > max_depth:
@@ -1330,10 +1330,10 @@ def paa_extraction_clustering_page():
             extract_paa_recursive(1, max_depth)
             driver.quit()
             return paa_set
-        
+
         st.info("I'm researching...")
         paa_questions = get_paa(search_query, max_depth=20)
-        
+
         st.info("Autocomplete suggestions...")
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
@@ -1347,7 +1347,7 @@ def paa_extraction_clustering_page():
         except Exception as e:
             st.error(f"Error fetching autocomplete suggestions: {e}")
             suggestions = []
-        
+
         st.info("Related searches...")
         related_searches = []
         try:
@@ -1355,7 +1355,8 @@ def paa_extraction_clustering_page():
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
+            user_agent = get_random_user_agent() # Moved to get_paa
+            chrome_options.add_argument(f"user-agent={user_agent}")# Moved to get_paa
             driver2 = webdriver.Chrome(options=chrome_options)
             driver2.get("https://www.google.com/search?q=" + search_query)
             time.sleep(3)
@@ -1367,9 +1368,9 @@ def paa_extraction_clustering_page():
             driver2.quit()
         except Exception as e:
             st.error(f"Error extracting related searches: {e}")
-        
+
         combined_questions = list(paa_questions) + suggestions + related_searches
-        
+
         st.info("Analyzing similarity...")
         model = initialize_sentence_transformer()
         query_embedding = get_embedding(search_query, model)
@@ -1378,16 +1379,16 @@ def paa_extraction_clustering_page():
             q_embedding = get_embedding(q, model)
             sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
             question_similarities.append((q, sim))
-        
+
         if not question_similarities:
             st.warning("No questions were extracted to analyze.")
             return
-        
+
         avg_sim = np.mean([sim for _, sim in question_similarities])
         st.write(f"Average Similarity Score: {avg_sim:.4f}")
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
-        
+
         st.subheader("Topic Tree")
         if recommended:
             rec_texts = [q for q, sim in recommended]
@@ -1399,11 +1400,11 @@ def paa_extraction_clustering_page():
             st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
-        
+
         st.subheader("Most Relevant Related Search Queries")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
-        
+
         st.subheader("All Related Search Queries")
         for q in combined_questions:
             st.write(f"- {q}")
