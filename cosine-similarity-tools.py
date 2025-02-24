@@ -1709,7 +1709,7 @@ def google_search_console_analysis_page():
     st.markdown(
         """
         The goal is to identify key topics that are contributing to your SEO performance.
-        This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
+        This tool lets you compare GSC query data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         - Classify queries into topics with descriptive labels using LDA.
         - Display the original merged data table with topic labels.
