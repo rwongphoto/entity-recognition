@@ -1824,7 +1824,7 @@ def google_search_console_analysis_page():
                 query_matrix_lda = vectorizer_queries_lda.fit_transform(queries)
                 feature_names_queries_lda = vectorizer_queries_lda.get_feature_names_out()
 
-                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42, n_init='auto')
+                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42)
                 lda_queries_model.fit(query_matrix_lda)
 
                 query_topic_labels = lda_queries_model.transform(query_matrix_lda).argmax(axis=1) # Assign topic label to each query
