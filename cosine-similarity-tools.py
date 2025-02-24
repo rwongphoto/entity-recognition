@@ -46,6 +46,9 @@ from mlxtend.frequent_patterns import apriori, association_rules
 
 import random  # Import the random module
 
+# NEW: Import SPARQLWrapper for querying Wikidata
+from SPARQLWrapper import SPARQLWrapper, JSON
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
