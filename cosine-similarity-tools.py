@@ -88,17 +88,15 @@ def load_spacy_model():
     global nlp
     if nlp is None:
         try:
-            nlp = spacy.load("en_core_web_lg")
-            nlp.add_pipe("entity_linker", last=True) # Add entity linker
-            print("spaCy model with Entity Linker loaded successfully")
+            nlp = spacy.load("en_core_web_md")
+            print("spaCy model loaded successfully")
         except OSError:
-            print("Downloading en_core_web_lg model and Entity Linker...")
-            spacy.cli.download("en_core_web_lg")
-            nlp = spacy.load("en_core_web_lg")
-            nlp.add_pipe("entity_linker", config={"resolve_abbreviations": True}) # Add entity linker
-            print("en_core_web_md and Entity Linker downloaded and loaded")
+            print("Downloading en_core_web_md model...")
+            spacy.cli.download("en_core_web_md")
+            nlp = spacy.load("en_core_web_md")
+            print("en_core_web_md downloaded and loaded")
         except Exception as e:
-            st.error(f"Failed to load spaCy model with Entity Linker: {e}")
+            st.error(f"Failed to load spaCy model: {e}")
             return None
     return nlp
 
@@ -251,56 +249,32 @@ def create_navigation_menu(logo_url):
 
 def identify_entities(text, nlp_model):
     doc = nlp_model(text)
-    entities = []
-    for ent in doc.ents:
-        linked_entity_info = None
-        if ent._.has_link:  # Check if entity linker found a link
-            for kb_id, score in ent._.kb_ents: # Iterate over linked entities (can be multiple, with scores)
-                if score > 0.7: # Optional: filter by confidence score, adjust threshold as needed
-                    linked_entity_info = {"kb_id": kb_id, "wikidata_url": f"https://www.wikidata.org/wiki/{kb_id}", "score": score}
-                    break #Take the top one above threshold for simplicity
-        entities.append({
-            "text": ent.text,
-            "label": ent.label_,
-            "start_char": ent.start_char,
-            "end_char": ent.end_char,
-            "linked_entity": linked_entity_info # Add linked entity info (can be None)
-        })
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
     return entities
 
-# ORIGINAL count_entities (for unique counts per source) - UPDATED for dictionary entities
-def count_entities(entities: List[Dict], nlp_model) -> Counter: # Type hint for list of dictionaries
+# ORIGINAL count_entities (for unique counts per source)
+def count_entities(entities: List[Tuple[str, str]], nlp_model) -> Counter:
     entity_counts = Counter()
     seen_entities = set()
-    for entity_dict in entities: # Iterate through dictionaries
-        entity_text = entity_dict["text"]
-        label = entity_dict["label"]
-        linked_entity = entity_dict["linked_entity"] # Access linked entity info
-        entity_lemma = entity_text # Default if lemmatization fails
-        entity_text = entity_text.replace('\n', ' ').replace('\r', '')
-        if len(entity_text) > 2:
-            doc = nlp_model(entity_text)
-            entity_lemma = " ".join([token.lemma_ for token in doc]) # Lemmatize
-            entity_key = (entity_lemma, label) # Key remains lemma and label
-            if entity_key not in seen_entities:
-                entity_counts[entity_key] += 1
-                seen_entities.add(entity_key)
+    for entity, label in entities:
+        entity = entity.replace('\n', ' ').replace('\r', '')
+        if len(entity) > 2:
+            doc = nlp_model(entity)
+            lemma = " ".join([token.lemma_ for token in doc])
+            if (lemma, label) not in seen_entities:
+                entity_counts[(lemma, label)] += 1
+                seen_entities.add((lemma, label))
     return entity_counts
 
-# New function to count every occurrence - UPDATED for dictionary entities
-def count_entities_total(entities: List[Dict], nlp_model) -> Counter: # Type hint for list of dictionaries
+# New function to count every occurrence
+def count_entities_total(entities: List[Tuple[str, str]], nlp_model) -> Counter:
     entity_counts = Counter()
-    for entity_dict in entities: # Iterate through dictionaries
-        entity_text = entity_dict["text"]
-        label = entity_dict["label"]
-        linked_entity = entity_dict["linked_entity"] # Access linked entity info
-        entity_lemma = entity_text # Default if lemmatization fails
-        entity_text = entity_text.replace('\n', ' ').replace('\r', '')
-        if len(entity_text) > 2:
-            doc = nlp_model(entity_text)
-            entity_lemma = " ".join([token.lemma_ for token in doc]) # Lemmatize
-            entity_key = (entity_lemma, label) # Key remains lemma and label
-            entity_counts[entity_key] += 1
+    for entity, label in entities:
+        entity = entity.replace('\n', ' ').replace('\r', '')
+        if len(entity) > 2:
+            doc = nlp_model(entity)
+            lemma = " ".join([token.lemma_ for token in doc])
+            entity_counts[(lemma, label)] += 1
     return entity_counts
 
 def display_entity_barchart(entity_counts, top_n=30):
@@ -872,7 +846,7 @@ def entity_analysis_page():
             else:
                 target_text = target_input
             target_entities = identify_entities(target_text, nlp_model) if target_text else []
-            filtered_target_entities = [ent for ent in target_entities if ent["label"] not in exclude_types] # Adjusted for dict
+            filtered_target_entities = [(entity, label) for entity, label in target_entities if label not in exclude_types]
             target_entity_counts = count_entities(filtered_target_entities, nlp_model)
             target_entities_set = set(target_entity_counts.keys())
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
@@ -885,69 +859,48 @@ def entity_analysis_page():
                     text = source
                 if text:
                     entities = identify_entities(text, nlp_model)
-                    filtered_entities = [ent for ent in entities
-                                         if ent["label"] not in exclude_types and ent["text"].lower() not in exclude_entities_set] # Adjusted for dict
+                    filtered_entities = [(entity, label) for entity, label in entities
+                                         if label not in exclude_types and entity.lower() not in exclude_entities_set]
                     source_counts = count_entities(filtered_entities, nlp_model)
                     entity_counts_per_source[source] = source_counts
-                    for (lemma, label, kb_id) in source_counts: # Adjusted for dict key
-                        all_competitor_entities.append((lemma, label, kb_id)) # Adjusted for dict key
+                    for (lemma, label) in source_counts:
+                        all_competitor_entities.append((lemma, label))
             competitor_entity_counts = Counter(all_competitor_entities)
             gap_entities = Counter()
-            for (entity, label, kb_id), count in competitor_entity_counts.items(): # Adjusted for dict key
-                if (entity, label, kb_id) not in target_entities_set: # Adjusted for dict key
-                    gap_entities[(entity, label, kb_id)] = count # Adjusted for dict key
+            for (entity, label), count in competitor_entity_counts.items():
+                if (entity, label) not in target_entities_set:
+                    gap_entities[(entity, label)] = count
             unique_target_entities = Counter()
-            for (entity, label, kb_id), count in target_entity_counts.items(): # Adjusted for dict key
-                if (entity, label, kb_id) not in competitor_entity_counts: # Adjusted for dict key
-                    unique_target_entities[(entity, label, kb_id)] = count # Adjusted for dict key
+            for (entity, label), count in target_entity_counts.items():
+                if (entity, label) not in competitor_entity_counts:
+                    unique_target_entities[(entity, label)] = count
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
             if gap_entities:
-                gap_entity_list = gap_entities.most_common(50)
-                for (entity, label, kb_id), count in gap_entity_list:
-                    entity_link_md = f"- {entity} ({label})"
-                    if kb_id:
-                        entity_link_md += f" - [Wikidata](https://www.wikidata.org/wiki/{kb_id})"
-                    entity_link_md += f": {count}"
-                    st.markdown(entity_link_md)
-
+                for (entity, label), count in gap_entities.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
                 display_entity_barchart(gap_entities)
             else:
                 st.write("No significant gap entities found.")
             st.markdown("### Entities Unique to Target Site")
             if unique_target_entities:
-                unique_target_entity_list = unique_target_entities.most_common(50)
-                for (entity, label, kb_id), count in unique_target_entity_list:
-                    entity_link_md = f"- {entity} ({label})"
-                    if kb_id:
-                        entity_link_md += f" - [Wikidata](https://www.wikidata.org/wiki/{kb_id})"
-                    entity_link_md += f": {count}"
-                    st.markdown(entity_link_md)
+                for (entity, label), count in unique_target_entities.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
             if exclude_input:
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
                 exclude_doc = nlp_model(exclude_input)
-                exclude_entities_list = identify_entities(exclude_input, nlp_model) # Adjusted for dict
-                filtered_exclude_entities = [ent for ent in exclude_entities_list] # No label filter for excluded
-                exclude_entity_counts = count_entities(filtered_exclude_entities, nlp_model)
-                for (entity, label, kb_id), count in exclude_entity_counts.most_common(50): # Adjusted for dict key
-                    entity_link_md = f"- {entity} ({label})"
-                    if kb_id:
-                        entity_link_md += f" - [Wikidata](https://www.wikidata.org/wiki/{kb_id})"
-                    entity_link_md += f": {count}"
-                    st.markdown(entity_link_md)
-
+                exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
+                exclude_entity_counts = count_entities(exclude_entities_list, nlp_model)
+                for (entity, label), count in exclude_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
             st.markdown("### Entities Per Competitor Source")
             for source, entity_counts_local in entity_counts_per_source.items():
                 st.markdown(f"#### Source: {source}")
                 if entity_counts_local:
-                    for (entity, label, kb_id), count in entity_counts_local.most_common(50): # Adjusted for dict key
-                        entity_link_md = f"- {entity} ({label})"
-                        if kb_id:
-                            entity_link_md += f" - [Wikidata](https://www.wikidata.org/wiki/{kb_id})"
-                        entity_link_md += f": {count}"
-                        st.markdown(entity_link_md)
+                    for (entity, label), count in entity_counts_local.most_common(50):
+                        st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
 
