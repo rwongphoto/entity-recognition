@@ -1026,18 +1026,26 @@ def entity_analysis_page():
             st.markdown("### Entities Unique to Target Site")
             if unique_target_entities:
                 # Filter the target_entity_data to include only unique entities.
-                unique_data = [ent for ent in target_entity_data \
+                unique_data = [ent for ent in target_entity_data
                                if (ent["Entity"], ent["Label"]) in unique_target_entities]
-                df_unique_target = pd.DataFrame(unique_data)
-                df_unique_target.columns = ["Entity", "Label", "Link"] # Set column name to "Link"
 
-                if not df_unique_target.empty:
-                    st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
-                else: #Handle potentially empty DataFrame
-                    st.write("No unique entities to display.")
+
+                if unique_data: # CHECK IF unique_data IS NOT EMPTY BEFORE CREATING DF
+                    df_unique_target = pd.DataFrame(unique_data)
+
+                    if not df_unique_target.empty: # Redundant check, but kept for clarity
+                        df_unique_target.columns = ["Entity", "Label", "Link"] # Set column name to "Link"
+                        st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
+                    else: #Handle potentially empty DataFrame - This branch is unlikely to be reached now, but kept for safety
+                        st.write("No unique entities to display (DataFrame empty after creation).")
+                else: # Handle case where unique_data was empty from the start
+                    st.write("No unique entities to display (No data to create DataFrame).")
+                    df_unique_target = pd.DataFrame() # Ensure df_unique_target is defined even if empty
+
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
+                display_entity_barchart(unique_target_entities)
 
             # --- Display Excluded Entities ---
             if exclude_input:
