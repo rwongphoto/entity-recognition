@@ -893,7 +893,7 @@ def entity_analysis_page():
             target_entities_set = set(target_entity_counts.keys())
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
             
-            # Process competitor content
+            # Process competitor content per site
             entity_counts_per_source = {}
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
@@ -909,23 +909,16 @@ def entity_analysis_page():
                     source_counts = count_entities(filtered_entities, nlp_model)
                     entity_counts_per_source[source] = source_counts
             
-            # Calculate aggregated gap entities (only if missing from target)
-            gap_entities = Counter()
+            # Calculate aggregated gap entities: count one per site where the entity is found (only if missing from target)
+            aggregated_site_count = {}
             for source, counts in entity_counts_per_source.items():
                 for (entity, label), count in counts.items():
                     if (entity, label) not in target_entities_set:
-                        gap_entities[(entity, label)] += count
+                        aggregated_site_count[(entity, label)] = aggregated_site_count.get((entity, label), 0) + 1
             
-            # --- NEW: Build an aggregated table with unique competitor entity counts (number of sites) and Wikidata links ---
+            # NEW: Create chart and table for aggregated gap entities with Wikidata links
             st.markdown("### Aggregated Gap Entities (Number of Competitor Sites) with Wikidata Links")
             aggregated_gap_table = []
-            aggregated_site_count = {}
-            # For each competitor, count the unique occurrence of each entity (one count per site)
-            for source, counts in entity_counts_per_source.items():
-                for (entity, label), count in counts.items():
-                    if (entity, label) not in target_entities_set:
-                        # Increment by one for each site where the entity is found
-                        aggregated_site_count[(entity, label)] = aggregated_site_count.get((entity, label), 0) + 1
             if aggregated_site_count:
                 for (entity, label), site_count in aggregated_site_count.items():
                     wikidata_url = get_wikidata_link(entity)
@@ -936,18 +929,29 @@ def entity_analysis_page():
                         "Wikidata URL": wikidata_url if wikidata_url else "Not found"
                     })
                 if aggregated_gap_table:
+                    # Create a DataFrame for the chart and table
                     df_aggregated_gap = pd.DataFrame(aggregated_gap_table)
+                    # Create a horizontal bar chart using Plotly Express
+                    import plotly.express as px
+                    fig = px.bar(
+                        df_aggregated_gap,
+                        x="# of Sites",
+                        y="Entity",
+                        orientation="h",
+                        title="Aggregated Gap Entities: Competitor Site Count"
+                    )
+                    st.plotly_chart(fig)
                     st.table(df_aggregated_gap)
                 else:
                     st.write("No gap entities available for Wikidata linking.")
             else:
                 st.write("No significant gap entities found.")
             
-            
+            # Continue with existing outputs if desired (optional)
             st.markdown("### Entities Unique to Target Site")
             unique_target_entities = Counter()
             for (entity, label), count in target_entity_counts.items():
-                if (entity, label) not in gap_entities:
+                if (entity, label) not in aggregated_site_count:
                     unique_target_entities[(entity, label)] = count
             if unique_target_entities:
                 for (entity, label), count in unique_target_entities.most_common(50):
@@ -972,6 +976,7 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
+
 
 
 
