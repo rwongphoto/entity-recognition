@@ -1295,7 +1295,7 @@ def paa_extraction_clustering_page():
             return
 
             user_agent = get_random_user_agent()
-              chrome_options.add_argument(f"user-agent={user_agent}")
+            chrome_options.add_argument(f"user-agent={user_agent}")
         
         def get_paa(query, max_depth=10):
             chrome_options = Options()
