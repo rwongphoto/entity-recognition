@@ -46,11 +46,6 @@ from mlxtend.frequent_patterns import apriori, association_rules
 
 import random  # Import the random module
 
-# NEW IMPORT for Entity Linker
-import spacy_entity_linker
-
-from SPARQLWrapper import SPARQLWrapper, JSON
-
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -95,15 +90,11 @@ def load_spacy_model():
         try:
             nlp = spacy.load("en_core_web_md")
             print("spaCy model loaded successfully")
-
-
         except OSError:
             print("Downloading en_core_web_md model...")
             spacy.cli.download("en_core_web_md")
             nlp = spacy.load("en_core_web_md")
             print("en_core_web_md downloaded and loaded")
-
-
         except Exception as e:
             st.error(f"Failed to load spaCy model: {e}")
             return None
@@ -256,12 +247,9 @@ def create_navigation_menu(logo_url):
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
 
-# MODIFIED: identify_entities - Simplified for Entity Linker
 def identify_entities(text, nlp_model):
     doc = nlp_model(text)
-    entities = []
-    for ent in doc.ents:  # Iterate through entities
-        entities.append((ent.text, ent.label_)) # Keep as before
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
     return entities
 
 # ORIGINAL count_entities (for unique counts per source)
@@ -341,73 +329,6 @@ def generate_topic_label(queries_in_topic):
     else:
         return "N/A"
 
-# --- FUNCTION: Query Wikidata ---
-
-def get_wikidata_id(entity_text, entity_label, nlp_model):
-    """
-    Queries Wikidata for a given entity and returns its ID (Q-code) if found.
-
-    Args:
-        entity_text: The text of the entity (e.g., "Barack Obama").
-        entity_label: The spaCy entity label (e.g., "PERSON").
-        nlp_model: Your loaded spaCy model.
-
-    Returns:
-        The Wikidata ID (e.g., "Q76") as a string, or None if not found.
-    """
-    # Wikidata SPARQL endpoint
-    sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
-
-    # Basic query structure (find entity with label and description)
-    #  Added FILTER for more specific results
-    query = f"""
-    SELECT ?entity ?entityLabel WHERE {{
-      ?entity rdfs:label "{entity_text}"@en .
-      ?entity rdfs:label ?entityLabel .
-      FILTER(LANG(?entityLabel) = "en")
-    }}
-    LIMIT 5
-    """
-
-    # Set the query and return format
-    sparql.setQuery(query)
-    sparql.setReturnFormat(JSON)
-
-    try:
-        # Execute the query and parse results
-        results = sparql.query().convert()
-        bindings = results["results"]["bindings"]
-
-        if bindings:
-            #  Simple approach: take the first result
-            entity_id_url = bindings[0]["entity"]["value"]
-            entity_id = entity_id_url.split("/")[-1]  # Extract Q-code
-            return entity_id
-        else:
-            return None
-
-    except Exception as e:
-        print(f"Error querying Wikidata for '{entity_text}': {e}")
-        return None
-
-# NEW FUNCTION: Generate Wikidata Link
-def generate_wikidata_link(wikidata_id):
-    """
-    Generates a clickable Wikidata link from a Wikidata ID.
-
-    Args:
-        wikidata_id: The Wikidata ID (e.g., "Q76").
-
-    Returns:
-        An HTML string representing a clickable link to the Wikidata page.
-    """
-    if wikidata_id:
-        return f'<a href="https://www.wikidata.org/wiki/{wikidata_id}" target="_blank">{wikidata_id}</a>'
-    else:
-        return "N/A"
-
-
-
 # ------------------------------------
 # Cosine Similarity Functions
 # ------------------------------------
@@ -441,7 +362,7 @@ def rank_sentences_by_similarity(text, search_term):
     similarities = [cosine_similarity([emb], [search_term_embedding])[0][0] for emb in sentence_embeddings]
     min_similarity = min(similarities)
     max_similarity = max(similarities)
-    normalized_similarities = ([0.0] * len(similarities) if max_similarity == min_similarity
+    normalized_similarities = ([0.0] * len(similarities) if max_similarity == min_similarity 
                                else [(s - min_similarity) / (max_similarity - min_similarity) for s in similarities])
     return list(zip(sentences, normalized_similarities))
 
@@ -874,7 +795,6 @@ def top_bottom_embeddings_page():
         for i, (sentence, score) in enumerate(reversed(bottom_sections), 1):
             st.write(f"{i}. {sentence} (Similarity: {score:.4f})")
 
-# MODIFIED: entity_analysis_page - Integrated Entity Linker
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
     st.markdown("Analyze multiple sources to identify common entities missing on your site, *and* unique entities on your site.")
@@ -921,120 +841,68 @@ def entity_analysis_page():
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
-
-            # --- Helper Function to Process Entities and Get Wikidata Links ---
-            def process_and_link_entities(text, exclude_types, nlp_model):
-                doc = nlp_model(text)
-                entity_data = []
-                for ent in doc.ents:
-                    if ent.label_ not in exclude_types:
-                        with st.spinner(f"Querying Wikidata for {ent.text}..."): # Keep the spinner
-                            wikidata_id = get_wikidata_id(ent.text, ent.label_, nlp_model) # Use get_wikidata_id
-                        wikidata_link = generate_wikidata_link(wikidata_id) # Generate link
-                        entity_data.append({"Entity": ent.text, "Label": ent.label_, "Wikidata": wikidata_link})
-                return entity_data
-
-            # --- Process Target Entities ---
             if target_option == "Extract from URL":
                 target_text = extract_text_from_url(target_input) if target_input else ""
             else:
                 target_text = target_input
-
-            target_entity_data = process_and_link_entities(target_text, exclude_types, nlp_model)
-            df_target_entities = pd.DataFrame(target_entity_data)
-            target_entities_set = set([(ent["Entity"], ent["Label"]) for ent in target_entity_data]) #for gap
-
-            # --- Process Competitor Entities ---
-            all_competitor_data = []
-            entity_counts_per_source = {} # Store entity counts for each source
+            target_entities = identify_entities(target_text, nlp_model) if target_text else []
+            filtered_target_entities = [(entity, label) for entity, label in target_entities if label not in exclude_types]
+            target_entity_counts = count_entities(filtered_target_entities, nlp_model)
+            target_entities_set = set(target_entity_counts.keys())
+            exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
+            all_competitor_entities = []
+            entity_counts_per_source = {}
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
                     text = extract_text_from_url(source)
                 else:
                     text = source
-
                 if text:
-                    competitor_data = process_and_link_entities(text, exclude_types, nlp_model)
-                    #Count entities per source:
-                    source_entity_counts = Counter([(ent["Entity"], ent["Label"]) for ent in competitor_data])
-                    entity_counts_per_source[source] = source_entity_counts #Store for later display
-                    all_competitor_data.extend(competitor_data)  # Accumulate for overall gap analysis
-                else:
-                    st.warning(f"Could not retrieve text from {source}")
-
-            # --- Gap Analysis ---
-            #  Convert all_competitor_data to a Counter for efficient lookup
-            all_competitor_counts = Counter([(ent["Entity"], ent["Label"]) for ent in all_competitor_data])
-
+                    entities = identify_entities(text, nlp_model)
+                    filtered_entities = [(entity, label) for entity, label in entities
+                                         if label not in exclude_types and entity.lower() not in exclude_entities_set]
+                    source_counts = count_entities(filtered_entities, nlp_model)
+                    entity_counts_per_source[source] = source_counts
+                    for (lemma, label) in source_counts:
+                        all_competitor_entities.append((lemma, label))
+            competitor_entity_counts = Counter(all_competitor_entities)
             gap_entities = Counter()
-            for (entity, label), count in all_competitor_counts.items():
-                if (entity,label) not in target_entities_set:
-                    gap_entities[(entity, label)] = count # Number of COMPETITOR occurrences
-
-            # --- Unique to Target ---
+            for (entity, label), count in competitor_entity_counts.items():
+                if (entity, label) not in target_entities_set:
+                    gap_entities[(entity, label)] = count
             unique_target_entities = Counter()
-            for (entity, label) in target_entities_set:
-                if (entity, label) not in all_competitor_counts:
-                    unique_target_entities[(entity, label)] += 1 #Always 1 because it's unique.
-
-            # --- Display Results (Gap Entities) ---
+            for (entity, label), count in target_entity_counts.items():
+                if (entity, label) not in competitor_entity_counts:
+                    unique_target_entities[(entity, label)] = count
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
             if gap_entities:
-                gap_entity_data = []
                 for (entity, label), count in gap_entities.most_common(50):
-                    #Find the Wikidata link in the all_competitor_data
-                    wikidata_link = "N/A" #Default
-                    for ent_data in all_competitor_data: # Search for match.
-                        if ent_data["Entity"] == entity and ent_data["Label"] == label:
-                            wikidata_link = ent_data["Wikidata"]
-                            break  # Stop searching once found.
-
-                    gap_entity_data.append({"Entity": entity, "Label": label, "Count": count, "Wikidata": wikidata_link})
-                df_gap_entities = pd.DataFrame(gap_entity_data)
-                st.markdown(df_gap_entities.to_html(escape=False, index=False), unsafe_allow_html=True)
-                display_entity_barchart(gap_entities)  # Pass the Counter
+                    st.write(f"- {entity} ({label}): {count}")
+                display_entity_barchart(gap_entities)
             else:
                 st.write("No significant gap entities found.")
-
-            # --- Display Unique Target Entities ---
             st.markdown("### Entities Unique to Target Site")
             if unique_target_entities:
-                # Filter the target_entity_data to include only unique entities.
-                unique_data = [ent for ent in target_entity_data \
-                               if (ent["Entity"], ent["Label"]) in unique_target_entities]
-                df_unique_target = pd.DataFrame(unique_data)
-
-                if not df_unique_target.empty:
-                    st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
-                else: #Handle potentially empty DataFrame
-                    st.write("No unique entities to display.")
+                for (entity, label), count in unique_target_entities.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
-
-            # --- Display Excluded Entities ---
             if exclude_input:
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
                 exclude_doc = nlp_model(exclude_input)
-                exclude_entity_data = []
-                for ent in exclude_doc.ents:
-                  exclude_entity_data.append({"Entity": ent.text, "Label": ent.label_})
-                df_exclude = pd.DataFrame(exclude_entity_data)
-                st.dataframe(df_exclude)
-
-            # --- Entities Per Competitor Source ---
+                exclude_entities_list = [(ent.text, ent.label_) for ent in exclude_doc.ents]
+                exclude_entity_counts = count_entities(exclude_entities_list, nlp_model)
+                for (entity, label), count in exclude_entity_counts.most_common(50):
+                    st.write(f"- {entity} ({label}): {count}")
             st.markdown("### Entities Per Competitor Source")
-            for source, entity_counts in entity_counts_per_source.items():
+            for source, entity_counts_local in entity_counts_per_source.items():
                 st.markdown(f"#### Source: {source}")
-                #Find entity data for this source:
-                source_data = [ent for ent in all_competitor_data \
-                               if any((ent["Entity"], ent["Label"]) == key for key in entity_counts.keys())]
-                if source_data:
-                  df_source = pd.DataFrame(source_data)
-                  st.markdown(df_source.to_html(escape=False, index=False), unsafe_allow_html=True)
+                if entity_counts_local:
+                    for (entity, label), count in entity_counts_local.most_common(50):
+                        st.write(f"- {entity} ({label}): {count}")
                 else:
-                  st.write("No relevant entities.")
-
+                    st.write("No relevant entities found.")
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
@@ -1148,11 +1016,11 @@ def ngram_tfidf_analysis_page():
     )
     if competitor_source_option == "Extract from URL":
         competitor_input = st.text_area("Enter Competitor URLs (one per line):", key="competitor_urls", value="")
-        competitor_list = [url.strip() for url in competitor_input.splitlines() if competitor_input.strip()]
+        competitor_list = [url.strip() for url in competitor_input.splitlines() if url.strip()]
     else:
         st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
-        competitor_list = [content.strip() for content in competitor_input.split('---') if competitor_input.strip()]
+        competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
 
     # Target input
     st.subheader("Your Site")
@@ -1372,7 +1240,7 @@ def keyword_clustering_from_gap_page():
     st.subheader("Clustering Settings")
     algorithm = st.selectbox("Select Clustering Type:", options=["Kindred Spirit", "Affinity Stack"], key="clustering_algo_gap")
     n_clusters = st.number_input("Number of Clusters:", min_value=1, value=5, key="clusters_num")
-
+    
     if st.button("Analyze & Cluster Gaps", key="gap_cluster_button"):
         if not competitor_list:
             st.warning("Please enter at least one competitor URL or content.")
@@ -1466,7 +1334,7 @@ def keyword_clustering_from_gap_page():
             if combined_score > 0:
                 norm_candidates.append((ngram, combined_score))
         norm_candidates.sort(key=lambda x: x[1], reverse=True)
-
+        
         # ----- Clustering & Visualization -----
         gap_ngrams = [ngram for ngram, score in norm_candidates]
         if not gap_ngrams:
@@ -1529,7 +1397,7 @@ def keyword_clustering_from_gap_page():
             yaxis_title="Competitive Pressure: High vs. Low"
         )
         st.plotly_chart(fig)
-
+        
         # --- Display the detailed clusters ---
         st.markdown("### Keyword Clusters")
         clusters = {}
