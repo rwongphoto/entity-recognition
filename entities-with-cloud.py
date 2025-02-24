@@ -44,6 +44,8 @@ import plotly.figure_factory as ff
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 
+import random  # Import the random module
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -61,6 +63,25 @@ def enforce_rate_limit():
     last_request_time = time.time()
 
 nlp = None
+
+# User Agent List (Expanded)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.2151.97", #Edge
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1", #Safari iPhone
+    "Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1", #Safari iPad
+    "Mozilla/5.0 (Android 14; Mobile; rv:121.0) Gecko/121.0 Firefox/121.0", #Firefox Android
+    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36", #Chrome Android
+]
+
+def get_random_user_agent():
+    """Returns a randomly selected user agent from the list."""
+    return random.choice(USER_AGENTS)
+
 
 @st.cache_resource
 def load_spacy_model():
@@ -95,8 +116,8 @@ def extract_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        # Use the random user agent function
+        user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
@@ -135,8 +156,8 @@ def extract_relevant_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        # Use the random user agent function
+        user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
@@ -291,6 +312,23 @@ def display_entity_wordcloud(entity_counts):
     plt.tight_layout()
     st.pyplot(fig)
 
+nltk.download('stopwords') #Ensure stopwords are downloaded if not already
+stop_words = set(nltk.corpus.stopwords.words('english'))
+
+def generate_topic_label(queries_in_topic):
+    words = []
+    for query in queries_in_topic:
+        tokens = query.lower().split()
+        filtered = [t for t in tokens if t not in stop_words]
+        words.extend(filtered)
+    if words:
+        freq = collections.Counter(words)
+        common = freq.most_common(2) # Top 2 most common words
+        label = ", ".join([word for word, count in common])
+        return label.capitalize()
+    else:
+        return "N/A"
+
 # ------------------------------------
 # Cosine Similarity Functions
 # ------------------------------------
@@ -378,8 +416,7 @@ def url_analysis_dashboard_page():
                     chrome_options.add_argument("--headless")
                     chrome_options.add_argument("--no-sandbox")
                     chrome_options.add_argument("--disable-dev-shm-usage")
-                    user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+                    user_agent = get_random_user_agent()
                     chrome_options.add_argument(f"user-agent={user_agent}")
                     driver = webdriver.Chrome(options=chrome_options)
                     driver.get(url)
@@ -543,6 +580,7 @@ def cosine_similarity_competitor_analysis_page():
         st.markdown("Paste the competitor content below. If you have multiple competitors, separate each content block with `---`.")
         pasted_content = st.text_area("Enter Competitor Content:", height=200)
         competitor_contents = [content.strip() for content in pasted_content.split('---') if content.strip()]
+
     if st.button("Calculate Similarity"):
         model = initialize_sentence_transformer()
         if source_option == "Extract from URL":
@@ -551,31 +589,124 @@ def cosine_similarity_competitor_analysis_page():
                 return
             with st.spinner("Calculating similarities from URLs..."):
                 similarity_scores = calculate_overall_similarity(competitor_urls, search_term, model)
+                # Extract content lengths
+                content_lengths = []
+                for url in competitor_urls:
+                    text = extract_text_from_url(url)
+                    content_lengths.append(len(text.split()) if text else 0)
+
             urls_plot = [url for url, score in similarity_scores]
             scores_plot = [score if score is not None else 0 for url, score in similarity_scores]
-        else:
+
+        else:  # Paste Content
             if not competitor_contents:
                 st.warning("Please paste at least one content block.")
                 return
             with st.spinner("Calculating similarities from pasted content..."):
                 similarity_scores = []
+                content_lengths = []  # Store content lengths
                 for idx, content in enumerate(competitor_contents):
                     text_embedding = get_embedding(content, model)
                     search_embedding = get_embedding(search_term, model)
                     similarity = cosine_similarity([text_embedding], [search_embedding])[0][0]
                     similarity_scores.append((f"Competitor {idx+1}", similarity))
+                    content_lengths.append(len(content.split()))  # Count words
+
             urls_plot = [label for label, score in similarity_scores]
             scores_plot = [score for label, score in similarity_scores]
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.bar(urls_plot, scores_plot)
-        ax.set_xlabel("Competitors")
-        ax.set_ylabel("Similarity Score")
-        ax.set_title("Cosine Similarity of Competitor Content to Search Term")
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        st.pyplot(fig)
-        data = {'Competitor': urls_plot, 'Similarity Score': scores_plot}
-        df = pd.DataFrame(data)
+
+        # --- Option 1:  2D Scatter Plot with Hover Data and Labels---
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
+
+        fig = px.scatter(df, x='Cosine Similarity', y='Content Length (Words)',
+                         title='Competitor Analysis: Similarity vs. Content Length',
+                         hover_data=['Competitor', 'Cosine Similarity', 'Content Length (Words)'],
+                         color='Cosine Similarity',  # Color by similarity
+                         color_continuous_scale=px.colors.sequential.Viridis,
+                         text='Competitor') # Add this line
+
+        fig.update_traces(textposition='top center') #And this line.
+
+        fig.update_layout(
+            xaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis_title="Content Length (Words)",
+            width=800,
+            height=600
+        )
+
+        st.plotly_chart(fig)
+
+        st.dataframe(df) #Show data
+
+        # --- Option 2: Bar Chart with Secondary Y-Axis for Content Length and Labels---
+
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
+
+        # Sort by similarity for better visualization
+        df = df.sort_values('Cosine Similarity', ascending=False)
+
+        fig = go.Figure(data=[
+            go.Bar(name='Cosine Similarity', x=df['Competitor'], y=df['Cosine Similarity'],
+                   marker_color=df['Cosine Similarity'],  # Color by similarity
+                   marker_colorscale='Viridis',
+                    text=df['Competitor'],  # Add labels to the bars
+                    textposition='outside'),
+            go.Scatter(name='Content Length', x=df['Competitor'], y=df['Content Length (Words)'], yaxis='y2',
+                       mode='lines+markers', marker=dict(color='red'))
+        ])
+        fig.update_traces(textfont_size=12) # Adjust text size as needed
+
+
+        fig.update_layout(
+            title='Competitor Analysis: Similarity and Content Length',
+            xaxis_title="Competitor",
+            yaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis2=dict(title='Content Length (Words)', overlaying='y', side='right'),
+            width=800,
+            height=600,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        st.plotly_chart(fig)
+        st.dataframe(df)
+
+        # --- Option 3: Bubble Chart with labels---
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
+
+        fig = px.scatter(df, x='Cosine Similarity', y='Content Length (Words)',
+                         size=[10] * len(df),  # Constant bubble size.  Change if you have a 3rd metric.
+                         title='Competitor Analysis: Similarity, Content Length (Bubble Chart)',
+                         hover_data=['Competitor', 'Cosine Similarity', 'Content Length (Words)'],
+                         color='Cosine Similarity',
+                         color_continuous_scale=px.colors.sequential.Viridis,
+                         text='Competitor') # Add this line
+
+        fig.update_traces(textposition='top center') #And this line.
+
+        fig.update_layout(
+            xaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis_title="Content Length (Words)",
+            width=800,
+            height=600
+        )
+        st.plotly_chart(fig)
         st.dataframe(df)
 
 def cosine_similarity_every_embedding_page():
@@ -890,7 +1021,7 @@ def ngram_tfidf_analysis_page():
         st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-        
+
     # Target input
     st.subheader("Your Site")
     target_source_option = st.radio(
@@ -903,7 +1034,7 @@ def ngram_tfidf_analysis_page():
         target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your target content:", key="target_text", value="", height=200)
-        
+
     # Word options
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5,6,7,8,9,10], index=1)
@@ -911,7 +1042,8 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
-    
+    num_topics = st.slider("Number of topics for LDA:", min_value=2, max_value=15, value=5, key="lda_topics") # Slider for LDA topics
+
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
@@ -919,7 +1051,7 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-        
+
         # Extract competitor content
         competitor_texts = []
         valid_competitor_sources = []
@@ -934,7 +1066,7 @@ def ngram_tfidf_analysis_page():
                     competitor_texts.append(text)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
+
         # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
@@ -943,24 +1075,42 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
-        
+
         nlp_model = load_spacy_model()
         competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
         target_content = preprocess_text(target_content, nlp_model)
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
-        
+
         # Calculate TF-IDF scores
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english")
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
+
+        # --- LDA Topic Modeling ---
+        with st.spinner("Performing Latent Dirichlet Allocation (LDA)..."):
+            lda_model = LatentDirichletAllocation(n_components=num_topics, random_state=42)
+            lda_output = lda_model.fit_transform(tfidf_matrix)
+
+            st.subheader("Identified Topics from Competitor Content (LDA)")
+            topic_keywords = {}
+            for i, topic in enumerate(lda_model.components_):
+                top_keyword_indices = topic.argsort()[-10:][::-1]  # Top 10 keywords per topic
+                keywords = [feature_names[i] for i in top_keyword_indices]
+                topic_keywords[f"Topic {i+1}"] = keywords
+                st.markdown(f"**Topic {i+1}:** {', '.join(keywords)}")
+
+            # Prepare topic distribution for visualization (optional - for later)
+            topic_distribution_df = pd.DataFrame(lda_output, index=valid_competitor_sources, columns=[f"Topic {i+1}" for i in range(num_topics)])
+            st.dataframe(topic_distribution_df) # Display topic distribution dataframe
+
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
-        
+
         # For each competitor, get its top n-grams (based on TF-IDF)
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
@@ -968,7 +1118,7 @@ def ngram_tfidf_analysis_page():
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
-        
+
         model = initialize_sentence_transformer()
         with st.spinner("Calculating SentenceTransformer embedding for target content..."):
             target_embedding = get_embedding(target_content, model)
@@ -977,7 +1127,7 @@ def ngram_tfidf_analysis_page():
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
-                
+
         # Compute candidate gap scores – now include competitor source in the tuple
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
@@ -999,18 +1149,18 @@ def ngram_tfidf_analysis_page():
                     competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
                     bert_diff = competitor_similarity
                     candidate_scores.append((source, ngram, competitor_tfidf, bert_diff))
-                    
+
         if not candidate_scores:
             st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
             return
-        
+
         tfidf_vals = [item[2] for item in candidate_scores]
         bert_vals = [item[3] for item in candidate_scores]
         min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
         min_bert, max_bert = min(bert_vals), max(bert_vals)
         epsilon = 1e-8
         tfidf_weight = 0.4  # Hard-coded TF-IDF weight
-        
+
         norm_candidates = []
         for source, ngram, tfidf_diff, bert_diff in candidate_scores:
             norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
@@ -1019,12 +1169,12 @@ def ngram_tfidf_analysis_page():
             if combined_score > 0:
                 norm_candidates.append((source, ngram, combined_score))
         norm_candidates.sort(key=lambda x: x[2], reverse=True)
-        
+
         # Display consolidated gap analysis table
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         df_consolidated = pd.DataFrame(norm_candidates, columns=['Competitor', 'N-gram', 'Gap Score'])
         st.dataframe(df_consolidated)
-        
+
         # Display per-competitor gap analysis tables
         st.markdown("### Per-Competitor Semantic Gap Analysis")
         for source in valid_competitor_sources:
@@ -1033,7 +1183,7 @@ def ngram_tfidf_analysis_page():
                 df_source = pd.DataFrame(candidate_list, columns=['Competitor', 'N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
                 st.markdown(f"#### Competitor: {source}")
                 st.dataframe(df_source)
-        
+
         # --- Updated: Use Gap Scores as Weights in the Wordcloud ---
         st.subheader("Combined Semantic Gap Wordcloud")
         gap_scores = {}
@@ -1043,7 +1193,7 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(gap_scores)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
-        
+
         # Display a wordcloud for each competitor using gap score weights
         st.subheader("Per-Competitor Gap Wordclouds")
         for source in valid_competitor_sources:
@@ -1267,26 +1417,26 @@ def paa_extraction_clustering_page():
         You can either write pages to support the main page or address the intent behind People Also Asked without necessarily copying questions verbatim.
         """
     )
-    
+
     search_query = st.text_input("Enter Search Query:", "")
     if st.button("Analyze"):
         if not search_query:
             st.warning("Please enter a search query.")
             return
 
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
-        
+        # user_agent definition removed from here
+
         def get_paa(query, max_depth=10):
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
+            user_agent = get_random_user_agent()  # Define user_agent HERE
             chrome_options.add_argument(f"user-agent={user_agent}")
             driver = webdriver.Chrome(options=chrome_options)
             driver.get("https://www.google.com/search?q=" + query)
             time.sleep(3)
-            
+
             paa_set = set()
             def extract_paa_recursive(depth, max_depth):
                 if depth > max_depth:
@@ -1310,10 +1460,10 @@ def paa_extraction_clustering_page():
             extract_paa_recursive(1, max_depth)
             driver.quit()
             return paa_set
-        
+
         st.info("I'm researching...")
         paa_questions = get_paa(search_query, max_depth=20)
-        
+
         st.info("Autocomplete suggestions...")
         import requests
         autocomplete_url = "http://suggestqueries.google.com/complete/search"
@@ -1327,7 +1477,7 @@ def paa_extraction_clustering_page():
         except Exception as e:
             st.error(f"Error fetching autocomplete suggestions: {e}")
             suggestions = []
-        
+
         st.info("Related searches...")
         related_searches = []
         try:
@@ -1335,7 +1485,8 @@ def paa_extraction_clustering_page():
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={user_agent}")
+            user_agent = get_random_user_agent() # Moved to get_paa
+            chrome_options.add_argument(f"user-agent={user_agent}")# Moved to get_paa
             driver2 = webdriver.Chrome(options=chrome_options)
             driver2.get("https://www.google.com/search?q=" + search_query)
             time.sleep(3)
@@ -1347,9 +1498,9 @@ def paa_extraction_clustering_page():
             driver2.quit()
         except Exception as e:
             st.error(f"Error extracting related searches: {e}")
-        
+
         combined_questions = list(paa_questions) + suggestions + related_searches
-        
+
         st.info("Analyzing similarity...")
         model = initialize_sentence_transformer()
         query_embedding = get_embedding(search_query, model)
@@ -1358,16 +1509,16 @@ def paa_extraction_clustering_page():
             q_embedding = get_embedding(q, model)
             sim = cosine_similarity([q_embedding], [query_embedding])[0][0]
             question_similarities.append((q, sim))
-        
+
         if not question_similarities:
             st.warning("No questions were extracted to analyze.")
             return
-        
+
         avg_sim = np.mean([sim for _, sim in question_similarities])
         st.write(f"Average Similarity Score: {avg_sim:.4f}")
         recommended = [(q, sim) for q, sim in question_similarities if sim >= avg_sim]
         recommended.sort(key=lambda x: x[1], reverse=True)
-        
+
         st.subheader("Topic Tree")
         if recommended:
             rec_texts = [q for q, sim in recommended]
@@ -1379,11 +1530,11 @@ def paa_extraction_clustering_page():
             st.plotly_chart(dendro)
         else:
             st.info("No recommended questions to visualize.")
-        
+
         st.subheader("Most Relevant Related Search Queries")
         for q, sim in recommended:
             st.write(f"{q} (Similarity: {sim:.4f})")
-        
+
         st.subheader("All Related Search Queries")
         for q in combined_questions:
             st.write(f"- {q}")
@@ -1549,23 +1700,28 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
+# ------------------------------------
+# NEW TOOL: GSC Analyzer
+# ------------------------------------
+
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
         """
         The goal is to identify key topics that are contributing to your SEO performance.
-        This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
+        This tool lets you compare GSC query data from two different time periods.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-        - Classify queries into topics with descriptive labels.
+        - Classify queries into topics with descriptive labels using LDA.
+        - Display the original merged data table with topic labels.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
         """
     )
-    
+
     st.markdown("### Upload GSC Data")
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
-    
+
     if uploaded_file_before is not None and uploaded_file_after is not None:
         # Initialize the progress bar
         progress_bar = st.progress(0)
@@ -1574,7 +1730,7 @@ def google_search_console_analysis_page():
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
             progress_bar.progress(10)
-            
+
             # Step 2: Check required columns
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
@@ -1583,14 +1739,14 @@ def google_search_console_analysis_page():
                 st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
                 return
             progress_bar.progress(15)
-            
+
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
             # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             progress_bar.progress(20)
-            
+
             cols = st.columns(4)
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
                 total_clicks_before = df_before["Clicks"].sum()
@@ -1600,7 +1756,7 @@ def google_search_console_analysis_page():
                 cols[0].metric(label="Clicks Change", value=f"{overall_clicks_change:,.0f}", delta=f"{overall_clicks_change_pct:.1f}%")
             else:
                 cols[0].metric(label="Clicks Change", value="N/A")
-            
+
             if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
                 total_impressions_before = df_before["Impressions"].sum()
                 total_impressions_after = df_after["Impressions"].sum()
@@ -1609,13 +1765,13 @@ def google_search_console_analysis_page():
                 cols[1].metric(label="Impressions Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_change_pct:.1f}%")
             else:
                 cols[1].metric(label="Impressions Change", value="N/A")
-            
+
             overall_avg_position_before = df_before["Average Position"].mean()
             overall_avg_position_after = df_after["Average Position"].mean()
             overall_position_change = overall_avg_position_before - overall_avg_position_after
             overall_position_change_pct = (overall_position_change / overall_avg_position_before * 100) if overall_avg_position_before != 0 else 0
             cols[2].metric(label="Avg. Position Change", value=f"{overall_position_change:.1f}", delta=f"{overall_position_change_pct:.1f}%")
-            
+
             if "CTR" in df_before.columns and "CTR" in df_after.columns:
                 def parse_ctr(ctr):
                     try:
@@ -1635,11 +1791,11 @@ def google_search_console_analysis_page():
             else:
                 cols[3].metric(label="CTR Change", value="N/A")
             progress_bar.progress(30)
-            
+
             # Step 3: Merge Data for Further Analysis
             merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
             progress_bar.progress(35)
-            
+
             # Calculate YOY changes from merged data
             merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
@@ -1648,9 +1804,9 @@ def google_search_console_analysis_page():
                 merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
             if "CTR" in df_before.columns and "CTR" in df_after.columns:
                 merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
-                merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
+                merged_df["CTR_after"] = df_after["CTR_parsed"].apply(parse_ctr) #Corrected to use parsed CTR
                 merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
-            
+
             # Calculate YOY percentage changes
             merged_df["Position_YOY_pct"] = merged_df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
                                                             if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
@@ -1663,7 +1819,7 @@ def google_search_console_analysis_page():
             if "CTR" in df_before.columns:
                 merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                                                            if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
-            
+
             # Rearrange merged_df columns for display
             base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
             if "Clicks" in df_before.columns:
@@ -1674,47 +1830,8 @@ def google_search_console_analysis_page():
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             merged_df = merged_df[base_cols]
             progress_bar.progress(40)
-            
-            # Step 4: Topic Classification
-            st.markdown("### Topic Classification and Combined Data")
-            model = initialize_sentence_transformer()
-            queries = merged_df["Query"].tolist()
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
-            # Compute embeddings and cluster queries using KMeans
-            from sklearn.cluster import KMeans
-            embeddings = [get_embedding(query, model) for query in queries]
-            kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
-            topic_labels = kmeans.fit_predict(embeddings)
-            merged_df["Topic_Label"] = topic_labels
-            
-            # Generate descriptive topic labels by extracting common keywords per topic
-            import collections
-            import nltk
-            nltk.download('stopwords')
-            stop_words = set(nltk.corpus.stopwords.words('english'))
-            
-            def generate_topic_label(queries_in_topic):
-                words = []
-                for query in queries_in_topic:
-                    tokens = query.lower().split()
-                    filtered = [t for t in tokens if t not in stop_words]
-                    words.extend(filtered)
-                if words:
-                    freq = collections.Counter(words)
-                    common = freq.most_common(2)
-                    label = ", ".join([word for word, count in common])
-                    return label.capitalize()
-                else:
-                    return "N/A"
-            
-            topic_labels_desc = {}
-            for topic in range(num_topics):
-                topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
-                topic_labels_desc[topic] = generate_topic_label(topic_queries)
-            merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
-            progress_bar.progress(55)
-            
-            # Define formatting for the "Topic Classification and Combined Data" table
+
+            # --- Define formatting for merged data table display ---
             format_dict_merged = {}
             if "Average Position_before" in merged_df.columns:
                 format_dict_merged["Average Position_before"] = "{:.1f}"
@@ -1748,23 +1865,52 @@ def google_search_console_analysis_page():
                 format_dict_merged["Impressions_YOY_pct"] = "{:.2f}%"
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
-            
-            st.dataframe(merged_df.style.format(format_dict_merged))
-            progress_bar.progress(60)
-            
-            # --- Hidden Initial Apriori Analysis ---
-            with st.expander("Show Initial Apriori Analysis on Query Terms", expanded=False):
-                st.markdown("### Initial Apriori Analysis on Query Terms")
-                transactions = merged_df["Query"].apply(lambda x: str(x).lower().split()).tolist()
-                from mlxtend.preprocessing import TransactionEncoder
-                te = TransactionEncoder()
-                te_ary = te.fit(transactions).transform(transactions)
-                df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-                from mlxtend.frequent_patterns import apriori
-                freq_items = apriori(df_transactions, min_support=0.1, use_colnames=True)
-                st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            progress_bar.progress(65)
-            
+            # --- End define format_dict_merged ---
+
+            # Step 4: Topic Classification using LDA
+            st.markdown("### Topic Classification and Combined Data")
+            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
+            # ... (rest of Step 4 and subsequent steps) ...
+
+
+            # Step 4: Topic Classification using LDA
+            st.markdown("### Topic Classification and Combined Data")
+            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
+            st.markdown("### Topic Modeling of Search Queries (LDA)")
+            n_topics_gsc_lda = st.slider("Select number of topics for Query LDA:", min_value=2, max_value=15, value=5, key="lda_topics_gsc") # UI for number of topics
+
+            queries = merged_df["Query"].tolist() # Get queries for LDA
+            with st.spinner(f"Performing LDA Topic Modeling on search queries ({n_topics_gsc_lda} topics)..."):
+                vectorizer_queries_lda = CountVectorizer(stop_words="english", max_df=0.95, min_df=2) # Vectorize queries
+                query_matrix_lda = vectorizer_queries_lda.fit_transform(queries)
+                feature_names_queries_lda = vectorizer_queries_lda.get_feature_names_out()
+
+                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42)
+                lda_queries_model.fit(query_matrix_lda)
+
+                query_topic_labels = lda_queries_model.transform(query_matrix_lda).argmax(axis=1) # Assign topic label to each query
+                merged_df["Query_Topic_Label"] = query_topic_labels # Add topic labels to dataframe
+
+                topic_labels_desc_queries = {} # Generate descriptive labels for query topics
+                for topic in range(n_topics_gsc_lda):
+                    topic_queries_lda = merged_df[merged_df["Query_Topic_Label"] == topic]["Query"].tolist()
+                    topic_labels_desc_queries[topic] = generate_topic_label(topic_queries_lda) # Reuse generate_topic_label if suitable or create a new one
+                merged_df["Query_Topic"] = merged_df["Query_Topic_Label"].apply(lambda x: topic_labels_desc_queries.get(x, f"Topic {x+1}")) # Apply topic descriptions
+
+                st.write("Identified Query Topics:")
+                for topic_idx, topic in enumerate(lda_queries_model.components_):
+                    top_keyword_indices = topic.argsort()[-10:][::-1]
+                    topic_keywords = [feature_names_queries_lda[i] for i in top_keyword_indices]
+                    st.write(f"**Query Topic {topic_idx + 1}:** {', '.join(topic_keywords)}")
+
+            progress_bar.progress(50) # Update progress bar
+
+            # --- Display Merged Data Table with Topic Labels ---
+            merged_df_display = merged_df[["Query", "Query_Topic"] + base_cols[1:]] #Reorder columns for display - Topic first
+            format_dict_merged_display = format_dict_merged.copy() # Copy existing format dict
+            st.dataframe(merged_df_display.style.format(format_dict_merged_display)) # Display merged_df with formatting
+
+
             # Step 5: Aggregated Metrics by Topic
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
@@ -1790,8 +1936,10 @@ def google_search_console_analysis_page():
                     "CTR_after": "mean",
                     "CTR_YOY": "mean"
                 })
-            aggregated = merged_df.groupby("Topic").agg(agg_dict).reset_index()
-            
+            aggregated = merged_df.groupby("Query_Topic").agg(agg_dict).reset_index() # Group by Query_Topic now
+            aggregated.rename(columns={"Query_Topic": "Topic"}, inplace=True) # Rename for consistency
+
+
             # Calculate aggregated YOY percentage changes
             aggregated["Position_YOY_pct"] = aggregated.apply(
                 lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
@@ -1809,7 +1957,7 @@ def google_search_console_analysis_page():
                     lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                     if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
             progress_bar.progress(75)
-            
+
             # Reorder columns so that each % Change is immediately next to its related metric columns.
             new_order = ["Topic"]
             if "Average Position_before" in aggregated.columns:
@@ -1821,7 +1969,7 @@ def google_search_console_analysis_page():
             if "CTR_before" in aggregated.columns:
                 new_order.extend(["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"])
             aggregated = aggregated[new_order]
-            
+
             # Define formatting for aggregated metrics display
             format_dict = {}
             if "Average Position_before" in aggregated.columns:
@@ -1856,19 +2004,19 @@ def google_search_console_analysis_page():
                 format_dict["CTR_YOY"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
-            
+
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
             progress_bar.progress(80)
-            
+
             # Step 6: Visualization - Grouped Bar Chart of YOY % Change by Topic for Each Metric
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
-            
+
             # Allow user to disable specific topics from the chart
             available_topics = aggregated["Topic"].unique().tolist()
             selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=available_topics)
-            
+
             vis_data = []
             for idx, row in aggregated.iterrows():
                 topic = row["Topic"]
@@ -1888,13 +2036,11 @@ def google_search_console_analysis_page():
                          labels={"YOY % Change": "YOY % Change (%)"})
             st.plotly_chart(fig)
             progress_bar.progress(100)
-            
+
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
 
 
 
@@ -1970,5 +2116,14 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
+
+
+
+
+
+
+
+
 
 
