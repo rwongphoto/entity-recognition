@@ -936,7 +936,7 @@ def entity_analysis_page():
                     aggregated_gap_table.append({
                         "Entity": entity,
                         "Label": label,
-                        "# of Sites": site_count,
+                        "Sites": site_count,
                         "Wikidata URL": wikidata_url if wikidata_url else "Not found"
                     })
                 if aggregated_gap_table:
