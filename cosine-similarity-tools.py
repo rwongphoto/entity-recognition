@@ -598,7 +598,7 @@ def cosine_similarity_competitor_analysis_page():
             urls_plot = [label for label, score in similarity_scores]
             scores_plot = [score for label, score in similarity_scores]
 
-        # --- Option 1:  2D Scatter Plot with Hover Data ---
+        # --- Option 1:  2D Scatter Plot with Hover Data and Labels---
         df = pd.DataFrame({
             'Competitor': urls_plot,
             'Cosine Similarity': scores_plot,
@@ -609,7 +609,10 @@ def cosine_similarity_competitor_analysis_page():
                          title='Competitor Analysis: Similarity vs. Content Length',
                          hover_data=['Competitor', 'Cosine Similarity', 'Content Length (Words)'],
                          color='Cosine Similarity',  # Color by similarity
-                         color_continuous_scale=px.colors.sequential.Viridis) #Consistent color
+                         color_continuous_scale=px.colors.sequential.Viridis,
+                         text='Competitor') # Add this line
+
+        fig.update_traces(textposition='top center') #And this line.
 
         fig.update_layout(
             xaxis_title="Cosine Similarity (Higher = More Relevant)",
@@ -621,6 +624,73 @@ def cosine_similarity_competitor_analysis_page():
         st.plotly_chart(fig)
 
         st.dataframe(df) #Show data
+
+        # --- Option 2: Bar Chart with Secondary Y-Axis for Content Length and Labels---
+
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
+
+        # Sort by similarity for better visualization
+        df = df.sort_values('Cosine Similarity', ascending=False)
+
+        fig = go.Figure(data=[
+            go.Bar(name='Cosine Similarity', x=df['Competitor'], y=df['Cosine Similarity'],
+                   marker_color=df['Cosine Similarity'],  # Color by similarity
+                   marker_colorscale='Viridis',
+                    text=df['Competitor'],  # Add labels to the bars
+                    textposition='outside'),
+            go.Scatter(name='Content Length', x=df['Competitor'], y=df['Content Length (Words)'], yaxis='y2',
+                       mode='lines+markers', marker=dict(color='red'))
+        ])
+        fig.update_traces(textfont_size=12) # Adjust text size as needed
+
+
+        fig.update_layout(
+            title='Competitor Analysis: Similarity and Content Length',
+            xaxis_title="Competitor",
+            yaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis2=dict(title='Content Length (Words)', overlaying='y', side='right'),
+            width=800,
+            height=600,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        st.plotly_chart(fig)
+        st.dataframe(df)
+
+        # --- Option 3: Bubble Chart with labels---
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
+
+        fig = px.scatter(df, x='Cosine Similarity', y='Content Length (Words)',
+                         size=[10] * len(df),  # Constant bubble size.  Change if you have a 3rd metric.
+                         title='Competitor Analysis: Similarity, Content Length (Bubble Chart)',
+                         hover_data=['Competitor', 'Cosine Similarity', 'Content Length (Words)'],
+                         color='Cosine Similarity',
+                         color_continuous_scale=px.colors.sequential.Viridis,
+                         text='Competitor') # Add this line
+
+        fig.update_traces(textposition='top center') #And this line.
+
+        fig.update_layout(
+            xaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis_title="Content Length (Words)",
+            width=800,
+            height=600
+        )
+        st.plotly_chart(fig)
+        st.dataframe(df)
 
 def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
