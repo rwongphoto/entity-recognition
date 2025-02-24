@@ -342,6 +342,7 @@ def generate_topic_label(queries_in_topic):
         return "N/A"
 
 # --- FUNCTION: Query Wikidata ---
+
 def get_wikidata_id(entity_text, entity_label, nlp_model):
     """
     Queries Wikidata for a given entity and returns its ID (Q-code) if found.
@@ -922,20 +923,15 @@ def entity_analysis_page():
                 return
 
             # --- Helper Function to Process Entities and Get Wikidata Links ---
-            def process_and_link_entities(text, exclude_types, nlp_model, source_name="Unknown Source"): # Added source_name
+            def process_and_link_entities(text, exclude_types, nlp_model):
                 doc = nlp_model(text)
                 entity_data = []
                 for ent in doc.ents:
                     if ent.label_ not in exclude_types:
-                        with st.spinner(f"Querying Wikidata for {ent.text}..."):
-                            wikidata_id = get_wikidata_id(ent.text, ent.label_, nlp_model)
-                        wikidata_link = generate_wikidata_link(wikidata_id)
-                        entity_data.append({
-                            "Entity": ent.text,
-                            "Label": ent.label_,
-                            "Wikidata": wikidata_link,
-                            "Source": source_name # Added Source info
-                        })
+                        with st.spinner(f"Querying Wikidata for {ent.text}..."): # Keep the spinner
+                            wikidata_id = get_wikidata_id(ent.text, ent.label_, nlp_model) # Use get_wikidata_id
+                        wikidata_link = generate_wikidata_link(wikidata_id) # Generate link
+                        entity_data.append({"Entity": ent.text, "Label": ent.label_, "Wikidata": wikidata_link})
                 return entity_data
 
             # --- Process Target Entities ---
@@ -951,73 +947,52 @@ def entity_analysis_page():
             # --- Process Competitor Entities ---
             all_competitor_data = []
             entity_counts_per_source = {} # Store entity counts for each source
-            for i, source in enumerate(competitor_list): # Enumerate for pasted content labels
+            for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
                     text = extract_text_from_url(source)
-                    source_label = source # Use URL as source label
                 else:
                     text = source
-                    source_label = f"Competitor {i+1}" # Label for pasted content
 
                 if text:
-                    competitor_data = process_and_link_entities(text, exclude_types, nlp_model, source_name=source_label) # Pass source_label
-                    #Count entities per source (no change needed here for original count)
+                    competitor_data = process_and_link_entities(text, exclude_types, nlp_model)
+                    #Count entities per source:
                     source_entity_counts = Counter([(ent["Entity"], ent["Label"]) for ent in competitor_data])
-                    entity_counts_per_source[source_label] = source_entity_counts # Store with source_label
+                    entity_counts_per_source[source] = source_entity_counts #Store for later display
                     all_competitor_data.extend(competitor_data)  # Accumulate for overall gap analysis
                 else:
                     st.warning(f"Could not retrieve text from {source}")
 
             # --- Gap Analysis ---
-            gap_entities_sources = {} # Use dictionary to track sources per entity
-            all_competitor_counts = Counter() # Initialize here to prevent NameError
+            #  Convert all_competitor_data to a Counter for efficient lookup
+            all_competitor_counts = Counter([(ent["Entity"], ent["Label"]) for ent in all_competitor_data])
 
-            for entity_data in all_competitor_data: # Iterate through EACH entity data point
-                entity_tuple = (entity_data["Entity"], entity_data["Label"])
-                source = entity_data["Source"]
-
-                if entity_tuple not in target_entities_set:
-                    if entity_tuple not in gap_entities_sources:
-                        gap_entities_sources[entity_tuple] = set() # Initialize set for sources
-                    gap_entities_sources[entity_tuple].add(source) # Add source to set
-
-            gap_entities_unique_sources_count = Counter({ # Counter of unique source counts
-                entity_tuple: len(sources)
-                for entity_tuple, sources in gap_entities_sources.items()
-            })
-
+            gap_entities = Counter()
+            for (entity, label), count in all_competitor_counts.items():
+                if (entity,label) not in target_entities_set:
+                    gap_entities[(entity, label)] = count # Number of COMPETITOR occurrences
 
             # --- Unique to Target ---
             unique_target_entities = Counter()
-            if all_competitor_data: # Only calculate if competitor data exists
-                all_competitor_counts = Counter([(ent["Entity"], ent["Label"]) for ent in all_competitor_data]) # Define here if data exists
-                for (entity, label) in target_entities_set:
-                    if (entity, label) not in all_competitor_counts: # Still use all_competitor_counts for uniqueness
-                        unique_target_entities[(entity, label)] += 1 #Always 1 because it's unique.
-
+            for (entity, label) in target_entities_set:
+                if (entity, label) not in all_competitor_counts:
+                    unique_target_entities[(entity, label)] += 1 #Always 1 because it's unique.
 
             # --- Display Results (Gap Entities) ---
-            st.markdown("### # of Unique Sites Entities Are Present but Missing in Target") # Updated title
-            if gap_entities_unique_sources_count: # Use new counter
+            st.markdown("### # of Sites Entities Are Present but Missing in Target")
+            if gap_entities:
                 gap_entity_data = []
-                for (entity, label), unique_source_count in gap_entities_unique_sources_count.most_common(50): # Iterate new counter
-                    #Find the Wikidata link in the all_competitor_data (still needed)
+                for (entity, label), count in gap_entities.most_common(50):
+                    #Find the Wikidata link in the all_competitor_data
                     wikidata_link = "N/A" #Default
                     for ent_data in all_competitor_data: # Search for match.
                         if ent_data["Entity"] == entity and ent_data["Label"] == label:
                             wikidata_link = ent_data["Wikidata"]
                             break  # Stop searching once found.
 
-                    gap_entity_data.append({
-                        "Entity": entity,
-                        "Label": label,
-                        "# Unique Sources": unique_source_count, # Updated column name
-                        "Wikidata": wikidata_link
-                    })
+                    gap_entity_data.append({"Entity": entity, "Label": label, "Count": count, "Wikidata": wikidata_link})
                 df_gap_entities = pd.DataFrame(gap_entity_data)
-                df_gap_entities.columns = ["Entity", "Label", "# Unique Sources", "Wikidata"] # Updated columns
                 st.markdown(df_gap_entities.to_html(escape=False, index=False), unsafe_allow_html=True)
-                display_entity_barchart(gap_entities_unique_sources_count) # Pass new counter to chart
+                display_entity_barchart(gap_entities)  # Pass the Counter
             else:
                 st.write("No significant gap entities found.")
 
@@ -1025,29 +1000,17 @@ def entity_analysis_page():
             st.markdown("### Entities Unique to Target Site")
             if unique_target_entities:
                 # Filter the target_entity_data to include only unique entities.
-                unique_data = [ent for ent in target_entity_data
+                unique_data = [ent for ent in target_entity_data \
                                if (ent["Entity"], ent["Label"]) in unique_target_entities]
+                df_unique_target = pd.DataFrame(unique_data)
 
-                # Initialize DataFrame with expected columns, even if unique_data is empty
-                df_unique_target = pd.DataFrame(columns=["Entity", "Label", "Link"])
-
-                if unique_data: # CHECK IF unique_data IS NOT EMPTY BEFORE POPULATING DF
-                    df_temp = pd.DataFrame(unique_data) # Create a temporary DataFrame from data
-
-                    if not df_temp.empty: # Check if temp DataFrame is not empty
-                        df_temp.columns = ["Entity", "Label", "Link"] # Ensure temp DataFrame has correct columns
-                        df_unique_target = df_temp # Assign temp DataFrame to df_unique_target
-                    # else: df_unique_target remains initialized empty DataFrame
-
+                if not df_unique_target.empty:
                     st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
-                else: # Handle case where unique_data was empty from the start
-                    st.write("No unique entities to display (No data to create DataFrame).")
-                    # df_unique_target is already initialized as empty DataFrame
-
+                else: #Handle potentially empty DataFrame
+                    st.write("No unique entities to display.")
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
-                display_entity_barchart(unique_target_entities)
 
             # --- Display Excluded Entities ---
             if exclude_input:
@@ -1068,7 +1031,6 @@ def entity_analysis_page():
                                if any((ent["Entity"], ent["Label"]) == key for key in entity_counts.keys())]
                 if source_data:
                   df_source = pd.DataFrame(source_data)
-                  df_source.columns = ["Entity", "Label", "Link"] # Set column name to "Link"
                   st.markdown(df_source.to_html(escape=False, index=False), unsafe_allow_html=True)
                 else:
                   st.write("No relevant entities.")
