@@ -971,6 +971,7 @@ def entity_analysis_page():
 
             # --- Gap Analysis ---
             gap_entities_sources = {} # Use dictionary to track sources per entity
+            all_competitor_counts = Counter() # Initialize here to prevent NameError
 
             for entity_data in all_competitor_data: # Iterate through EACH entity data point
                 entity_tuple = (entity_data["Entity"], entity_data["Label"])
@@ -989,9 +990,12 @@ def entity_analysis_page():
 
             # --- Unique to Target ---
             unique_target_entities = Counter()
-            for (entity, label) in target_entities_set:
-                if (entity, label) not in all_competitor_counts: # Still use all_competitor_counts for uniqueness
-                    unique_target_entities[(entity, label)] += 1 #Always 1 because it's unique.
+            if all_competitor_data: # Only calculate if competitor data exists
+                all_competitor_counts = Counter([(ent["Entity"], ent["Label"]) for ent in all_competitor_data]) # Define here if data exists
+                for (entity, label) in target_entities_set:
+                    if (entity, label) not in all_competitor_counts: # Still use all_competitor_counts for uniqueness
+                        unique_target_entities[(entity, label)] += 1 #Always 1 because it's unique.
+
 
             # --- Display Results (Gap Entities) ---
             st.markdown("### # of Unique Sites Entities Are Present but Missing in Target") # Updated title
