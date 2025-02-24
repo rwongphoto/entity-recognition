@@ -1028,18 +1028,21 @@ def entity_analysis_page():
                 unique_data = [ent for ent in target_entity_data
                                if (ent["Entity"], ent["Label"]) in unique_target_entities]
 
+                # Initialize DataFrame with expected columns, even if unique_data is empty
+                df_unique_target = pd.DataFrame(columns=["Entity", "Label", "Link"])
 
-                if unique_data: # CHECK IF unique_data IS NOT EMPTY BEFORE CREATING DF
-                    df_unique_target = pd.DataFrame(unique_data)
+                if unique_data: # CHECK IF unique_data IS NOT EMPTY BEFORE POPULATING DF
+                    df_temp = pd.DataFrame(unique_data) # Create a temporary DataFrame from data
 
-                    if not df_unique_target.empty: # Redundant check, but kept for clarity
-                        df_unique_target.columns = ["Entity", "Label", "Link"] # Set column name to "Link"
-                        st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
-                    else: #Handle potentially empty DataFrame - This branch is unlikely to be reached now, but kept for safety
-                        st.write("No unique entities to display (DataFrame empty after creation).")
+                    if not df_temp.empty: # Check if temp DataFrame is not empty
+                        df_temp.columns = ["Entity", "Label", "Link"] # Ensure temp DataFrame has correct columns
+                        df_unique_target = df_temp # Assign temp DataFrame to df_unique_target
+                    # else: df_unique_target remains initialized empty DataFrame
+
+                    st.markdown(df_unique_target.to_html(escape=False, index=False), unsafe_allow_html=True)
                 else: # Handle case where unique_data was empty from the start
                     st.write("No unique entities to display (No data to create DataFrame).")
-                    df_unique_target = pd.DataFrame() # Ensure df_unique_target is defined even if empty
+                    # df_unique_target is already initialized as empty DataFrame
 
                 display_entity_barchart(unique_target_entities)
             else:
