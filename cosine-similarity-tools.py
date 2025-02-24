@@ -88,13 +88,13 @@ def load_spacy_model():
     global nlp
     if nlp is None:
         try:
-            nlp = spacy.load("en_core_web_md")
+            nlp = spacy.load("en_core_web_lg")
             nlp.add_pipe("entity_linker", last=True, config={"disambiguate": True}) # Add entity linker
             print("spaCy model with Entity Linker loaded successfully")
         except OSError:
-            print("Downloading en_core_web_md model and Entity Linker...")
-            spacy.cli.download("en_core_web_md")
-            nlp = spacy.load("en_core_web_md")
+            print("Downloading en_core_web_lg model and Entity Linker...")
+            spacy.cli.download("en_core_web_lg")
+            nlp = spacy.load("en_core_web_lg")
             nlp.add_pipe("entity_linker", config={"resolve_abbreviations": True}) # Add entity linker
             print("en_core_web_md and Entity Linker downloaded and loaded")
         except Exception as e:
