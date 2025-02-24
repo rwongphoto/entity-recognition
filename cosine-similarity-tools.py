@@ -598,55 +598,29 @@ def cosine_similarity_competitor_analysis_page():
             urls_plot = [label for label, score in similarity_scores]
             scores_plot = [score for label, score in similarity_scores]
 
+        # --- Option 1:  2D Scatter Plot with Hover Data ---
+        df = pd.DataFrame({
+            'Competitor': urls_plot,
+            'Cosine Similarity': scores_plot,
+            'Content Length (Words)': content_lengths
+        })
 
-        # --- 3D Scatter Plot ---
-        import plotly.graph_objects as go
-
-        fig = go.Figure(data=[go.Scatter3d(
-            x=scores_plot,
-            y=content_lengths,
-            z=list(range(len(urls_plot))),  # Use index as a categorical z-axis
-            mode='markers+text',
-            text=urls_plot,
-            marker=dict(
-                size=8,
-                color=scores_plot,  # Color by similarity
-                colorscale='Viridis',   # Choose a colorscale
-                opacity=0.8
-            ),
-            textposition="top center"
-        )])
+        fig = px.scatter(df, x='Cosine Similarity', y='Content Length (Words)',
+                         title='Competitor Analysis: Similarity vs. Content Length',
+                         hover_data=['Competitor', 'Cosine Similarity', 'Content Length (Words)'],
+                         color='Cosine Similarity',  # Color by similarity
+                         color_continuous_scale=px.colors.sequential.Viridis) #Consistent color
 
         fig.update_layout(
-            title="3D Competitor Analysis: Similarity, Content Length, and Competitor",
-            scene=dict(
-                xaxis_title="Cosine Similarity",
-                yaxis_title="Content Length (Words)",
-                zaxis_title="Competitor",  # Label the z-axis
-            ),
+            xaxis_title="Cosine Similarity (Higher = More Relevant)",
+            yaxis_title="Content Length (Words)",
             width=800,
             height=600
         )
 
         st.plotly_chart(fig)
-        # --- End 3D Scatter Plot ---
 
-
-        # --- Original Bar Chart (Optional - Keep for comparison) ---
-        # fig, ax = plt.subplots(figsize=(10, 6))
-        # ax.bar(urls_plot, scores_plot)
-        # ax.set_xlabel("Competitors")
-        # ax.set_ylabel("Similarity Score")
-        # ax.set_title("Cosine Similarity of Competitor Content to Search Term")
-        # plt.xticks(rotation=45, ha='right')
-        # plt.tight_layout()
-        # st.pyplot(fig)
-        # --- End Original Bar Chart ---
-
-
-        data = {'Competitor': urls_plot, 'Similarity Score': scores_plot, 'Content Length': content_lengths}  # Include content length
-        df = pd.DataFrame(data)
-        st.dataframe(df)
+        st.dataframe(df) #Show data
 
 def cosine_similarity_every_embedding_page():
     st.header("Cosine Similarity Score - Every Embedding")
