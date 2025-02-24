@@ -1004,7 +1004,7 @@ def ngram_tfidf_analysis_page():
         st.markdown("Paste competitor content below. Separate each competitor content block with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
-        
+
     # Target input
     st.subheader("Your Site")
     target_source_option = st.radio(
@@ -1017,7 +1017,7 @@ def ngram_tfidf_analysis_page():
         target_url = st.text_input("Enter Your Target URL:", key="target_url", value="")
     else:
         target_text = st.text_area("Paste your target content:", key="target_text", value="", height=200)
-        
+
     # Word options
     st.subheader("Word Options")
     n_value = st.selectbox("Select # of Words in Phrase:", options=[1,2,3,4,5,6,7,8,9,10], index=1)
@@ -1025,7 +1025,8 @@ def ngram_tfidf_analysis_page():
     min_df = st.number_input("Minimum Frequency:", value=1, min_value=1)
     max_df = st.number_input("Maximum Frequency:", value=1.0, min_value=0.0, step=0.1)
     top_n = st.slider("Number of top results to display:", min_value=1, max_value=50, value=10)
-    
+    num_topics = st.slider("Number of topics for LDA:", min_value=2, max_value=15, value=5, key="lda_topics") # Slider for LDA topics
+
     if st.button("Analyze Content Gaps", key="content_gap_button"):
         if competitor_source_option == "Extract from URL" and not competitor_list:
             st.warning("Please enter at least one competitor URL.")
@@ -1033,7 +1034,7 @@ def ngram_tfidf_analysis_page():
         if target_source_option == "Extract from URL" and not target_url:
             st.warning("Please enter your target URL.")
             return
-        
+
         # Extract competitor content
         competitor_texts = []
         valid_competitor_sources = []
@@ -1048,7 +1049,7 @@ def ngram_tfidf_analysis_page():
                     competitor_texts.append(text)
                 else:
                     st.warning(f"Could not extract content from: {source}")
-        
+
         # Extract target content
         if target_source_option == "Extract from URL":
             target_content = extract_text_from_url(target_url)
@@ -1057,7 +1058,7 @@ def ngram_tfidf_analysis_page():
                 return
         else:
             target_content = target_text
-        
+
         nlp_model = load_spacy_model()
         competitor_texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
         target_content = preprocess_text(target_content, nlp_model)
@@ -1065,34 +1066,34 @@ def ngram_tfidf_analysis_page():
             st.error("No competitor content was extracted.")
             return
 
-        # --- LDA Topic Modeling for Competitor Content ---
-        st.subheader("Topic Modeling of Competitor Content (LDA)")
-        n_topics_lda = st.slider("Select number of topics for LDA:", min_value=2, max_value=15, value=5, key="lda_topics_gap") # UI for number of topics
-
-        with st.spinner(f"Performing LDA Topic Modeling on competitor content ({n_topics_lda} topics)..."):
-            vectorizer_lda = CountVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english") # Use CountVectorizer for LDA input
-            count_matrix_lda = vectorizer_lda.fit_transform(competitor_texts) # Fit on competitor texts
-            feature_names_lda = vectorizer_lda.get_feature_names_out()
-
-            lda_model = LatentDirichletAllocation(n_components=n_topics_lda, random_state=42, n_init='auto')
-            lda_model.fit(count_matrix_lda) # Fit LDA on count matrix
-
-            st.write("Identified Topics:")
-            for topic_idx, topic in enumerate(lda_model.components_):
-                top_keyword_indices = topic.argsort()[-10:][::-1] # Get top 10 keywords per topic
-                topic_keywords = [feature_names_lda[i] for i in top_keyword_indices]
-                st.write(f"**Topic {topic_idx + 1}:** {', '.join(topic_keywords)}")
-        
         # Calculate TF-IDF scores
         with st.spinner("Calculating TF-IDF scores for competitors..."):
             vectorizer = TfidfVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english")
             tfidf_matrix = vectorizer.fit_transform(competitor_texts)
             feature_names = vectorizer.get_feature_names_out()
             df_tfidf_competitors = pd.DataFrame(tfidf_matrix.toarray(), index=valid_competitor_sources, columns=feature_names)
+
+        # --- LDA Topic Modeling ---
+        with st.spinner("Performing Latent Dirichlet Allocation (LDA)..."):
+            lda_model = LatentDirichletAllocation(n_components=num_topics, random_state=42)
+            lda_output = lda_model.fit_transform(tfidf_matrix)
+
+            st.subheader("Identified Topics from Competitor Content (LDA)")
+            topic_keywords = {}
+            for i, topic in enumerate(lda_model.components_):
+                top_keyword_indices = topic.argsort()[-10:][::-1]  # Top 10 keywords per topic
+                keywords = [feature_names[i] for i in top_keyword_indices]
+                topic_keywords[f"Topic {i+1}"] = keywords
+                st.markdown(f"**Topic {i+1}:** {', '.join(keywords)}")
+
+            # Prepare topic distribution for visualization (optional - for later)
+            topic_distribution_df = pd.DataFrame(lda_output, index=valid_competitor_sources, columns=[f"Topic {i+1}" for i in range(num_topics)])
+            st.dataframe(topic_distribution_df) # Display topic distribution dataframe
+
         with st.spinner("Calculating TF-IDF scores for target content..."):
             target_tfidf_vector = vectorizer.transform([target_content])
             df_tfidf_target = pd.DataFrame(target_tfidf_vector.toarray(), index=["Target Content"], columns=feature_names)
-        
+
         # For each competitor, get its top n-grams (based on TF-IDF)
         top_ngrams_competitors = {}
         for source in valid_competitor_sources:
@@ -1100,7 +1101,7 @@ def ngram_tfidf_analysis_page():
             sorted_row = row.sort_values(ascending=False)
             top_ngrams = sorted_row.head(top_n)
             top_ngrams_competitors[source] = list(top_ngrams.index)
-        
+
         model = initialize_sentence_transformer()
         with st.spinner("Calculating SentenceTransformer embedding for target content..."):
             target_embedding = get_embedding(target_content, model)
@@ -1109,7 +1110,7 @@ def ngram_tfidf_analysis_page():
             for text in competitor_texts:
                 emb = get_embedding(text, model)
                 competitor_embeddings.append(emb)
-                
+
         # Compute candidate gap scores – now include competitor source in the tuple
         candidate_scores = []
         for idx, source in enumerate(valid_competitor_sources):
@@ -1131,18 +1132,18 @@ def ngram_tfidf_analysis_page():
                     competitor_similarity = cosine_similarity([ngram_embedding], [competitor_embeddings[idx]])[0][0]
                     bert_diff = competitor_similarity
                     candidate_scores.append((source, ngram, competitor_tfidf, bert_diff))
-                    
+
         if not candidate_scores:
             st.error("No gap n-grams were identified. Consider adjusting your TF-IDF parameters.")
             return
-        
+
         tfidf_vals = [item[2] for item in candidate_scores]
         bert_vals = [item[3] for item in candidate_scores]
         min_tfidf, max_tfidf = min(tfidf_vals), max(tfidf_vals)
         min_bert, max_bert = min(bert_vals), max(bert_vals)
         epsilon = 1e-8
         tfidf_weight = 0.4  # Hard-coded TF-IDF weight
-        
+
         norm_candidates = []
         for source, ngram, tfidf_diff, bert_diff in candidate_scores:
             norm_tfidf = (tfidf_diff - min_tfidf) / (max_tfidf - min_tfidf + epsilon)
@@ -1151,12 +1152,12 @@ def ngram_tfidf_analysis_page():
             if combined_score > 0:
                 norm_candidates.append((source, ngram, combined_score))
         norm_candidates.sort(key=lambda x: x[2], reverse=True)
-        
+
         # Display consolidated gap analysis table
         st.markdown("### Consolidated Semantic Gap Analysis (All Competitors)")
         df_consolidated = pd.DataFrame(norm_candidates, columns=['Competitor', 'N-gram', 'Gap Score'])
         st.dataframe(df_consolidated)
-        
+
         # Display per-competitor gap analysis tables
         st.markdown("### Per-Competitor Semantic Gap Analysis")
         for source in valid_competitor_sources:
@@ -1165,7 +1166,7 @@ def ngram_tfidf_analysis_page():
                 df_source = pd.DataFrame(candidate_list, columns=['Competitor', 'N-gram', 'Gap Score']).sort_values(by='Gap Score', ascending=False)
                 st.markdown(f"#### Competitor: {source}")
                 st.dataframe(df_source)
-        
+
         # --- Updated: Use Gap Scores as Weights in the Wordcloud ---
         st.subheader("Combined Semantic Gap Wordcloud")
         gap_scores = {}
@@ -1175,7 +1176,7 @@ def ngram_tfidf_analysis_page():
             display_entity_wordcloud(gap_scores)
         else:
             st.write("No combined gap n-grams to create a wordcloud.")
-        
+
         # Display a wordcloud for each competitor using gap score weights
         st.subheader("Per-Competitor Gap Wordclouds")
         for source in valid_competitor_sources:
