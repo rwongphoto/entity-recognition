@@ -1694,16 +1694,16 @@ def google_search_console_analysis_page():
         The goal is to identify key topics that are contributing to your SEO performance.
         This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
-        - Classify queries into topics with descriptive labels.
+        - Classify queries into topics with descriptive labels using LDA.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
         """
     )
-    
+
     st.markdown("### Upload GSC Data")
     uploaded_file_before = st.file_uploader("Upload GSC CSV for 'Before' period", type=["csv"], key="gsc_before")
     uploaded_file_after = st.file_uploader("Upload GSC CSV for 'After' period", type=["csv"], key="gsc_after")
-    
+
     if uploaded_file_before is not None and uploaded_file_after is not None:
         # Initialize the progress bar
         progress_bar = st.progress(0)
@@ -1712,7 +1712,7 @@ def google_search_console_analysis_page():
             df_before = pd.read_csv(uploaded_file_before)
             df_after = pd.read_csv(uploaded_file_after)
             progress_bar.progress(10)
-            
+
             # Step 2: Check required columns
             if "Top queries" not in df_before.columns or "Position" not in df_before.columns:
                 st.error("The 'Before' CSV must contain 'Top queries' and 'Position' columns.")
@@ -1721,14 +1721,14 @@ def google_search_console_analysis_page():
                 st.error("The 'After' CSV must contain 'Top queries' and 'Position' columns.")
                 return
             progress_bar.progress(15)
-            
+
             # --- Dashboard Summary using original data ---
             st.markdown("## Dashboard Summary")
             # Rename columns in original data for consistency
             df_before.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             df_after.rename(columns={"Top queries": "Query", "Position": "Average Position"}, inplace=True)
             progress_bar.progress(20)
-            
+
             cols = st.columns(4)
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
                 total_clicks_before = df_before["Clicks"].sum()
@@ -1738,7 +1738,7 @@ def google_search_console_analysis_page():
                 cols[0].metric(label="Clicks Change", value=f"{overall_clicks_change:,.0f}", delta=f"{overall_clicks_change_pct:.1f}%")
             else:
                 cols[0].metric(label="Clicks Change", value="N/A")
-            
+
             if "Impressions" in df_before.columns and "Impressions" in df_after.columns:
                 total_impressions_before = df_before["Impressions"].sum()
                 total_impressions_after = df_after["Impressions"].sum()
@@ -1747,13 +1747,13 @@ def google_search_console_analysis_page():
                 cols[1].metric(label="Impressions Change", value=f"{overall_impressions_change:,.0f}", delta=f"{overall_impressions_change_pct:.1f}%")
             else:
                 cols[1].metric(label="Impressions Change", value="N/A")
-            
+
             overall_avg_position_before = df_before["Average Position"].mean()
             overall_avg_position_after = df_after["Average Position"].mean()
             overall_position_change = overall_avg_position_before - overall_avg_position_after
             overall_position_change_pct = (overall_position_change / overall_avg_position_before * 100) if overall_avg_position_before != 0 else 0
             cols[2].metric(label="Avg. Position Change", value=f"{overall_position_change:.1f}", delta=f"{overall_position_change_pct:.1f}%")
-            
+
             if "CTR" in df_before.columns and "CTR" in df_after.columns:
                 def parse_ctr(ctr):
                     try:
@@ -1773,11 +1773,11 @@ def google_search_console_analysis_page():
             else:
                 cols[3].metric(label="CTR Change", value="N/A")
             progress_bar.progress(30)
-            
+
             # Step 3: Merge Data for Further Analysis
             merged_df = pd.merge(df_before, df_after, on="Query", suffixes=("_before", "_after"))
             progress_bar.progress(35)
-            
+
             # Calculate YOY changes from merged data
             merged_df["Position_YOY"] = merged_df["Average Position_before"] - merged_df["Average Position_after"]
             if "Clicks" in df_before.columns and "Clicks" in df_after.columns:
@@ -1786,9 +1786,9 @@ def google_search_console_analysis_page():
                 merged_df["Impressions_YOY"] = merged_df["Impressions_after"] - merged_df["Impressions_before"]
             if "CTR" in df_before.columns and "CTR" in df_after.columns:
                 merged_df["CTR_before"] = merged_df["CTR_before"].apply(parse_ctr)
-                merged_df["CTR_after"] = merged_df["CTR_after"].apply(parse_ctr)
+                merged_df["CTR_after"] = df_after["CTR_parsed"].apply(parse_ctr) #Corrected to use parsed CTR
                 merged_df["CTR_YOY"] = merged_df["CTR_after"] - merged_df["CTR_before"]
-            
+
             # Calculate YOY percentage changes
             merged_df["Position_YOY_pct"] = merged_df.apply(lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
                                                             if row["Average Position_before"] and row["Average Position_before"] != 0 else None, axis=1)
@@ -1801,7 +1801,7 @@ def google_search_console_analysis_page():
             if "CTR" in df_before.columns:
                 merged_df["CTR_YOY_pct"] = merged_df.apply(lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                                                            if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
-            
+
             # Rearrange merged_df columns for display
             base_cols = ["Query", "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"]
             if "Clicks" in df_before.columns:
@@ -1812,127 +1812,39 @@ def google_search_console_analysis_page():
                 base_cols += ["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"]
             merged_df = merged_df[base_cols]
             progress_bar.progress(40)
-            
-            # Step 4: Topic Classification using BERT Embeddings
+
+            # Step 4: Topic Classification using LDA
             st.markdown("### Topic Classification and Combined Data")
-            model = initialize_sentence_transformer()
-            queries = merged_df["Query"].tolist()
-            num_topics = st.slider("Select number of topics:", min_value=2, max_value=25, value=5, key="num_topics")
-            from sklearn.cluster import KMeans
-            embeddings = [get_embedding(query, model) for query in queries]
-            kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
-            topic_labels = kmeans.fit_predict(embeddings)
-            merged_df["Topic_Label"] = topic_labels
-            
-            # Generate descriptive topic labels by extracting common keywords per topic
-            import collections
-            import nltk
-            nltk.download('stopwords')
-            stop_words = set(nltk.corpus.stopwords.words('english'))
-            
-            def generate_topic_label(queries_in_topic):
-                words = []
-                for query in queries_in_topic:
-                    tokens = query.lower().split()
-                    filtered = [t for t in tokens if t not in stop_words]
-                    words.extend(filtered)
-                if words:
-                    freq = collections.Counter(words)
-                    common = freq.most_common(2)
-                    label = ", ".join([word for word, count in common])
-                    return label.capitalize()
-                else:
-                    return "N/A"
-            
-            topic_labels_desc = {}
-            for topic in range(num_topics):
-                topic_queries = merged_df[merged_df["Topic_Label"] == topic]["Query"].tolist()
-                topic_labels_desc[topic] = generate_topic_label(topic_queries)
-            merged_df["Topic"] = merged_df["Topic_Label"].apply(lambda x: topic_labels_desc.get(x, f"Topic {x+1}"))
-            progress_bar.progress(55)
-            
-            # Define formatting for the "Topic Classification and Combined Data" table
-            format_dict_merged = {}
-            if "Average Position_before" in merged_df.columns:
-                format_dict_merged["Average Position_before"] = "{:.1f}"
-            if "Average Position_after" in merged_df.columns:
-                format_dict_merged["Average Position_after"] = "{:.1f}"
-            if "Position_YOY" in merged_df.columns:
-                format_dict_merged["Position_YOY"] = "{:.1f}"
-            if "Clicks_before" in merged_df.columns:
-                format_dict_merged["Clicks_before"] = "{:,.0f}"
-            if "Clicks_after" in merged_df.columns:
-                format_dict_merged["Clicks_after"] = "{:,.0f}"
-            if "Clicks_YOY" in merged_df.columns:
-                format_dict_merged["Clicks_YOY"] = "{:,.0f}"
-            if "Impressions_before" in merged_df.columns:
-                format_dict_merged["Impressions_before"] = "{:,.0f}"
-            if "Impressions_after" in merged_df.columns:
-                format_dict_merged["Impressions_after"] = "{:,.0f}"
-            if "Impressions_YOY" in merged_df.columns:
-                format_dict_merged["Impressions_YOY"] = "{:,.0f}"
-            if "CTR_before" in merged_df.columns:
-                format_dict_merged["CTR_before"] = "{:.2f}%"
-            if "CTR_after" in merged_df.columns:
-                format_dict_merged["CTR_after"] = "{:.2f}%"
-            if "CTR_YOY" in merged_df.columns:
-                format_dict_merged["CTR_YOY"] = "{:.2f}%"
-            if "Position_YOY_pct" in merged_df.columns:
-                format_dict_merged["Position_YOY_pct"] = "{:.2f}%"
-            if "Clicks_YOY_pct" in merged_df.columns:
-                format_dict_merged["Clicks_YOY_pct"] = "{:.2f}%"
-            if "Impressions_YOY_pct" in merged_df.columns:
-                format_dict_merged["Impressions_YOY_pct"] = "{:.2f}%"
-            if "CTR_YOY_pct" in merged_df.columns:
-                format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
-            
-            st.dataframe(merged_df.style.format(format_dict_merged))
-            progress_bar.progress(60)
-            
-            # --- Hidden Enhanced Apriori Analysis ---
-            with st.expander("Show Enhanced Apriori Analysis on Query Terms", expanded=False):
-                st.markdown("### Enhanced Apriori Analysis on Query Terms")
-                # Enhanced Text Preprocessing: Lowercase, Remove Stopwords, Lemmatization, and N-gram extraction
-                import nltk
-                nltk.download('punkt')
-                nltk.download('wordnet')
-                from nltk.tokenize import word_tokenize
-                from nltk.corpus import stopwords
-                from nltk.stem import WordNetLemmatizer
-                lemmatizer = WordNetLemmatizer()
-                stop_words = set(stopwords.words('english'))
-                
-                def preprocess_query(query):
-                    tokens = word_tokenize(query.lower())
-                    # Keep only alphabetic tokens that are not stopwords
-                    tokens = [lemmatizer.lemmatize(t) for t in tokens if t.isalpha() and t not in stop_words]
-                    return tokens
-                
-                # Generate transactions with unigrams, bigrams, and trigrams
-                from nltk.util import ngrams
-                def generate_ngrams(tokens, n):
-                    return [' '.join(gram) for gram in ngrams(tokens, n)]
-                
-                transactions = []
-                for query in merged_df["Query"]:
-                    tokens = preprocess_query(query)
-                    unigrams = tokens
-                    bigrams = generate_ngrams(tokens, 2)
-                    trigrams = generate_ngrams(tokens, 3)
-                    transactions.append(unigrams + bigrams + trigrams)
-                
-                # Transform transactions into a one-hot encoded DataFrame
-                from mlxtend.preprocessing import TransactionEncoder
-                te = TransactionEncoder()
-                te_ary = te.fit(transactions).transform(transactions)
-                df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
-                
-                # Apply the Apriori algorithm with a lower min_support to capture more associations
-                from mlxtend.frequent_patterns import apriori
-                freq_items = apriori(df_transactions, min_support=0.05, use_colnames=True)
-                st.dataframe(freq_items.sort_values(by="support", ascending=False))
-            progress_bar.progress(65)
-            
+            st.markdown("### Topic Modeling of Search Queries (LDA)")
+            n_topics_gsc_lda = st.slider("Select number of topics for Query LDA:", min_value=2, max_value=15, value=5, key="lda_topics_gsc") # UI for number of topics
+
+            queries = merged_df["Query"].tolist() # Get queries for LDA
+            with st.spinner(f"Performing LDA Topic Modeling on search queries ({n_topics_gsc_lda} topics)..."):
+                vectorizer_queries_lda = CountVectorizer(stop_words="english", max_df=0.95, min_df=2) # Vectorize queries
+                query_matrix_lda = vectorizer_queries_lda.fit_transform(queries)
+                feature_names_queries_lda = vectorizer_queries_lda.get_feature_names_out()
+
+                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42, n_init='auto')
+                lda_queries_model.fit(query_matrix_lda)
+
+                query_topic_labels = lda_queries_model.transform(query_matrix_lda).argmax(axis=1) # Assign topic label to each query
+                merged_df["Query_Topic_Label"] = query_topic_labels # Add topic labels to dataframe
+
+                topic_labels_desc_queries = {} # Generate descriptive labels for query topics
+                for topic in range(n_topics_gsc_lda):
+                    topic_queries_lda = merged_df[merged_df["Query_Topic_Label"] == topic]["Query"].tolist()
+                    topic_labels_desc_queries[topic] = generate_topic_label(topic_queries_lda) # Reuse generate_topic_label if suitable or create a new one
+                merged_df["Query_Topic"] = merged_df["Query_Topic_Label"].apply(lambda x: topic_labels_desc_queries.get(x, f"Topic {x+1}")) # Apply topic descriptions
+
+                st.write("Identified Query Topics:")
+                for topic_idx, topic in enumerate(lda_queries_model.components_):
+                    top_keyword_indices = topic.argsort()[-10:][::-1]
+                    topic_keywords = [feature_names_queries_lda[i] for i in top_keyword_indices]
+                    st.write(f"**Query Topic {topic_idx + 1}:** {', '.join(topic_keywords)}")
+
+            progress_bar.progress(50) # Update progress bar
+
+
             # Step 5: Aggregated Metrics by Topic
             st.markdown("### Aggregated Metrics by Topic")
             agg_dict = {
@@ -1958,8 +1870,10 @@ def google_search_console_analysis_page():
                     "CTR_after": "mean",
                     "CTR_YOY": "mean"
                 })
-            aggregated = merged_df.groupby("Topic").agg(agg_dict).reset_index()
-            
+            aggregated = merged_df.groupby("Query_Topic").agg(agg_dict).reset_index() # Group by Query_Topic now
+            aggregated.rename(columns={"Query_Topic": "Topic"}, inplace=True) # Rename for consistency
+
+
             # Calculate aggregated YOY percentage changes
             aggregated["Position_YOY_pct"] = aggregated.apply(
                 lambda row: (row["Position_YOY"] / row["Average Position_before"] * 100)
@@ -1977,7 +1891,7 @@ def google_search_console_analysis_page():
                     lambda row: (row["CTR_YOY"] / row["CTR_before"] * 100)
                     if row["CTR_before"] and row["CTR_before"] != 0 else None, axis=1)
             progress_bar.progress(75)
-            
+
             # Reorder columns so that each % Change is immediately next to its related metric columns.
             new_order = ["Topic"]
             if "Average Position_before" in aggregated.columns:
@@ -1989,7 +1903,7 @@ def google_search_console_analysis_page():
             if "CTR_before" in aggregated.columns:
                 new_order.extend(["CTR_before", "CTR_after", "CTR_YOY", "CTR_YOY_pct"])
             aggregated = aggregated[new_order]
-            
+
             # Define formatting for aggregated metrics display
             format_dict = {}
             if "Average Position_before" in aggregated.columns:
@@ -2024,19 +1938,19 @@ def google_search_console_analysis_page():
                 format_dict["CTR_YOY"] = "{:.2f}%"
             if "CTR_YOY_pct" in aggregated.columns:
                 format_dict["CTR_YOY_pct"] = "{:.2f}%"
-            
+
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=aggregated.shape[0])
             st.dataframe(aggregated.head(display_count).style.format(format_dict))
             progress_bar.progress(80)
-            
+
             # Step 6: Visualization - Grouped Bar Chart of YOY % Change by Topic for Each Metric
             st.markdown("### YOY % Change by Topic for Each Metric")
             import plotly.express as px
-            
+
             # Allow user to disable specific topics from the chart
             available_topics = aggregated["Topic"].unique().tolist()
             selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=available_topics)
-            
+
             vis_data = []
             for idx, row in aggregated.iterrows():
                 topic = row["Topic"]
@@ -2056,12 +1970,11 @@ def google_search_console_analysis_page():
                          labels={"YOY % Change": "YOY % Change (%)"})
             st.plotly_chart(fig)
             progress_bar.progress(100)
-            
+
         except Exception as e:
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
 
 
 
