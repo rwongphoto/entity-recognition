@@ -563,6 +563,7 @@ def cosine_similarity_competitor_analysis_page():
         st.markdown("Paste the competitor content below. If you have multiple competitors, separate each content block with `---`.")
         pasted_content = st.text_area("Enter Competitor Content:", height=200)
         competitor_contents = [content.strip() for content in pasted_content.split('---') if content.strip()]
+
     if st.button("Calculate Similarity"):
         model = initialize_sentence_transformer()
         if source_option == "Extract from URL":
@@ -571,30 +572,79 @@ def cosine_similarity_competitor_analysis_page():
                 return
             with st.spinner("Calculating similarities from URLs..."):
                 similarity_scores = calculate_overall_similarity(competitor_urls, search_term, model)
+                # Extract content lengths
+                content_lengths = []
+                for url in competitor_urls:
+                    text = extract_text_from_url(url)
+                    content_lengths.append(len(text.split()) if text else 0)
+
             urls_plot = [url for url, score in similarity_scores]
             scores_plot = [score if score is not None else 0 for url, score in similarity_scores]
-        else:
+
+        else:  # Paste Content
             if not competitor_contents:
                 st.warning("Please paste at least one content block.")
                 return
             with st.spinner("Calculating similarities from pasted content..."):
                 similarity_scores = []
+                content_lengths = []  # Store content lengths
                 for idx, content in enumerate(competitor_contents):
                     text_embedding = get_embedding(content, model)
                     search_embedding = get_embedding(search_term, model)
                     similarity = cosine_similarity([text_embedding], [search_embedding])[0][0]
                     similarity_scores.append((f"Competitor {idx+1}", similarity))
+                    content_lengths.append(len(content.split()))  # Count words
+
             urls_plot = [label for label, score in similarity_scores]
             scores_plot = [score for label, score in similarity_scores]
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.bar(urls_plot, scores_plot)
-        ax.set_xlabel("Competitors")
-        ax.set_ylabel("Similarity Score")
-        ax.set_title("Cosine Similarity of Competitor Content to Search Term")
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        st.pyplot(fig)
-        data = {'Competitor': urls_plot, 'Similarity Score': scores_plot}
+
+
+        # --- 3D Scatter Plot ---
+        import plotly.graph_objects as go
+
+        fig = go.Figure(data=[go.Scatter3d(
+            x=scores_plot,
+            y=content_lengths,
+            z=list(range(len(urls_plot))),  # Use index as a categorical z-axis
+            mode='markers+text',
+            text=urls_plot,
+            marker=dict(
+                size=8,
+                color=scores_plot,  # Color by similarity
+                colorscale='Viridis',   # Choose a colorscale
+                opacity=0.8
+            ),
+            textposition="top center"
+        )])
+
+        fig.update_layout(
+            title="3D Competitor Analysis: Similarity, Content Length, and Competitor",
+            scene=dict(
+                xaxis_title="Cosine Similarity",
+                yaxis_title="Content Length (Words)",
+                zaxis_title="Competitor",  # Label the z-axis
+            ),
+            width=800,
+            height=600
+        )
+
+        st.plotly_chart(fig)
+        # --- End 3D Scatter Plot ---
+
+
+        # --- Original Bar Chart (Optional - Keep for comparison) ---
+        # fig, ax = plt.subplots(figsize=(10, 6))
+        # ax.bar(urls_plot, scores_plot)
+        # ax.set_xlabel("Competitors")
+        # ax.set_ylabel("Similarity Score")
+        # ax.set_title("Cosine Similarity of Competitor Content to Search Term")
+        # plt.xticks(rotation=45, ha='right')
+        # plt.tight_layout()
+        # st.pyplot(fig)
+        # --- End Original Bar Chart ---
+
+
+        data = {'Competitor': urls_plot, 'Similarity Score': scores_plot, 'Content Length': content_lengths}  # Include content length
         df = pd.DataFrame(data)
         st.dataframe(df)
 
