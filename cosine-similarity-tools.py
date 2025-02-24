@@ -916,12 +916,10 @@ def entity_analysis_page():
                     if (entity, label) not in target_entities_set:
                         gap_entities[(entity, label)] += count
 
-            st.markdown("### # of Sites Entities Are Present but Missing in Target")
-            if gap_entities:
-                for (entity, label), count in gap_entities.most_common(50):
+
             display_entity_barchart(gap_entities)
             else:
-                st.write("No significant gap entities found.")
+
 
             # --- NEW: Build an aggregated table with unique competitor entity counts (number of sites) and Wikidata links ---
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
