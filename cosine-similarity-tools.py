@@ -49,6 +49,8 @@ import random  # Import the random module
 # NEW IMPORT for Entity Linker
 import spacy_entity_linker
 
+from SPARQLWrapper import SPARQLWrapper, JSON
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -94,9 +96,6 @@ def load_spacy_model():
             nlp = spacy.load("en_core_web_md")
             print("spaCy model loaded successfully")
 
-            # Add the entity linker to the pipeline
-            nlp.add_pipe("entityLinker", last=True)  # Add the entity linker
-            print("spaCy entity linker loaded successfully")
 
         except OSError:
             print("Downloading en_core_web_md model...")
@@ -104,9 +103,6 @@ def load_spacy_model():
             nlp = spacy.load("en_core_web_md")
             print("en_core_web_md downloaded and loaded")
 
-            # Add the entity linker after downloading the main model.
-            nlp.add_pipe("entityLinker", last=True)
-            print("spaCy entity linker loaded successfully")
 
         except Exception as e:
             st.error(f"Failed to load spaCy model: {e}")
@@ -345,6 +341,55 @@ def generate_topic_label(queries_in_topic):
     else:
         return "N/A"
 
+# --- FUNCTION: Query Wikidata ---
+
+def get_wikidata_id(entity_text, entity_label, nlp_model):
+    """
+    Queries Wikidata for a given entity and returns its ID (Q-code) if found.
+
+    Args:
+        entity_text: The text of the entity (e.g., "Barack Obama").
+        entity_label: The spaCy entity label (e.g., "PERSON").
+        nlp_model: Your loaded spaCy model.
+
+    Returns:
+        The Wikidata ID (e.g., "Q76") as a string, or None if not found.
+    """
+    # Wikidata SPARQL endpoint
+    sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+
+    # Basic query structure (find entity with label and description)
+    #  Added FILTER for more specific results
+    query = f"""
+    SELECT ?entity ?entityLabel WHERE {{
+      ?entity rdfs:label "{entity_text}"@en .
+      ?entity rdfs:label ?entityLabel .
+      FILTER(LANG(?entityLabel) = "en")
+    }}
+    LIMIT 5
+    """
+
+    # Set the query and return format
+    sparql.setQuery(query)
+    sparql.setReturnFormat(JSON)
+
+    try:
+        # Execute the query and parse results
+        results = sparql.query().convert()
+        bindings = results["results"]["bindings"]
+
+        if bindings:
+            #  Simple approach: take the first result
+            entity_id_url = bindings[0]["entity"]["value"]
+            entity_id = entity_id_url.split("/")[-1]  # Extract Q-code
+            return entity_id
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error querying Wikidata for '{entity_text}': {e}")
+        return None
+
 # NEW FUNCTION: Generate Wikidata Link
 def generate_wikidata_link(wikidata_id):
     """
@@ -356,10 +401,11 @@ def generate_wikidata_link(wikidata_id):
     Returns:
         An HTML string representing a clickable link to the Wikidata page.
     """
-    if wikidata_id and wikidata_id != "NIL": # Handle NIL case explicitly
+    if wikidata_id:
         return f'<a href="https://www.wikidata.org/wiki/{wikidata_id}" target="_blank">{wikidata_id}</a>'
     else:
         return "N/A"
+
 
 
 # ------------------------------------
@@ -882,12 +928,9 @@ def entity_analysis_page():
                 entity_data = []
                 for ent in doc.ents:
                     if ent.label_ not in exclude_types:
-                        # Get Wikidata ID and URL (if available)
-                        if ent._.kb_ents:  # Check if entity has KB entries
-                            wikidata_id = ent._.kb_ents[0][0] # Get top candidate
-                            wikidata_link = generate_wikidata_link(wikidata_id)
-                        else:
-                            wikidata_link = "N/A"  # No link available
+                        with st.spinner(f"Querying Wikidata for {ent.text}..."): # Keep the spinner
+                            wikidata_id = get_wikidata_id(ent.text, ent.label_, nlp_model) # Use get_wikidata_id
+                        wikidata_link = generate_wikidata_link(wikidata_id) # Generate link
                         entity_data.append({"Entity": ent.text, "Label": ent.label_, "Wikidata": wikidata_link})
                 return entity_data
 
@@ -900,7 +943,6 @@ def entity_analysis_page():
             target_entity_data = process_and_link_entities(target_text, exclude_types, nlp_model)
             df_target_entities = pd.DataFrame(target_entity_data)
             target_entities_set = set([(ent["Entity"], ent["Label"]) for ent in target_entity_data]) #for gap
-
 
             # --- Process Competitor Entities ---
             all_competitor_data = []
@@ -928,7 +970,6 @@ def entity_analysis_page():
             for (entity, label), count in all_competitor_counts.items():
                 if (entity,label) not in target_entities_set:
                     gap_entities[(entity, label)] = count # Number of COMPETITOR occurrences
-
 
             # --- Unique to Target ---
             unique_target_entities = Counter()
