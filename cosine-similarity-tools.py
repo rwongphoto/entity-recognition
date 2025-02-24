@@ -916,9 +916,7 @@ def entity_analysis_page():
                     if (entity, label) not in target_entities_set:
                         gap_entities[(entity, label)] += count
 
-
             display_entity_barchart(gap_entities)
-
 
             # --- NEW: Build an aggregated table with unique competitor entity counts (number of sites) and Wikidata links ---
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
@@ -936,12 +934,14 @@ def entity_analysis_page():
                     aggregated_gap_table.append({
                         "Entity": entity,
                         "Label": label,
-                        "Sites": site_count,
+                        "# of Sites": site_count,
                         "Wikidata URL": wikidata_url if wikidata_url else "Not found"
                     })
                 if aggregated_gap_table:
                     df_aggregated_gap = pd.DataFrame(aggregated_gap_table)
-                    st.table(df_aggregated_gap)
+                    # Sort DataFrame by '# of Sites' in descending order
+                    df_aggregated_gap = df_aggregated_gap.sort_values(by='# of Sites', ascending=False)
+                    st.dataframe(df_aggregated_gap) # Use st.dataframe for sortable columns
                 else:
                     st.write("No gap entities available for Wikidata linking.")
             else:
