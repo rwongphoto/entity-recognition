@@ -342,7 +342,7 @@ def generate_topic_label(queries_in_topic):
         return "N/A"
 
 # --- FUNCTION: Query Wikidata ---
-
+@st.cache_data(ttl=86400)  # Cache for 24 hours (86400 seconds) - adjust as needed
 def get_wikidata_id(entity_text, entity_label, nlp_model):
     """
     Queries Wikidata for a given entity and returns its ID (Q-code) if found.
