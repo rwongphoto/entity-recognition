@@ -400,7 +400,7 @@ def url_analysis_dashboard_page():
                     chrome_options.add_argument("--no-sandbox")
                     chrome_options.add_argument("--disable-dev-shm-usage")
                     user_agent = get_random_user_agent()
-                         chrome_options.add_argument(f"user-agent={user_agent}")
+                          chrome_options.add_argument(f"user-agent={user_agent}")
                     driver = webdriver.Chrome(options=chrome_options)
                     driver.get(url)
                     page_source = driver.page_source
