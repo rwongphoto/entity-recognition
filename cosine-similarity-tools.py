@@ -1064,6 +1064,24 @@ def ngram_tfidf_analysis_page():
         if not competitor_texts:
             st.error("No competitor content was extracted.")
             return
+
+        # --- LDA Topic Modeling for Competitor Content ---
+        st.subheader("Topic Modeling of Competitor Content (LDA)")
+        n_topics_lda = st.slider("Select number of topics for LDA:", min_value=2, max_value=15, value=5, key="lda_topics_gap") # UI for number of topics
+
+        with st.spinner(f"Performing LDA Topic Modeling on competitor content ({n_topics_lda} topics)..."):
+            vectorizer_lda = CountVectorizer(ngram_range=(n_value, n_value), min_df=min_df, max_df=max_df, stop_words="english") # Use CountVectorizer for LDA input
+            count_matrix_lda = vectorizer_lda.fit_transform(competitor_texts) # Fit on competitor texts
+            feature_names_lda = vectorizer_lda.get_feature_names_out()
+
+            lda_model = LatentDirichletAllocation(n_components=n_topics_lda, random_state=42, n_init='auto')
+            lda_model.fit(count_matrix_lda) # Fit LDA on count matrix
+
+            st.write("Identified Topics:")
+            for topic_idx, topic in enumerate(lda_model.components_):
+                top_keyword_indices = topic.argsort()[-10:][::-1] # Get top 10 keywords per topic
+                topic_keywords = [feature_names_lda[i] for i in top_keyword_indices]
+                st.write(f"**Topic {topic_idx + 1}:** {', '.join(topic_keywords)}")
         
         # Calculate TF-IDF scores
         with st.spinner("Calculating TF-IDF scores for competitors..."):
