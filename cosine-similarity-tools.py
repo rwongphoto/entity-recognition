@@ -312,6 +312,9 @@ def display_entity_wordcloud(entity_counts):
     plt.tight_layout()
     st.pyplot(fig)
 
+nltk.download('stopwords') #Ensure stopwords are downloaded if not already
+stop_words = set(nltk.corpus.stopwords.words('english'))
+
 def generate_topic_label(queries_in_topic):
     words = []
     for query in queries_in_topic:
