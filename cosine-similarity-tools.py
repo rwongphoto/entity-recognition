@@ -1831,6 +1831,48 @@ def google_search_console_analysis_page():
             merged_df = merged_df[base_cols]
             progress_bar.progress(40)
 
+            # --- Define formatting for merged data table display ---
+            format_dict_merged = {}
+            if "Average Position_before" in merged_df.columns:
+                format_dict_merged["Average Position_before"] = "{:.1f}"
+            if "Average Position_after" in merged_df.columns:
+                format_dict_merged["Average Position_after"] = "{:.1f}"
+            if "Position_YOY" in merged_df.columns:
+                format_dict_merged["Position_YOY"] = "{:.1f}"
+            if "Clicks_before" in merged_df.columns:
+                format_dict_merged["Clicks_before"] = "{:,.0f}"
+            if "Clicks_after" in merged_df.columns:
+                format_dict_merged["Clicks_after"] = "{:,.0f}"
+            if "Clicks_YOY" in merged_df.columns:
+                format_dict_merged["Clicks_YOY"] = "{:,.0f}"
+            if "Impressions_before" in merged_df.columns:
+                format_dict_merged["Impressions_before"] = "{:,.0f}"
+            if "Impressions_after" in merged_df.columns:
+                format_dict_merged["Impressions_after"] = "{:,.0f}"
+            if "Impressions_YOY" in merged_df.columns:
+                format_dict_merged["Impressions_YOY"] = "{:,.0f}"
+            if "CTR_before" in merged_df.columns:
+                format_dict_merged["CTR_before"] = "{:.2f}%"
+            if "CTR_after" in merged_df.columns:
+                format_dict_merged["CTR_after"] = "{:.2f}%"
+            if "CTR_YOY" in merged_df.columns:
+                format_dict_merged["CTR_YOY"] = "{:.2f}%"
+            if "Position_YOY_pct" in merged_df.columns:
+                format_dict_merged["Position_YOY_pct"] = "{:.2f}%"
+            if "Clicks_YOY_pct" in merged_df.columns:
+                format_dict_merged["Clicks_YOY_pct"] = "{:.2f}%"
+            if "Impressions_YOY_pct" in merged_df.columns:
+                format_dict_merged["Impressions_YOY_pct"] = "{:.2f}%"
+            if "CTR_YOY_pct" in merged_df.columns:
+                format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
+            # --- End define format_dict_merged ---
+
+            # Step 4: Topic Classification using LDA
+            st.markdown("### Topic Classification and Combined Data")
+            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
+            # ... (rest of Step 4 and subsequent steps) ...
+
+
             # Step 4: Topic Classification using LDA
             st.markdown("### Topic Classification and Combined Data")
             st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
