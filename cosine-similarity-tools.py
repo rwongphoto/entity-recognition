@@ -388,6 +388,32 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     return top_sections, bottom_sections
 
 # ------------------------------------
+# NEW: Helper function using SPARQLWrapper to get Wikidata link for an entity
+# ------------------------------------
+@st.cache_data(ttl=86400)
+def get_wikidata_link(entity_name: str) -> str:
+    sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+    # Escape quotes in the entity name
+    safe_entity = entity_name.replace('"', '\\"')
+    query = f"""
+    SELECT ?item WHERE {{
+      ?item rdfs:label "{safe_entity}"@en.
+    }} LIMIT 1
+    """
+    sparql.setQuery(query)
+    sparql.setReturnFormat(JSON)
+    try:
+        results = sparql.query().convert()
+        bindings = results.get("results", {}).get("bindings", [])
+        if bindings:
+            item_url = bindings[0]["item"]["value"]
+            return item_url
+    except Exception as e:
+        st.error(f"Error querying Wikidata for '{entity_name}': {e}")
+    return None
+
+
+# ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
 def url_analysis_dashboard_page():
@@ -903,6 +929,28 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
+            
+            # NEW: Build a table of gap entities with their Wikidata links using SPARQLWrapper
+            st.markdown("### Wikidata Links for Unique Competitor Entities Missing from Target Site (Per Competitor)")
+            gap_entities_table = []
+            for source, counts in entity_counts_per_source.items():
+                for (entity, label), count in counts.most_common(50):
+                    # Only include if the entity is not present in the target site
+                    if (entity, label) not in target_entities_set:
+                        wikidata_url = get_wikidata_link(entity)
+                        gap_entities_table.append({
+                            "Competitor": source,
+                            "Entity": entity,
+                            "Label": label,
+                            "Count": count,
+                            "Wikidata URL": wikidata_url if wikidata_url else "Not found"
+                        })
+            if gap_entities_table:
+                df_gap = pd.DataFrame(gap_entities_table)
+                st.table(df_gap)
+            else:
+                st.write("No gap entities available for Wikidata linking.")
+
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
