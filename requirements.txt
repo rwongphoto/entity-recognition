@@ -69,7 +69,7 @@ requests==2.32.3
 rich==13.9.4
 rpds-py==0.22.3
 safetensors==0.5.2
-scikit-learn>=1.4
+scikit-learn
 scipy==1.13.1
 selenium==4.28.1
 sentence-transformers
