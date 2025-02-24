@@ -44,6 +44,8 @@ import plotly.figure_factory as ff
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 
+import random  # Import the random module
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -61,6 +63,25 @@ def enforce_rate_limit():
     last_request_time = time.time()
 
 nlp = None
+
+# User Agent List (Expanded)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.2151.97", #Edge
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1", #Safari iPhone
+    "Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1", #Safari iPad
+    "Mozilla/5.0 (Android 14; Mobile; rv:121.0) Gecko/121.0 Firefox/121.0", #Firefox Android
+    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36", #Chrome Android
+]
+
+def get_random_user_agent():
+    """Returns a randomly selected user agent from the list."""
+    return random.choice(USER_AGENTS)
+
 
 @st.cache_resource
 def load_spacy_model():
@@ -95,8 +116,8 @@ def extract_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        # Use the random user agent function
+        user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
@@ -135,8 +156,8 @@ def extract_relevant_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+        # Use the random user agent function
+        user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
@@ -378,9 +399,8 @@ def url_analysis_dashboard_page():
                     chrome_options.add_argument("--headless")
                     chrome_options.add_argument("--no-sandbox")
                     chrome_options.add_argument("--disable-dev-shm-usage")
-                    user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
-                    chrome_options.add_argument(f"user-agent={user_agent}")
+                    user_agent = get_random_user_agent()
+                         chrome_options.add_argument(f"user-agent={user_agent}")
                     driver = webdriver.Chrome(options=chrome_options)
                     driver.get(url)
                     page_source = driver.page_source
@@ -1274,8 +1294,8 @@ def paa_extraction_clustering_page():
             st.warning("Please enter a search query.")
             return
 
-        user_agent = ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.7.1 Mobile/15E148 Safari/604.1")
+            user_agent = get_random_user_agent()
+              chrome_options.add_argument(f"user-agent={user_agent}")
         
         def get_paa(query, max_depth=10):
             chrome_options = Options()
