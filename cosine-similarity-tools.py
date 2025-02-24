@@ -918,7 +918,6 @@ def entity_analysis_page():
 
 
             display_entity_barchart(gap_entities)
-            else:
 
 
             # --- NEW: Build an aggregated table with unique competitor entity counts (number of sites) and Wikidata links ---
