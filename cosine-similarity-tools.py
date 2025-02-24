@@ -945,7 +945,10 @@ def entity_analysis_page():
                     })
                 if aggregated_gap_table:
                     df_aggregated_gap = pd.DataFrame(aggregated_gap_table)
-                    # Sort DataFrame by '# of Sites' in descending order
+                    print("--- DataFrame `df_aggregated_gap` before st.dataframe ---") # Debugging print
+                    print(df_aggregated_gap) # Print the DataFrame
+                    print("--- DataFrame Info ---")
+                    print(df_aggregated_gap.info()) # Print DataFrame info (data types)
                     df_aggregated_gap = df_aggregated_gap.sort_values(by='# of Sites', ascending=False)
                     st.dataframe(df_aggregated_gap, unsafe_allow_html=True) # Enable HTML rendering
                 else:
