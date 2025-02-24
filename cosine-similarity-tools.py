@@ -1712,6 +1712,7 @@ def google_search_console_analysis_page():
         This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         - Classify queries into topics with descriptive labels using LDA.
+        - Display the original merged data table with topic labels.
         - Aggregate metrics by topic, with an option to display more rows.
         - Visualize the YOY % change by topic for each metric.
         """
@@ -1832,6 +1833,7 @@ def google_search_console_analysis_page():
 
             # Step 4: Topic Classification using LDA
             st.markdown("### Topic Classification and Combined Data")
+            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
             st.markdown("### Topic Modeling of Search Queries (LDA)")
             n_topics_gsc_lda = st.slider("Select number of topics for Query LDA:", min_value=2, max_value=15, value=5, key="lda_topics_gsc") # UI for number of topics
 
@@ -1841,7 +1843,7 @@ def google_search_console_analysis_page():
                 query_matrix_lda = vectorizer_queries_lda.fit_transform(queries)
                 feature_names_queries_lda = vectorizer_queries_lda.get_feature_names_out()
 
-                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42)
+                lda_queries_model = LatentDirichletAllocation(n_components=n_topics_gsc_lda, random_state=42, n_init='auto')
                 lda_queries_model.fit(query_matrix_lda)
 
                 query_topic_labels = lda_queries_model.transform(query_matrix_lda).argmax(axis=1) # Assign topic label to each query
@@ -1860,6 +1862,11 @@ def google_search_console_analysis_page():
                     st.write(f"**Query Topic {topic_idx + 1}:** {', '.join(topic_keywords)}")
 
             progress_bar.progress(50) # Update progress bar
+
+            # --- Display Merged Data Table with Topic Labels ---
+            merged_df_display = merged_df[["Query", "Query_Topic"] + base_cols[1:]] #Reorder columns for display - Topic first
+            format_dict_merged_display = format_dict_merged.copy() # Copy existing format dict
+            st.dataframe(merged_df_display.style.format(format_dict_merged_display)) # Display merged_df with formatting
 
 
             # Step 5: Aggregated Metrics by Topic
@@ -1992,8 +1999,6 @@ def google_search_console_analysis_page():
             st.error(f"An error occurred while processing the files: {e}")
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
-
-
 
 
 
