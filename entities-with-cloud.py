@@ -46,6 +46,9 @@ from mlxtend.frequent_patterns import apriori, association_rules
 
 import random  # Import the random module
 
+# NEW: Import SPARQLWrapper for querying Wikidata
+from SPARQLWrapper import SPARQLWrapper, JSON
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -386,6 +389,32 @@ def rank_sections_by_similarity_bert(text, search_term, top_n=10):
     top_sections = sorted_sections[:top_n]
     bottom_sections = sorted_sections[-top_n:]
     return top_sections, bottom_sections
+
+# ------------------------------------
+# NEW: Helper function using SPARQLWrapper to get Wikidata link for an entity
+# ------------------------------------
+@st.cache_data(ttl=86400)
+def get_wikidata_link(entity_name: str) -> str:
+    sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+    # Escape quotes in the entity name
+    safe_entity = entity_name.replace('"', '\\"')
+    query = f"""
+    SELECT ?item WHERE {{
+      ?item rdfs:label "{safe_entity}"@en.
+    }} LIMIT 1
+    """
+    sparql.setQuery(query)
+    sparql.setReturnFormat(JSON)
+    try:
+        results = sparql.query().convert()
+        bindings = results.get("results", {}).get("bindings", [])
+        if bindings:
+            item_url = bindings[0]["item"]["value"]
+            return item_url
+    except Exception as e:
+        st.error(f"Error querying Wikidata for '{entity_name}': {e}")
+    return None
+
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -798,6 +827,8 @@ def top_bottom_embeddings_page():
 def entity_analysis_page():
     st.header("Entity Topic Gap Analysis")
     st.markdown("Analyze multiple sources to identify common entities missing on your site, *and* unique entities on your site.")
+    
+    # Get competitor content
     competitor_source_option = st.radio(
         "Select competitor content source:",
         options=["Extract from URL", "Paste Content"],
@@ -811,6 +842,8 @@ def entity_analysis_page():
         st.markdown("Paste competitor content below. For multiple sources, separate each with `---`.")
         competitor_input = st.text_area("Enter Competitor Content:", key="entity_competitor_text", value="", height=200)
         competitor_list = [content.strip() for content in competitor_input.split('---') if content.strip()]
+    
+    # Get target content
     st.markdown("#### Target Site")
     target_option = st.radio(
         "Select target content source:",
@@ -822,14 +855,19 @@ def entity_analysis_page():
         target_input = st.text_input("Enter Target URL:", key="target_url", value="")
     else:
         target_input = st.text_area("Paste target content:", key="target_text", value="", height=100)
+    
+    # Exclude content
     st.markdown("#### Exclude Content (Paste Only)")
     exclude_input = st.text_area("Paste content to exclude:", key="exclude_text", value="", height=100)
-    exclude_types = st.multiselect("Select entity types to exclude:",
-                                   options=["CARDINAL", "DATE", "TIME", "PERCENT", "MONEY",
-                                            "QUANTITY", "ORDINAL", "GPE", "ORG", "PERSON", "NORP",
-                                            "FAC", "LOC", "PRODUCT", "EVENT", "WORK_OF_ART",
-                                            "LAW", "LANGUAGE", "MISC"],
-                                   default=["CARDINAL", "DATE", "TIME", "PERCENT", "MONEY", "QUANTITY", "ORDINAL"])
+    exclude_types = st.multiselect(
+        "Select entity types to exclude:",
+        options=["CARDINAL", "DATE", "TIME", "PERCENT", "MONEY",
+                 "QUANTITY", "ORDINAL", "GPE", "ORG", "PERSON", "NORP",
+                 "FAC", "LOC", "PRODUCT", "EVENT", "WORK_OF_ART",
+                 "LAW", "LANGUAGE", "MISC"],
+        default=["CARDINAL", "DATE", "TIME", "PERCENT", "MONEY", "QUANTITY", "ORDINAL"]
+    )
+    
     if st.button("Analyze", key="entity_button"):
         if not competitor_list:
             st.warning("Please provide at least one competitor content or URL.")
@@ -837,20 +875,25 @@ def entity_analysis_page():
         if not target_input:
             st.warning("Please provide target content or URL.")
             return
+        
         with st.spinner("Extracting content and analyzing entities..."):
             nlp_model = load_spacy_model()
             if not nlp_model:
                 return
+            
+            # Get target text
             if target_option == "Extract from URL":
                 target_text = extract_text_from_url(target_input) if target_input else ""
             else:
                 target_text = target_input
+            
             target_entities = identify_entities(target_text, nlp_model) if target_text else []
             filtered_target_entities = [(entity, label) for entity, label in target_entities if label not in exclude_types]
             target_entity_counts = count_entities(filtered_target_entities, nlp_model)
             target_entities_set = set(target_entity_counts.keys())
             exclude_entities_set = {ent.text.lower() for ent in nlp_model(exclude_input).ents} if exclude_input else set()
-            all_competitor_entities = []
+            
+            # Process competitor content
             entity_counts_per_source = {}
             for source in competitor_list:
                 if competitor_source_option == "Extract from URL":
@@ -859,35 +902,64 @@ def entity_analysis_page():
                     text = source
                 if text:
                     entities = identify_entities(text, nlp_model)
-                    filtered_entities = [(entity, label) for entity, label in entities
-                                         if label not in exclude_types and entity.lower() not in exclude_entities_set]
+                    filtered_entities = [
+                        (entity, label) for entity, label in entities
+                        if label not in exclude_types and entity.lower() not in exclude_entities_set
+                    ]
                     source_counts = count_entities(filtered_entities, nlp_model)
                     entity_counts_per_source[source] = source_counts
-                    for (lemma, label) in source_counts:
-                        all_competitor_entities.append((lemma, label))
-            competitor_entity_counts = Counter(all_competitor_entities)
+            
+            # Calculate aggregated gap entities (only if missing from target)
             gap_entities = Counter()
-            for (entity, label), count in competitor_entity_counts.items():
-                if (entity, label) not in target_entities_set:
-                    gap_entities[(entity, label)] = count
-            unique_target_entities = Counter()
-            for (entity, label), count in target_entity_counts.items():
-                if (entity, label) not in competitor_entity_counts:
-                    unique_target_entities[(entity, label)] = count
+            for source, counts in entity_counts_per_source.items():
+                for (entity, label), count in counts.items():
+                    if (entity, label) not in target_entities_set:
+                        gap_entities[(entity, label)] += count
+
+            display_entity_barchart(gap_entities)
+
+            # --- NEW: Build an aggregated table with unique competitor entity counts (number of sites) and Wikidata links ---
             st.markdown("### # of Sites Entities Are Present but Missing in Target")
-            if gap_entities:
-                for (entity, label), count in gap_entities.most_common(50):
-                    st.write(f"- {entity} ({label}): {count}")
-                display_entity_barchart(gap_entities)
+            aggregated_gap_table = []
+            aggregated_site_count = {}
+            # For each competitor, count the unique occurrence of each entity (one count per site)
+            for source, counts in entity_counts_per_source.items():
+                for (entity, label), count in counts.items():
+                    if (entity, label) not in target_entities_set:
+                        # Increment by one for each site where the entity is found
+                        aggregated_site_count[(entity, label)] = aggregated_site_count.get((entity, label), 0) + 1
+            if aggregated_site_count:
+                for (entity, label), site_count in aggregated_site_count.items():
+                    wikidata_url = get_wikidata_link(entity)
+                    aggregated_gap_table.append({
+                        "Entity": entity,
+                        "Label": label,
+                        "# of Sites": site_count,
+                        "Wikidata URL": wikidata_url if wikidata_url else "Not found"
+                    })
+                if aggregated_gap_table:
+                    df_aggregated_gap = pd.DataFrame(aggregated_gap_table)
+                    # Sort DataFrame by '# of Sites' in descending order
+                    df_aggregated_gap = df_aggregated_gap.sort_values(by='# of Sites', ascending=False)
+                    st.dataframe(df_aggregated_gap) # Use st.dataframe for sortable columns
+                else:
+                    st.write("No gap entities available for Wikidata linking.")
             else:
                 st.write("No significant gap entities found.")
+            
+            
             st.markdown("### Entities Unique to Target Site")
+            unique_target_entities = Counter()
+            for (entity, label), count in target_entity_counts.items():
+                if (entity, label) not in gap_entities:
+                    unique_target_entities[(entity, label)] = count
             if unique_target_entities:
                 for (entity, label), count in unique_target_entities.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
                 display_entity_barchart(unique_target_entities)
             else:
                 st.write("No unique entities found on the target site.")
+            
             if exclude_input:
                 st.markdown("### Entities from Exclude Content (Excluded from Analysis)")
                 exclude_doc = nlp_model(exclude_input)
@@ -895,6 +967,7 @@ def entity_analysis_page():
                 exclude_entity_counts = count_entities(exclude_entities_list, nlp_model)
                 for (entity, label), count in exclude_entity_counts.most_common(50):
                     st.write(f"- {entity} ({label}): {count}")
+            
             st.markdown("### Entities Per Competitor Source")
             for source, entity_counts_local in entity_counts_per_source.items():
                 st.markdown(f"#### Source: {source}")
@@ -903,6 +976,10 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
+
+
+
+
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
@@ -1709,7 +1786,7 @@ def google_search_console_analysis_page():
     st.markdown(
         """
         The goal is to identify key topics that are contributing to your SEO performance.
-        This tool lets you compare GSC query data from two different time periods.
+        This tool lets you compare GSC query data from two different time periods. I recommend limiting to the top 1,000 queries as this can take awhile to process.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         - Classify queries into topics with descriptive labels using LDA.
         - Display the original merged data table with topic labels.
@@ -2116,6 +2193,16 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
+
+
+
+
+
+
+
+
+
 
 
 
