@@ -49,6 +49,9 @@ import random  # Import the random module
 # NEW: Import SPARQLWrapper for querying Wikidata
 from SPARQLWrapper import SPARQLWrapper, JSON
 
+# NEW IMPORT: Import Hugging Face transformers for BERT-based NER
+from transformers import pipeline
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -250,9 +253,32 @@ def create_navigation_menu(logo_url):
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
 
+# --------------------------------------------------
+# NEW: Load BERT-based NER pipeline (using dslim/bert-base-NER)
+# --------------------------------------------------
+@st.cache_resource
+def load_bert_ner_pipeline():
+    # The aggregation_strategy="simple" groups tokens into complete entities.
+    return pipeline("ner", model="dslim/bert-base-NER", aggregation_strategy="simple")
+
+# --------------------------------------------------
+# UPDATED: Use BERT for Named Entity Recognition
+# --------------------------------------------------
 def identify_entities(text, nlp_model):
-    doc = nlp_model(text)
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    """
+    Extracts named entities from the input text using a BERT-based NER pipeline.
+    The 'nlp_model' parameter is retained for compatibility with the rest of the code,
+    but is not used for entity extraction.
+    Returns a list of tuples (entity_text, entity_label).
+    """
+    ner_pipe = load_bert_ner_pipeline()
+    bert_entities = ner_pipe(text)
+    entities = []
+    for ent in bert_entities:
+        # ent is a dict with keys like 'word' and 'entity_group'
+        entity_text = ent["word"].strip()
+        entity_label = ent["entity_group"]
+        entities.append((entity_text, entity_label))
     return entities
 
 # ORIGINAL count_entities (for unique counts per source)
