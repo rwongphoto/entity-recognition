@@ -52,6 +52,8 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 # NEW IMPORT: Import Hugging Face transformers for BERT-based NER
 from transformers import pipeline
 
+import seaborn as sns
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
