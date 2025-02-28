@@ -2195,7 +2195,7 @@ def plot_embeddings(embeddings, labels):
     return fig
 
 def semantic_clustering_page():
-    st.header("Semantic Clustering of Website Pages")
+    st.header("Site Focus Visualizer")
     st.markdown(
         """
         Upload your Screaming Frog CSV file containing your website's embeddings.
