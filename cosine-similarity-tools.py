@@ -2198,7 +2198,7 @@ def semantic_clustering_page():
     st.header("Semantic Clustering of Website Pages")
     st.markdown(
         """
-        Upload your Screaming Frog CSV file containing your website's crawl data.
+        Upload your Screaming Frog CSV file containing your website's embeddings.
         The CSV must include **URL** and **Content** columns.
         """
     )
@@ -2299,7 +2299,7 @@ def main():
         google_ads_search_term_analyzer_page()
     elif tool == "Google Search Console Analyzer":
         google_search_console_analysis_page()
-    elif tool == "Semantic Clustering of Website Pages":
+    elif tool == "Site Focus Visualizer":
         semantic_clustering_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
