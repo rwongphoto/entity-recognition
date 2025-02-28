@@ -71,6 +71,7 @@ rpds-py==0.22.3
 safetensors==0.5.2
 scikit-learn
 scipy==1.13.1
+seaborn
 selenium==4.28.1
 sentence-transformers
 six==1.17.0
