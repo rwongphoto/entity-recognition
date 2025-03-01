@@ -49,6 +49,11 @@ import random  # Import the random module
 # NEW: Import SPARQLWrapper for querying Wikidata
 from SPARQLWrapper import SPARQLWrapper, JSON
 
+# NEW IMPORT: Import Hugging Face transformers for BERT-based NER
+from transformers import pipeline
+
+import seaborn as sns
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -250,9 +255,32 @@ def create_navigation_menu(logo_url):
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
 
+# --------------------------------------------------
+# NEW: Load BERT-based NER pipeline (using dslim/bert-base-NER)
+# --------------------------------------------------
+@st.cache_resource
+def load_bert_ner_pipeline():
+    # The aggregation_strategy="simple" groups tokens into complete entities.
+    return pipeline("ner", model="dslim/bert-base-NER", aggregation_strategy="simple")
+
+# --------------------------------------------------
+# UPDATED: Use BERT for Named Entity Recognition
+# --------------------------------------------------
 def identify_entities(text, nlp_model):
-    doc = nlp_model(text)
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    """
+    Extracts named entities from the input text using a BERT-based NER pipeline.
+    The 'nlp_model' parameter is retained for compatibility with the rest of the code,
+    but is not used for entity extraction.
+    Returns a list of tuples (entity_text, entity_label).
+    """
+    ner_pipe = load_bert_ner_pipeline()
+    bert_entities = ner_pipe(text)
+    entities = []
+    for ent in bert_entities:
+        # ent is a dict with keys like 'word' and 'entity_group'
+        entity_text = ent["word"].strip()
+        entity_label = ent["entity_group"]
+        entities.append((entity_text, entity_label))
     return entities
 
 # ORIGINAL count_entities (for unique counts per source)
@@ -2119,6 +2147,94 @@ def google_search_console_analysis_page():
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
 
+# ------------------------------------
+# NEW TOOL: Vector Embeddings Scatterplot
+# ------------------------------------
+# Cache the SentenceTransformer model so it loads only once
+@st.cache_resource
+def load_sentence_transformer(model_name='all-MiniLM-L6-v2'):
+    return SentenceTransformer(model_name)
+
+def load_data(file):
+    """Loads Screaming Frog crawl data from an uploaded CSV file."""
+    df = pd.read_csv(file)
+    if 'URL' not in df.columns or 'Content' not in df.columns:
+        raise ValueError("CSV must contain 'URL' and 'Content' columns.")
+    return df[['URL', 'Content']]
+
+def vectorize_pages(contents, model):
+    """Converts page content into vector embeddings using a transformer model."""
+    embeddings = model.encode(contents, convert_to_numpy=True)
+    return embeddings
+
+def reduce_dimensions(embeddings, n_components=2):
+    """Reduces vector dimensionality using PCA."""
+    pca = PCA(n_components=n_components)
+    reduced_embeddings = pca.fit_transform(embeddings)
+    return reduced_embeddings
+
+def cluster_embeddings(embeddings, n_clusters=5):
+    """Clusters embeddings using KMeans."""
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(embeddings)
+    return labels
+
+def plot_embeddings(embeddings, labels):
+    """Creates a clustered scatter plot of the embeddings."""
+    fig, ax = plt.subplots(figsize=(12, 7))
+    sns.scatterplot(
+        x=embeddings[:, 0],
+        y=embeddings[:, 1],
+        hue=labels,
+        palette='viridis',
+        alpha=0.6,
+        ax=ax
+    )
+    ax.set_xlabel("PCA Component 1")
+    ax.set_ylabel("PCA Component 2")
+    ax.set_title("Clustered Semantic Clustering of Website Pages")
+    ax.legend(title="Clusters")
+    return fig
+
+def semantic_clustering_page():
+    st.header("Site Focus Visualizer")
+    st.markdown(
+        """
+        Upload your Screaming Frog CSV file containing your website's embeddings.
+        The CSV must include **URL** and **Content** columns.
+        """
+    )
+    
+    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+    
+    if uploaded_file is not None:
+        try:
+            data = load_data(uploaded_file)
+        except Exception as e:
+            st.error(f"Error: {e}")
+            return
+
+        st.write("Data loaded successfully. Here is a preview:")
+        st.dataframe(data.head())
+        
+        # Load the transformer model (cached)
+        model = load_sentence_transformer()
+        
+        with st.spinner("Vectorizing page content..."):
+            embeddings = vectorize_pages(data['Content'].tolist(), model)
+        
+        with st.spinner("Reducing dimensions using PCA..."):
+            reduced_embeddings = reduce_dimensions(embeddings)
+        
+        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
+        with st.spinner("Clustering embeddings..."):
+            labels = cluster_embeddings(reduced_embeddings, n_clusters)
+        
+        st.success("Clustering complete!")
+        
+        fig = plot_embeddings(reduced_embeddings, labels)
+        st.pyplot(fig)
+
 
 
 # ------------------------------------
@@ -2156,7 +2272,8 @@ def main():
         "Keyword Clustering",
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
-        "Google Search Console Analyzer" # Add this line
+        "Google Search Console Analyzer",
+        "Site Focus Visualizer"  # New option added here
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2184,6 +2301,8 @@ def main():
         google_ads_search_term_analyzer_page()
     elif tool == "Google Search Console Analyzer":
         google_search_console_analysis_page()
+    elif tool == "Site Focus Visualizer":
+        semantic_clustering_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
@@ -2193,6 +2312,16 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
+
+
+
+
+
+
+
+
+
 
 
 
