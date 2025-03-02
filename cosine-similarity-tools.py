@@ -2155,85 +2155,79 @@ def google_search_console_analysis_page():
 def load_sentence_transformer(model_name='all-MiniLM-L6-v2'):
     return SentenceTransformer(model_name)
 
-def load_data(file):
-    """Loads Screaming Frog crawl data from an uploaded CSV file."""
-    df = pd.read_csv(file)
-    if 'URL' not in df.columns or 'Content' not in df.columns:
-        raise ValueError("CSV must contain 'URL' and 'Content' columns.")
-    return df[['URL', 'Content']]
+def load_queries(csv_file):
+    df = pd.read_csv(csv_file)
+    if 'query' not in df.columns or 'Clicks' not in df.columns or 'URL' not in df.columns:
+        raise ValueError("CSV must contain 'query', 'Clicks', and 'URL' columns")
+    return df[['query', 'Clicks', 'URL']].dropna()
 
-def vectorize_pages(contents, model):
-    """Converts page content into vector embeddings using a transformer model."""
-    embeddings = model.encode(contents, convert_to_numpy=True)
-    return embeddings
+def vectorize_queries(queries, model):
+    return model.encode(queries, convert_to_numpy=True)
 
-def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using PCA."""
-    pca = PCA(n_components=n_components)
-    reduced_embeddings = pca.fit_transform(embeddings)
-    return reduced_embeddings
-
-def cluster_embeddings(embeddings, n_clusters=5):
-    """Clusters embeddings using KMeans."""
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+def cluster_queries(embeddings, num_clusters=5):
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
     labels = kmeans.fit_predict(embeddings)
     return labels
 
-def plot_embeddings(embeddings, labels):
-    """Creates a clustered scatter plot of the embeddings."""
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.scatterplot(
-        x=embeddings[:, 0],
-        y=embeddings[:, 1],
-        hue=labels,
-        palette='viridis',
-        alpha=0.6,
-        ax=ax
-    )
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clustered Semantic Clustering of Website Pages")
-    ax.legend(title="Clusters")
-    return fig
-
-def semantic_clustering_page():
-    st.header("Site Focus Visualizer")
-    st.markdown(
-        """
-        Upload your Screaming Frog CSV file containing your website's embeddings.
-        The CSV must include **URL** and **Content** columns.
-        """
-    )
+def get_cluster_labels(queries, labels):
+    cluster_labels = {}
+    df_clusters = pd.DataFrame({'query': queries, 'cluster': labels})
     
-    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+    for cluster in set(labels):
+        cluster_queries = df_clusters[df_clusters['cluster'] == cluster]['query']
+        words = " ".join(cluster_queries).split()
+        common_words = Counter(words).most_common(3)  # Get top 3 words
+        cluster_labels[cluster] = " ".join([word[0] for word in common_words])
     
-    if uploaded_file is not None:
-        try:
-            data = load_data(uploaded_file)
-        except Exception as e:
-            st.error(f"Error: {e}")
-            return
+    return cluster_labels
 
-        st.write("Data loaded successfully. Here is a preview:")
-        st.dataframe(data.head())
-        
-        # Load the transformer model (cached)
-        model = load_sentence_transformer()
-        
-        with st.spinner("Vectorizing page content..."):
-            embeddings = vectorize_pages(data['Content'].tolist(), model)
-        
-        with st.spinner("Reducing dimensions using PCA..."):
-            reduced_embeddings = reduce_dimensions(embeddings)
-        
-        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
-        with st.spinner("Clustering embeddings..."):
-            labels = cluster_embeddings(reduced_embeddings, n_clusters)
-        
-        st.success("Clustering complete!")
-        
-        fig = plot_embeddings(reduced_embeddings, labels)
-        st.pyplot(fig)
+def plot_clusters(embeddings, labels, clicks, queries, urls):
+    pca = PCA(n_components=2)
+    reduced_embeddings = pca.fit_transform(embeddings)
+    df_plot = pd.DataFrame(reduced_embeddings, columns=['x', 'y'])
+    df_plot['cluster'] = labels
+    df_plot['Clicks'] = clicks
+    df_plot['query'] = queries
+    df_plot['URL'] = urls
+    
+    cluster_labels = get_cluster_labels(queries, labels)
+    
+    plt.figure(figsize=(10, 6))
+    scatter = plt.scatter(df_plot['x'], df_plot['y'], c=df_plot['cluster'], cmap='viridis', alpha=0.7, s=df_plot['Clicks'])
+    
+    for cluster in set(labels):
+        cluster_points = df_plot[df_plot['cluster'] == cluster]
+        if not cluster_points.empty:
+            centroid_x = cluster_points['x'].mean()
+            centroid_y = cluster_points['y'].mean()
+            plt.text(centroid_x, centroid_y, cluster_labels[cluster], fontsize=12, ha='center', fontweight='bold', color='black')
+    
+    plt.colorbar(scatter, label='Cluster')
+    plt.title("Weighted Clustered Scatterplot of Search Queries with Labels")
+    plt.xlabel("PCA Component 1")
+    plt.ylabel("PCA Component 2")
+    plt.show()
+    
+    # Display cluster tables
+    for cluster in set(labels):
+        st.subheader(f"Cluster {cluster}: {cluster_labels[cluster]}")
+        cluster_data = df_plot[df_plot['cluster'] == cluster][['query', 'URL', 'Clicks']]
+        st.dataframe(cluster_data)
+
+def main(csv_file, num_clusters=5):
+    df = load_queries(csv_file)
+    queries = df['query'].tolist()
+    clicks = df['Clicks'].tolist()
+    urls = df['URL'].tolist()
+    
+    model = load_sentence_transformer()
+    embeddings = vectorize_queries(queries, model)
+    labels = cluster_queries(embeddings, num_clusters)
+    plot_clusters(embeddings, labels, clicks, queries, urls)
+
+if __name__ == "__main__":
+    csv_file = "gsc_queries.csv"  # Replace with your file name
+    main(csv_file, num_clusters=5)
 
 
 
