@@ -2234,6 +2234,11 @@ def semantic_clustering_page():
         
         fig = plot_embeddings(reduced_embeddings, labels)
         st.pyplot(fig)
+        
+        # --- New: Display data table with URLs for each cluster ---
+        data["Cluster"] = labels
+        st.markdown("### Clustered URLs by Cluster")
+        st.dataframe(data[["URL", "Cluster"]].sort_values("Cluster"))
 
 
 
