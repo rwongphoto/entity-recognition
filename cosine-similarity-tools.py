@@ -54,6 +54,8 @@ from transformers import pipeline
 
 import seaborn as sns
 
+import umap
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -254,6 +256,15 @@ def create_navigation_menu(logo_url):
         menu_html += f"<a href='{value}' target='_blank'>{key}</a>"
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
+
+# --------------------------
+# Updated: Dimension Reduction Function using UMAP
+# --------------------------
+def reduce_dimensions(embeddings, n_components=2):
+    """Reduces vector dimensionality using UMAP instead of PCA."""
+    reducer = umap.UMAP(n_components=n_components, random_state=42)
+    reduced_embeddings = reducer.fit_transform(embeddings)
+    return reduced_embeddings
 
 # --------------------------------------------------
 # NEW: Load BERT-based NER pipeline (using dslim/bert-base-NER)
@@ -2147,55 +2158,9 @@ def google_search_console_analysis_page():
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
 
-# ------------------------------------
-# NEW TOOL: Vector Embeddings Scatterplot
-# ------------------------------------
-# Cache the SentenceTransformer model so it loads only once
-@st.cache_resource
-def load_sentence_transformer(model_name='all-MiniLM-L6-v2'):
-    return SentenceTransformer(model_name)
-
-def load_data(file):
-    """Loads Screaming Frog crawl data from an uploaded CSV file."""
-    df = pd.read_csv(file)
-    if 'URL' not in df.columns or 'Content' not in df.columns:
-        raise ValueError("CSV must contain 'URL' and 'Content' columns.")
-    return df[['URL', 'Content']]
-
-def vectorize_pages(contents, model):
-    """Converts page content into vector embeddings using a transformer model."""
-    embeddings = model.encode(contents, convert_to_numpy=True)
-    return embeddings
-
-def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using PCA."""
-    pca = PCA(n_components=n_components)
-    reduced_embeddings = pca.fit_transform(embeddings)
-    return reduced_embeddings
-
-def cluster_embeddings(embeddings, n_clusters=5):
-    """Clusters embeddings using KMeans."""
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    labels = kmeans.fit_predict(embeddings)
-    return labels
-
-def plot_embeddings(embeddings, labels):
-    """Creates a clustered scatter plot of the embeddings."""
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.scatterplot(
-        x=embeddings[:, 0],
-        y=embeddings[:, 1],
-        hue=labels,
-        palette='viridis',
-        alpha=0.6,
-        ax=ax
-    )
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clustered Semantic Clustering of Website Pages")
-    ax.legend(title="Clusters")
-    return fig
-
+# --------------------------
+# Updated: Site Focus Visualizer Tool (semantic_clustering_page)
+# --------------------------
 def semantic_clustering_page():
     st.header("Site Focus Visualizer")
     st.markdown(
@@ -2223,7 +2188,7 @@ def semantic_clustering_page():
         with st.spinner("Vectorizing page content..."):
             embeddings = vectorize_pages(data['Content'].tolist(), model)
         
-        with st.spinner("Reducing dimensions using PCA..."):
+        with st.spinner("Reducing dimensions using UMAP..."):
             reduced_embeddings = reduce_dimensions(embeddings)
         
         n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
