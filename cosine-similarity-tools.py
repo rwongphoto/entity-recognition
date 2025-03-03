@@ -2150,7 +2150,6 @@ def load_data(file):
         raise ValueError("CSV must contain 'URL' and 'Content' columns.")
     return df[['URL', 'Content']]
 
-@st.cache_resource
 def vectorize_pages(contents, model):
     """Converts page content into vector embeddings using a transformer model."""
     embeddings = model.encode(contents, convert_to_numpy=True)
