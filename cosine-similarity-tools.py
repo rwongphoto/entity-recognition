@@ -2150,6 +2150,7 @@ def load_data(file):
         raise ValueError("CSV must contain 'URL' and 'Content' columns.")
     return df[['URL', 'Content']]
 
+@st.cache_resource
 def vectorize_pages(contents, model):
     """Converts page content into vector embeddings using a transformer model."""
     embeddings = model.encode(contents, convert_to_numpy=True)
@@ -2226,7 +2227,7 @@ def semantic_clustering_page():
         with st.spinner("Reducing dimensions using UMAP..."):
             reduced_embeddings = reduce_dimensions(embeddings)
         
-        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=10, step=1)
+        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
         with st.spinner("Clustering embeddings..."):
             labels = cluster_embeddings(reduced_embeddings, n_clusters)
         
