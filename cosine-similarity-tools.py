@@ -54,6 +54,10 @@ from transformers import pipeline
 
 import seaborn as sns
 
+from bertopic import BERTopic
+from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, TextGeneration
+from umap import UMAP  # Import UMAP
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -2150,50 +2154,51 @@ def google_search_console_analysis_page():
 # ------------------------------------
 # NEW TOOL: Vector Embeddings Scatterplot
 # ------------------------------------
-# Cache the SentenceTransformer model so it loads only once
-@st.cache_resource
-def load_sentence_transformer(model_name='all-MiniLM-L6-v2'):
-    return SentenceTransformer(model_name)
-
-def load_data(file):
-    """Loads Screaming Frog crawl data from an uploaded CSV file."""
-    df = pd.read_csv(file)
-    if 'URL' not in df.columns or 'Content' not in df.columns:
+@st.cache_data
+def load_data(uploaded_file):
+    data = pd.read_csv(uploaded_file)
+    if 'Address' in data.columns:
+        data = data.rename(columns={'Address': 'URL'})  # Rename Address to URL
+    if not {'URL', 'Content'}.issubset(data.columns):
         raise ValueError("CSV must contain 'URL' and 'Content' columns.")
-    return df[['URL', 'Content']]
+    data = data[['URL', 'Content']].dropna().drop_duplicates().reset_index(drop=True)  # Drop rows with missing values, duplicates, and reset index
+    return data
 
-def vectorize_pages(contents, model):
-    """Converts page content into vector embeddings using a transformer model."""
-    embeddings = model.encode(contents, convert_to_numpy=True)
-    return embeddings
 
-def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using PCA."""
-    pca = PCA(n_components=n_components)
-    reduced_embeddings = pca.fit_transform(embeddings)
-    return reduced_embeddings
+@st.cache_resource
+def load_sentence_transformer():
+    return SentenceTransformer('all-MiniLM-L6-v2')
 
-def cluster_embeddings(embeddings, n_clusters=5):
-    """Clusters embeddings using KMeans."""
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    labels = kmeans.fit_predict(embeddings)
+
+def vectorize_pages(content_list, model):
+    return model.encode(content_list)
+
+
+def reduce_dimensions(embeddings, method='pca'):  # Added method parameter
+    if method == 'pca':
+        pca = PCA(n_components=2)
+        reduced_embeddings = pca.fit_transform(embeddings)
+        return reduced_embeddings
+    elif method == 'umap': #Added UMAP option
+        umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.0, metric='cosine', random_state=42)
+        reduced_embeddings = umap_model.fit_transform(embeddings)
+        return reduced_embeddings
+    else:
+        raise ValueError("Invalid dimension reduction method. Choose 'pca' or 'umap'.")
+
+
+def cluster_embeddings(reduced_embeddings, n_clusters):
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) #Added n_init
+    labels = kmeans.fit_predict(reduced_embeddings)
     return labels
 
-def plot_embeddings(embeddings, labels):
-    """Creates a clustered scatter plot of the embeddings."""
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.scatterplot(
-        x=embeddings[:, 0],
-        y=embeddings[:, 1],
-        hue=labels,
-        palette='viridis',
-        alpha=0.6,
-        ax=ax
-    )
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clustered Semantic Clustering of Website Pages")
-    ax.legend(title="Clusters")
+
+def plot_embeddings(reduced_embeddings, labels):
+    fig, ax = plt.subplots()
+    ax.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], c=labels, cmap='viridis')
+    ax.set_title("Semantic Clustering of Website Content")
+    ax.set_xlabel("Dimension 1")
+    ax.set_ylabel("Dimension 2")
     return fig
 
 def semantic_clustering_page():
@@ -2223,8 +2228,11 @@ def semantic_clustering_page():
         with st.spinner("Vectorizing page content..."):
             embeddings = vectorize_pages(data['Content'].tolist(), model)
         
-        with st.spinner("Reducing dimensions using PCA..."):
-            reduced_embeddings = reduce_dimensions(embeddings)
+        # --- Choose Dimension Reduction Method ---
+        reduction_method = st.radio("Select dimension reduction method:", ('pca', 'umap'), horizontal=True) #Horizontal layout
+
+        with st.spinner(f"Reducing dimensions using {reduction_method.upper()}..."):
+            reduced_embeddings = reduce_dimensions(embeddings, method=reduction_method)
         
         n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
         with st.spinner("Clustering embeddings..."):
@@ -2235,10 +2243,53 @@ def semantic_clustering_page():
         fig = plot_embeddings(reduced_embeddings, labels)
         st.pyplot(fig)
         
-        # --- New: Display data table with URLs for each cluster ---
-        data["Cluster"] = labels
-        st.markdown("### Clustered URLs by Cluster")
-        st.dataframe(data[["URL", "Cluster"]].sort_values("Cluster"))
+        # --- BERTopic Labeling ---
+        with st.spinner("Generating cluster labels with BERTopic..."):
+            # Prepare data for BERTopic (list of documents)
+            docs = data['Content'].tolist()
+            
+            # You can choose different representation models
+            # For example, KeyBERTInspired for keyword-based labels
+            # Or MaximalMarginalRelevance for more diverse keywords
+            representation_model = KeyBERTInspired()  # Or MaximalMarginalRelevance(diversity=0.5)
+
+            # --- BERTopic Model ---
+            topic_model = BERTopic(
+                embedding_model=model,  # Use the same SentenceTransformer
+                umap_model=UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric='cosine', random_state=42), #Consistent UMAP settings
+                nr_topics=n_clusters,      # Set number of topics to match KMeans
+                top_n_words=10,          # Number of top words per topic
+                calculate_probabilities=False,  # We don't need probabilities here
+                verbose=False,               # Reduce verbosity
+                representation_model=representation_model,  # Set representation model
+
+            )
+            
+            # Fit BERTopic and get topic labels (we're using the pre-calculated embeddings)
+            topics, _ = topic_model.fit_transform(docs, embeddings=embeddings)
+            
+            # Get topic names
+            topic_names = topic_model.generate_topic_labels(nr_words=5, topic_prefix=False, separator=", ")
+            topic_names_dict = {i: name for i, name in enumerate(topic_names)}
+
+
+            # Map KMeans cluster labels to BERTopic labels
+            #  IMPORTANT:  We're assuming a direct mapping between KMeans clusters and BERTopic topics.
+            #              This might not always be perfect, but it's a reasonable approximation
+            #              for getting representative labels.  A more robust approach would involve
+            #              finding the closest BERTopic topic for each KMeans cluster centroid.
+            cluster_labels = [topic_names_dict[topic] if topic != -1 else "Outliers" for topic in topics]
+           
+
+        # --- Display data table with URLs and BERTopic labels ---
+        data["Cluster"] = labels  # Keep original KMeans cluster numbers
+        data["Topic Label"] = cluster_labels  # Add BERTopic labels
+        st.markdown("### Clustered URLs by Cluster and Topic Label")
+        st.dataframe(data[["URL", "Cluster", "Topic Label"]].sort_values("Cluster"))
+
+        # --- Optional: Show BERTopic's topic info (for advanced users) ---
+        with st.expander("Show BERTopic Topic Information (Advanced)"):
+            st.write(topic_model.get_topic_info())
 
 
 
