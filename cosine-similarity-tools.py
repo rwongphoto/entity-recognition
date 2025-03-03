@@ -54,6 +54,7 @@ from transformers import pipeline
 
 import seaborn as sns
 
+# NEW IMPORT: Import UMAP for dimension reduction
 import umap
 
 # ------------------------------------
@@ -257,15 +258,6 @@ def create_navigation_menu(logo_url):
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
 
-# --------------------------
-# Updated: Dimension Reduction Function using UMAP
-# --------------------------
-def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using UMAP instead of PCA."""
-    reducer = umap.UMAP(n_components=n_components, random_state=42)
-    reduced_embeddings = reducer.fit_transform(embeddings)
-    return reduced_embeddings
-
 # --------------------------------------------------
 # NEW: Load BERT-based NER pipeline (using dslim/bert-base-NER)
 # --------------------------------------------------
@@ -453,7 +445,6 @@ def get_wikidata_link(entity_name: str) -> str:
     except Exception as e:
         st.error(f"Error querying Wikidata for '{entity_name}': {e}")
     return None
-
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -1015,10 +1006,6 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
-
-
-
-
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
@@ -1816,10 +1803,6 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
-# ------------------------------------
-# NEW TOOL: GSC Analyzer
-# ------------------------------------
-
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -1982,12 +1965,6 @@ def google_search_console_analysis_page():
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             # --- End define format_dict_merged ---
-
-            # Step 4: Topic Classification using LDA
-            st.markdown("### Topic Classification and Combined Data")
-            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
-            # ... (rest of Step 4 and subsequent steps) ...
-
 
             # Step 4: Topic Classification using LDA
             st.markdown("### Topic Classification and Combined Data")
@@ -2158,9 +2135,9 @@ def google_search_console_analysis_page():
     else:
         st.info("Please upload both GSC CSV files to start the analysis.")
 
-# --------------------------
-# Updated: Site Focus Visualizer Tool (semantic_clustering_page)
-# --------------------------
+# ------------------------------------
+# NEW TOOL: Vector Embeddings Scatterplot
+# ------------------------------------
 # Cache the SentenceTransformer model so it loads only once
 @st.cache_resource
 def load_sentence_transformer(model_name='all-MiniLM-L6-v2'):
@@ -2178,10 +2155,13 @@ def vectorize_pages(contents, model):
     embeddings = model.encode(contents, convert_to_numpy=True)
     return embeddings
 
+# --------------------------
+# Updated: Dimension Reduction Function using UMAP instead of PCA
+# --------------------------
 def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using PCA."""
-    pca = PCA(n_components=n_components)
-    reduced_embeddings = pca.fit_transform(embeddings)
+    """Reduces vector dimensionality using UMAP instead of PCA."""
+    reducer = umap.UMAP(n_components=n_components, random_state=42)
+    reduced_embeddings = reducer.fit_transform(embeddings)
     return reduced_embeddings
 
 def cluster_embeddings(embeddings, n_clusters=5):
@@ -2245,8 +2225,6 @@ def semantic_clustering_page():
         
         fig = plot_embeddings(reduced_embeddings, labels)
         st.pyplot(fig)
-
-
 
 # ------------------------------------
 # Main Streamlit App
@@ -2323,6 +2301,7 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
 
 
 
