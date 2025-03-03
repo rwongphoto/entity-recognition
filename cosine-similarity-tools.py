@@ -54,6 +54,8 @@ from transformers import pipeline
 
 import seaborn as sns
 
+from bertopic import BERTopic
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -2197,11 +2199,12 @@ def plot_embeddings(embeddings, labels):
     return fig
 
 def semantic_clustering_page():
-    st.header("Site Focus Visualizer")
+    st.header("Site Focus Visualizer (Using BERTopic)")
     st.markdown(
         """
-        Upload your Screaming Frog CSV file containing your website's embeddings.
+        Upload your Screaming Frog CSV file containing your website's page content.
         The CSV must include **URL** and **Content** columns.
+        BERTopic will extract topics and display an interactive scatterplot of the topics.
         """
     )
     
@@ -2219,21 +2222,27 @@ def semantic_clustering_page():
         
         # Load the transformer model (cached)
         model = load_sentence_transformer()
+        docs = data['Content'].tolist()
         
         with st.spinner("Vectorizing page content..."):
-            embeddings = vectorize_pages(data['Content'].tolist(), model)
+            embeddings = vectorize_pages(docs, model)
         
-        with st.spinner("Reducing dimensions using PCA..."):
-            reduced_embeddings = reduce_dimensions(embeddings)
+        # Use BERTopic for topic modeling
+        with st.spinner("Extracting topics using BERTopic..."):
+            topic_model = BERTopic(verbose=True)
+            topics, probs = topic_model.fit_transform(docs, embeddings)
         
-        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
-        with st.spinner("Clustering embeddings..."):
-            labels = cluster_embeddings(reduced_embeddings, n_clusters)
+        st.success("Topic extraction complete!")
         
-        st.success("Clustering complete!")
+        # Visualize topics using BERTopic's built-in scatterplot visualization
+        st.markdown("### Topics Scatterplot")
+        fig = topic_model.visualize_topics()
+        st.plotly_chart(fig)
         
-        fig = plot_embeddings(reduced_embeddings, labels)
-        st.pyplot(fig)
+        # Optionally, display topic information in a table
+        st.markdown("### Topic Information")
+        topic_info = topic_model.get_topic_info()
+        st.dataframe(topic_info)
 
 
 
