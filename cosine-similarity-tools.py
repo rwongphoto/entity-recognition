@@ -2170,21 +2170,27 @@ def cluster_embeddings(embeddings, n_clusters=5):
     labels = kmeans.fit_predict(embeddings)
     return labels
 
-def plot_embeddings(embeddings, labels):
-    """Creates a clustered scatter plot of the embeddings."""
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.scatterplot(
-        x=embeddings[:, 0],
-        y=embeddings[:, 1],
-        hue=labels,
-        palette='viridis',
-        alpha=0.6,
-        ax=ax
+def plot_embeddings_interactive(embeddings, labels, urls):
+    """
+    Creates an interactive UMAP scatter plot using Plotly Express.
+    Hovering over a point displays the corresponding URL.
+    """
+    # Create a DataFrame with the coordinates, cluster labels, and URLs
+    df_plot = pd.DataFrame({
+        "x": embeddings[:, 0],
+        "y": embeddings[:, 1],
+        "Cluster": [f"Cluster {label}" for label in labels],
+        "URL": urls
+    })
+    # Create an interactive scatter plot
+    fig = px.scatter(
+        df_plot,
+        x="x",
+        y="y",
+        color="Cluster",
+        hover_data=["URL"],
+        title="Interactive UMAP Scatterplot of Website Pages"
     )
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clustered Semantic Clustering of Website Pages")
-    ax.legend(title="Clusters")
     return fig
 
 def semantic_clustering_page():
@@ -2208,6 +2214,9 @@ def semantic_clustering_page():
         st.write("Data loaded successfully. Here is a preview:")
         st.dataframe(data.head())
         
+        # Extract the URLs for use in the interactive plot
+        urls = data['URL'].tolist()
+        
         # Load the transformer model (cached)
         model = load_sentence_transformer()
         
@@ -2217,14 +2226,15 @@ def semantic_clustering_page():
         with st.spinner("Reducing dimensions using UMAP..."):
             reduced_embeddings = reduce_dimensions(embeddings)
         
-        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
+        n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=10, step=1)
         with st.spinner("Clustering embeddings..."):
             labels = cluster_embeddings(reduced_embeddings, n_clusters)
         
         st.success("Clustering complete!")
         
-        fig = plot_embeddings(reduced_embeddings, labels)
-        st.pyplot(fig)
+        # Use the interactive Plotly function
+        fig = plot_embeddings_interactive(reduced_embeddings, labels, urls)
+        st.plotly_chart(fig)
 
 # ------------------------------------
 # Main Streamlit App
