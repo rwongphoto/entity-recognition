@@ -54,6 +54,9 @@ from transformers import pipeline
 
 import seaborn as sns
 
+# NEW IMPORT: Import UMAP for dimension reduction
+import umap
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -442,7 +445,6 @@ def get_wikidata_link(entity_name: str) -> str:
     except Exception as e:
         st.error(f"Error querying Wikidata for '{entity_name}': {e}")
     return None
-
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -1004,10 +1006,6 @@ def entity_analysis_page():
                         st.write(f"- {entity} ({label}): {count}")
                 else:
                     st.write("No relevant entities found.")
-
-
-
-
 
 def displacy_visualization_page():
     st.header("Entity Visualizer")
@@ -1805,10 +1803,6 @@ def google_ads_search_term_analyzer_page():
 # NEW TOOL: GSC Analyzer
 # ------------------------------------
 
-# ------------------------------------
-# NEW TOOL: GSC Analyzer
-# ------------------------------------
-
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -1971,12 +1965,6 @@ def google_search_console_analysis_page():
             if "CTR_YOY_pct" in merged_df.columns:
                 format_dict_merged["CTR_YOY_pct"] = "{:.2f}%"
             # --- End define format_dict_merged ---
-
-            # Step 4: Topic Classification using LDA
-            st.markdown("### Topic Classification and Combined Data")
-            st.markdown("Here is the original merged data table with added topic labels for each search query.") # Added description
-            # ... (rest of Step 4 and subsequent steps) ...
-
 
             # Step 4: Topic Classification using LDA
             st.markdown("### Topic Classification and Combined Data")
@@ -2167,10 +2155,13 @@ def vectorize_pages(contents, model):
     embeddings = model.encode(contents, convert_to_numpy=True)
     return embeddings
 
+# --------------------------
+# Updated: Dimension Reduction Function using UMAP instead of PCA
+# --------------------------
 def reduce_dimensions(embeddings, n_components=2):
-    """Reduces vector dimensionality using PCA."""
-    pca = PCA(n_components=n_components)
-    reduced_embeddings = pca.fit_transform(embeddings)
+    """Reduces vector dimensionality using UMAP instead of PCA."""
+    reducer = umap.UMAP(n_components=n_components, random_state=42)
+    reduced_embeddings = reducer.fit_transform(embeddings)
     return reduced_embeddings
 
 def cluster_embeddings(embeddings, n_clusters=5):
@@ -2179,21 +2170,27 @@ def cluster_embeddings(embeddings, n_clusters=5):
     labels = kmeans.fit_predict(embeddings)
     return labels
 
-def plot_embeddings(embeddings, labels):
-    """Creates a clustered scatter plot of the embeddings."""
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.scatterplot(
-        x=embeddings[:, 0],
-        y=embeddings[:, 1],
-        hue=labels,
-        palette='viridis',
-        alpha=0.6,
-        ax=ax
+def plot_embeddings_interactive(embeddings, labels, urls):
+    """
+    Creates an interactive UMAP scatter plot using Plotly Express.
+    Hovering over a point displays the corresponding URL.
+    """
+    # Create a DataFrame with the coordinates, cluster labels, and URLs
+    df_plot = pd.DataFrame({
+        "x": embeddings[:, 0],
+        "y": embeddings[:, 1],
+        "Cluster": [f"Cluster {label}" for label in labels],
+        "URL": urls
+    })
+    # Create an interactive scatter plot
+    fig = px.scatter(
+        df_plot,
+        x="x",
+        y="y",
+        color="Cluster",
+        hover_data=["URL"],
+        title="Interactive UMAP Scatterplot of Website Pages"
     )
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clustered Semantic Clustering of Website Pages")
-    ax.legend(title="Clusters")
     return fig
 
 def semantic_clustering_page():
@@ -2217,13 +2214,16 @@ def semantic_clustering_page():
         st.write("Data loaded successfully. Here is a preview:")
         st.dataframe(data.head())
         
+        # Extract the URLs for use in the interactive plot
+        urls = data['URL'].tolist()
+        
         # Load the transformer model (cached)
         model = load_sentence_transformer()
         
         with st.spinner("Vectorizing page content..."):
             embeddings = vectorize_pages(data['Content'].tolist(), model)
         
-        with st.spinner("Reducing dimensions using PCA..."):
+        with st.spinner("Reducing dimensions using UMAP..."):
             reduced_embeddings = reduce_dimensions(embeddings)
         
         n_clusters = st.number_input("Select number of clusters:", min_value=2, max_value=20, value=5, step=1)
@@ -2232,10 +2232,9 @@ def semantic_clustering_page():
         
         st.success("Clustering complete!")
         
-        fig = plot_embeddings(reduced_embeddings, labels)
-        st.pyplot(fig)
-
-
+        # Use the interactive Plotly function
+        fig = plot_embeddings_interactive(reduced_embeddings, labels, urls)
+        st.plotly_chart(fig)
 
 # ------------------------------------
 # Main Streamlit App
@@ -2312,6 +2311,7 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
+
 
 
 
