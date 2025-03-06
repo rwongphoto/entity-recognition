@@ -96,23 +96,20 @@ def get_random_user_agent():
 
 @st.cache_resource
 def load_spacy_model():
-    try:
-        nlp = spacy.load("en_core_web_md")
-        print("spaCy model loaded successfully")
-        return nlp  # Return the loaded model directly
-    except OSError:
-        print("Downloading en_core_web_md model...")
+    global nlp
+    if nlp is None:
         try:
+            nlp = spacy.load("en_core_web_md")
+            print("spaCy model loaded successfully")
+        except OSError:
+            print("Downloading en_core_web_md model...")
             spacy.cli.download("en_core_web_md")
             nlp = spacy.load("en_core_web_md")
             print("en_core_web_md downloaded and loaded")
-            return nlp  # Return the loaded model
         except Exception as e:
-            st.error(f"Failed to download and load spaCy model: {e}")
-            st.stop()  # Stop execution if model loading fails
-    except Exception as e:
-        st.error(f"Failed to load spaCy model: {e}")
-        st.stop()  # Stop execution on any other error
+            st.error(f"Failed to load spaCy model: {e}")
+            return None
+    return nlp
 
 @st.cache_resource
 def initialize_sentence_transformer():
@@ -448,56 +445,6 @@ def get_wikidata_link(entity_name: str) -> str:
     except Exception as e:
         st.error(f"Error querying Wikidata for '{entity_name}': {e}")
     return None
-
-# ------------------------------------
-# NEW: Helper function Vector Arithmetic
-# ------------------------------------
-
-def word_vector_arithmetic(model, word1, word2, operation='+'):
-    """ (Same as before) """
-    try:
-        vec1 = model.get_vector(word1)
-        vec2 = model.get_vector(word2)
-    except KeyError as e:
-        st.error(f"Word not in vocabulary: {e}")
-        return None
-
-    if operation == '+':
-        new_vector = vec1 + vec2
-    elif operation == '-':
-        new_vector = vec1 - vec2
-    else:
-        raise ValueError("Invalid operation.  Must be '+' or '-'.")
-
-    return new_vector
-
-def find_similar_words(model, vector, top_n=10):
-    """(Same as before)"""
-    if not hasattr(model, 'vocab'):
-        st.error("The provided model does not have a vocab attribute, and is likely not a spaCy model.")
-        return []
-
-    similar_words = model.vocab.vectors.most_similar(
-        np.asarray([vector]),  # Pass the vector as a NumPy array
-        n=top_n
-    )
-    words = [model.vocab.strings[w] for w in similar_words[0][0]]
-    scores = similar_words[2][0]  # Access the scores correctly
-    return list(zip(words, scores))
-
-
-def preprocess_text(text, nlp_model):
-    """(Keep your existing preprocessing function)"""
-    doc = nlp_model(text)
-    lemmatized_tokens = [token.lemma_ for token in doc if not token.is_punct and not token.is_space and not token.is_stop]
-    return " ".join(lemmatized_tokens)
-# --- New: Function to Get Related Words from a Topic ---
-
-def get_related_words_from_topic(model, topic_vector, top_n=10):
-    """
-    Finds words most related to a given *topic vector* (from LDA).
-    """
-    return find_similar_words(model, topic_vector, top_n)  # Reuses the efficient function
 
 # ------------------------------------
 # Streamlit UI Functions
@@ -2289,123 +2236,6 @@ def semantic_clustering_page():
         fig = plot_embeddings_interactive(reduced_embeddings, labels, urls)
         st.plotly_chart(fig)
 
-# --------------------------
-# Updated: Content Idea Generator
-# --------------------------
-
-def advanced_content_idea_generator_page():
-    st.header("Advanced Content Idea Generator")
-    st.markdown("""
-        This tool uses a combination of techniques to generate content ideas:
-        1.  **Topic Modeling (LDA):**  Discovers underlying topics in a text corpus (e.g., competitor content).
-        2.  **Word Vector Arithmetic:** Combines the vectors of words (e.g., "sustainability" + "innovation").
-        3.  **Synonym/Related Word Finding:**  Finds similar words to a given word or topic vector.
-    """)
-
-    # --- Input: Competitor URLs or Text ---
-    source_option = st.radio("Select Content Source:", ["Competitor URLs", "Paste Text"])
-
-    if source_option == "Competitor URLs":
-        urls_input = st.text_area("Enter Competitor URLs (one per line):")
-        competitor_urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-    else:  # Paste Text
-        text_input = st.text_area("Paste Competitor Content (separated by '---' if multiple):", height=200)
-        competitor_texts = [t.strip() for t in text_input.split("---") if t.strip()]
-
-    # --- LDA Settings ---
-    num_topics = st.slider("Number of Topics for LDA:", min_value=2, max_value=10, value=5)
-    top_n_words = st.slider("Number of Top Words per Topic:", min_value=5, max_value=20, value=10)
-
-    nlp_model = load_spacy_model()  # Load spaCy model
-    # No longer needed because load_spacy_model now handles errors
-    # if nlp_model is None:
-    #     return
-
-
-    if st.button("Generate Ideas"):
-        if source_option == "Competitor URLs" and not competitor_urls:
-            st.warning("Please enter at least one URL.")
-            return
-        if source_option == "Paste Text" and not competitor_texts:
-            st.warning("Please enter some text.")
-            return
-
-        # --- 1. Get and Preprocess Text ---
-        if source_option == "Competitor URLs":
-            with st.spinner("Extracting text from URLs..."):
-                texts = []
-                for url in competitor_urls:
-                    text = extract_text_from_url(url)  # Use your existing function
-                    if text:
-                        texts.append(preprocess_text(text, nlp_model))
-        else:
-            texts = [preprocess_text(text, nlp_model) for text in competitor_texts]
-
-
-        # --- 2. Topic Modeling (LDA) ---
-        with st.spinner("Performing Topic Modeling..."):
-            # --- ADDED CONDITIONAL LOGIC HERE ---
-            if len(texts) == 1:
-                vectorizer = CountVectorizer(max_df=1.0, min_df=1, stop_words='english')
-            else:
-                vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
-
-            dtm = vectorizer.fit_transform(texts)
-            lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
-            lda.fit(dtm)
-            feature_names = vectorizer.get_feature_names_out()
-
-            st.subheader("Discovered Topics (LDA):")
-            topic_word_distributions = []  # Store for later use
-            for topic_idx, topic in enumerate(lda.components_):
-                top_words_idx = topic.argsort()[:-top_n_words - 1:-1]
-                top_words = [feature_names[i] for i in top_words_idx]
-                topic_word_distributions.append(top_words) #Store top words
-                st.write(f"**Topic {topic_idx + 1}:** {', '.join(top_words)}")
-
-
-        # --- 3. Related Words for Each TOPIC ---
-        st.subheader("Related Words for Each Topic:")
-        for i, topic_words in enumerate(topic_word_distributions):
-            st.write(f"**Topic {i + 1} Related Words:**")
-            # Create a combined topic vector (average of top word vectors)
-            # --- Corrected line: Use .vector ---
-            topic_vector = np.mean([nlp_model.vocab[word].vector for word in topic_words if word in nlp_model.vocab], axis=0)
-            related_words = get_related_words_from_topic(nlp_model, topic_vector, top_n=10)
-
-            for word, score in related_words:
-                st.write(f"- {word} (Similarity: {score:.4f})")
-
-
-
-        # --- 4. Word Vector Arithmetic (Interactive) ---
-        st.subheader("Word Vector Arithmetic")
-        word1 = st.text_input("Enter first word:", "sustainability", key="word1").lower()
-        word2 = st.text_input("Enter second word:", "technology", key="word2").lower()
-        operation = st.radio("Select operation:", ["+", "-"], key="op")
-        if st.button("Calculate and Find Similar"):
-            new_vector = word_vector_arithmetic(nlp_model, word1, word2, operation)
-            if new_vector is not None:
-                similar_words = find_similar_words(nlp_model, new_vector)
-                st.write("Similar Words:")
-                for word, score in similar_words:
-                    st.write(f"- {word} (Similarity: {score:.4f})")
-
-        # --- 5. Synonym Finder (Interactive) ---
-        st.subheader("Synonym Finder")
-        word = st.text_input("Enter word to find synonyms for:", "sustainable", key="syn_word").lower()
-        if st.button("Find Synonyms"):
-            try:
-                # --- Corrected line: Use .vector ---
-                word_vector = nlp_model.vocab[word].vector
-                synonyms = find_similar_words(nlp_model, word_vector)  # Use word vector
-                st.write("Synonyms:")
-                for syn, score in synonyms:
-                    st.write(f"- {syn} (Similarity: {score:.4f})")
-            except KeyError:
-                st.error(f"'{word}' is not in the model's vocabulary.")
-
-
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
@@ -2442,8 +2272,7 @@ def main():
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
         "Google Search Console Analyzer",
-        "Site Focus Visualizer",
-        "Advanced Content Idea Generator"  # Add the new tool here
+        "Site Focus Visualizer"  # New option added here
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2473,8 +2302,6 @@ def main():
         google_search_console_analysis_page()
     elif tool == "Site Focus Visualizer":
         semantic_clustering_page()
-    elif tool == "Advanced Content Idea Generator":
-        advanced_content_idea_generator_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
@@ -2484,12 +2311,5 @@ if __name__ == "__main__":
     nltk.download('stopwords')
     nltk.download('wordnet')
     main()
-
-
-
-
-
-
-
 
 
