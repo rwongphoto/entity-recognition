@@ -2294,9 +2294,9 @@ def advanced_content_idea_generator_page():
     st.header("Advanced Content Idea Generator")
     st.markdown("""
         This tool uses a combination of techniques to generate content ideas:
-        1. **Topic Modeling (LDA):**  Discovers underlying topics in a text corpus (e.g., competitor content).
-        2. **Word Vector Arithmetic:** Combines the vectors of words (e.g., "sustainability" + "innovation").
-        3. **Synonym/Related Word Finding:**  Finds similar words to a given word or topic vector.
+        1.  **Topic Modeling (LDA):**  Discovers underlying topics in a text corpus (e.g., competitor content).
+        2.  **Word Vector Arithmetic:** Combines the vectors of words (e.g., "sustainability" + "innovation").
+        3.  **Synonym/Related Word Finding:**  Finds similar words to a given word or topic vector.
     """)
 
     # --- Input: Competitor URLs or Text ---
@@ -2340,7 +2340,12 @@ def advanced_content_idea_generator_page():
 
         # --- 2. Topic Modeling (LDA) ---
         with st.spinner("Performing Topic Modeling..."):
-            vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
+            # --- ADDED CONDITIONAL LOGIC HERE ---
+            if len(texts) == 1:
+                vectorizer = CountVectorizer(max_df=1.0, min_df=1, stop_words='english')
+            else:
+                vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words='english')
+
             dtm = vectorizer.fit_transform(texts)
             lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
             lda.fit(dtm)
