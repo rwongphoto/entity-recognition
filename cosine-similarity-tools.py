@@ -2284,8 +2284,8 @@ def content_idea_generator_page():
         
         # --- 1. Finding Similar Words ---
         st.markdown("## 1. Finding Similar Words")
-        input_word = st.text_input("Enter a word to find similar words (default: photography):", 
-                                   value="photography", key="st_input_word")
+        input_word = st.text_input("Enter a word to find similar words:", 
+                                   value="", key="st_input_word")
         if input_word not in vocabulary:
             st.warning(f"The word '{input_word}' is not found in the extracted vocabulary. Please try a different word.")
         else:
@@ -2308,10 +2308,10 @@ def content_idea_generator_page():
         
         # --- 2. Word Vector Arithmetic ---
         st.markdown("## 2. Word Vector Arithmetic")
-        word1 = st.text_input("Enter the first word for vector arithmetic (default: gallery):", 
-                              value="gallery", key="st_word1")
-        word2 = st.text_input("Enter the second word (default: art):", 
-                              value="art", key="st_word2")
+        word1 = st.text_input("Enter the first word for vector arithmetic:", 
+                              value="", key="st_word1")
+        word2 = st.text_input("Enter the second word:", 
+                              value="", key="st_word2")
         if word1 not in vocabulary or word2 not in vocabulary:
             st.error("One or both words are not found in the vocabulary. Please choose words from the extracted vocabulary.")
         else:
@@ -2336,8 +2336,8 @@ def content_idea_generator_page():
         
         # --- 3. Phrase Analysis ---
         st.markdown("## 3. Phrase Analysis")
-        phrase_input = st.text_input("Enter a phrase for analysis (default: stunning photography):", 
-                                     value="stunning photography", key="st_phrase")
+        phrase_input = st.text_input("Enter a phrase for analysis:", 
+                                     value="", key="st_phrase")
         phrase_words = phrase_input.split()
         st.markdown("**Analyzing each word in the phrase:**")
         for word in phrase_words:
