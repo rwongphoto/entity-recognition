@@ -2398,8 +2398,7 @@ def main():
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
         "Google Search Console Analyzer",
-        "Site Focus Visualizer",  # New option added here
-        "Content Idea Generator"  # New option
+        "Site Focus Visualizer"  # New option added here
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2429,8 +2428,6 @@ def main():
         google_search_console_analysis_page()
     elif tool == "Site Focus Visualizer":
         semantic_clustering_page()
-    elif tool == "Content Idea Generator":    
-        content_idea_generator_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
