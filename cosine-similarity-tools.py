@@ -96,20 +96,23 @@ def get_random_user_agent():
 
 @st.cache_resource
 def load_spacy_model():
-    global nlp
-    if nlp is None:
+    try:
+        nlp = spacy.load("en_core_web_md")
+        print("spaCy model loaded successfully")
+        return nlp  # Return the loaded model directly
+    except OSError:
+        print("Downloading en_core_web_md model...")
         try:
-            nlp = spacy.load("en_core_web_md")
-            print("spaCy model loaded successfully")
-        except OSError:
-            print("Downloading en_core_web_md model...")
             spacy.cli.download("en_core_web_md")
             nlp = spacy.load("en_core_web_md")
             print("en_core_web_md downloaded and loaded")
+            return nlp  # Return the loaded model
         except Exception as e:
-            st.error(f"Failed to load spaCy model: {e}")
-            return None
-    return nlp
+            st.error(f"Failed to download and load spaCy model: {e}")
+            st.stop()  # Stop execution if model loading fails
+    except Exception as e:
+        st.error(f"Failed to load spaCy model: {e}")
+        st.stop()  # Stop execution on any other error
 
 @st.cache_resource
 def initialize_sentence_transformer():
