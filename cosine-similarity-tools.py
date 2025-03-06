@@ -2236,148 +2236,6 @@ def semantic_clustering_page():
         fig = plot_embeddings_interactive(reduced_embeddings, labels, urls)
         st.plotly_chart(fig)
 
-# --------------------------
-# Content Idea Generator
-# --------------------------
-def content_idea_generator_page():
-    st.header("Content Idea Generator using SentenceTransformer")
-    st.markdown(
-        "This tool extracts content from one or more URLs and uses SentenceTransformer to generate new content ideas. "
-        "Enter a main keyword to build off of—the tool will automatically rank candidate words from the combined content based on their similarity to the main keyword."
-    )
-    
-    # User must enter the main keyword (no default)
-    main_keyword = st.text_input("Enter the main keyword to build off of:")
-    
-    # Allow user to input multiple URLs (one per line) without a default URL.
-    urls_input = st.text_area("Enter URLs to analyze (one per line):")
-    urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-    
-    if st.button("Extract and Generate"):
-        combined_text = ""
-        with st.spinner("Extracting content from URLs..."):
-            for url in urls:
-                text = extract_relevant_text_from_url(url)
-                if text:
-                    combined_text += text + "\n"
-                else:
-                    st.warning(f"Content could not be extracted from {url}.")
-        
-        if not combined_text:
-            st.error("No content extracted from the provided URLs.")
-            return
-        
-        st.markdown("### Combined Extracted Content Preview")
-        st.write(combined_text[:1000] + " ...")
-        
-        # Build a vocabulary from the combined content.
-        import re
-        tokens = re.findall(r'\b\w+\b', combined_text.lower())
-        filtered_tokens = [word for word in tokens if word not in stop_words]
-        vocabulary = list(set(filtered_tokens))
-        
-        # Compute word frequencies and extract the top 20 candidate words.
-        from collections import Counter
-        word_freq = Counter(filtered_tokens)
-        candidate_words = [word for word, count in word_freq.most_common(20)]
-        st.markdown(f"Extracted vocabulary of {len(vocabulary)} unique words. Top candidate words (by frequency): {', '.join(candidate_words)}")
-        
-        # Load the SentenceTransformer model.
-        model = initialize_sentence_transformer()
-        
-        # Compute embeddings for the vocabulary.
-        with st.spinner("Computing vocabulary embeddings..."):
-            vocab_embeddings = model.encode(vocabulary, convert_to_numpy=True)
-        
-        from sklearn.metrics.pairwise import cosine_similarity
-        
-        # If a main keyword was provided, rank candidate words by similarity to it.
-        if main_keyword:
-            main_keyword_emb = model.encode(main_keyword, convert_to_numpy=True)
-            candidate_embeddings = model.encode(candidate_words, convert_to_numpy=True)
-            sim_scores = cosine_similarity([main_keyword_emb], candidate_embeddings)[0]
-            ranked_candidates = sorted(zip(candidate_words, sim_scores), key=lambda x: x[1], reverse=True)
-            ranked_candidate_words = [word for word, score in ranked_candidates]
-            st.markdown(f"**Candidate words ranked by similarity to '{main_keyword}':** {', '.join(ranked_candidate_words)}")
-        else:
-            st.warning("Please enter a main keyword for ranking candidate words.")
-            ranked_candidate_words = candidate_words
-        
-        # --- 1. Finding Similar Words ---
-        st.markdown("## 1. Finding Similar Words")
-        if ranked_candidate_words:
-            input_word = st.selectbox("Select a word to find similar words:", options=ranked_candidate_words)
-            input_embedding = model.encode(input_word, convert_to_numpy=True)
-            similarities = cosine_similarity([input_embedding], vocab_embeddings)[0]
-            similar_indices = similarities.argsort()[::-1]
-            top_similar = []
-            count = 0
-            for idx in similar_indices:
-                if vocabulary[idx] == input_word:
-                    continue
-                top_similar.append((vocabulary[idx], similarities[idx]))
-                count += 1
-                if count >= 10:
-                    break
-            st.markdown(f"**Words similar to '{input_word}':**")
-            for word, sim in top_similar:
-                st.write(f"- {word} (Similarity: {sim:.2f})")
-        else:
-            st.warning("No candidate words available for similar words analysis.")
-        
-        # --- 2. Word Vector Arithmetic ---
-        st.markdown("## 2. Word Vector Arithmetic")
-        if len(ranked_candidate_words) >= 2:
-            word1 = st.selectbox("Select the first word for vector arithmetic:", options=ranked_candidate_words)
-            default_index = 1 if ranked_candidate_words[0] == word1 and len(ranked_candidate_words) > 1 else 0
-            word2 = st.selectbox("Select the second word for vector arithmetic:", options=ranked_candidate_words, index=default_index)
-            emb1 = model.encode(word1, convert_to_numpy=True)
-            emb2 = model.encode(word2, convert_to_numpy=True)
-            arithmetic_vector = emb1 + emb2
-            similarities_arith = cosine_similarity([arithmetic_vector], vocab_embeddings)[0]
-            similar_indices_arith = similarities_arith.argsort()[::-1]
-            top_arith = []
-            count = 0
-            for idx in similar_indices_arith:
-                candidate_word = vocabulary[idx]
-                if candidate_word in [word1, word2]:
-                    continue
-                top_arith.append((candidate_word, similarities_arith[idx]))
-                count += 1
-                if count >= 10:
-                    break
-            st.markdown(f"**Result of combining '{word1}' and '{word2}':**")
-            for word, sim in top_arith:
-                st.write(f"- {word} (Similarity: {sim:.2f})")
-        else:
-            st.warning("Not enough candidate words available for word vector arithmetic.")
-        
-        # --- 3. Phrase Analysis ---
-        st.markdown("## 3. Phrase Analysis")
-        selected_phrase_words = st.multiselect("Select words to form a phrase for analysis:", options=ranked_candidate_words)
-        if not selected_phrase_words:
-            st.error("Please select at least one word for phrase analysis.")
-        else:
-            phrase_input = " ".join(selected_phrase_words)
-            st.markdown(f"**Analyzing phrase: '{phrase_input}'**")
-            phrase_words = phrase_input.split()
-            for word in phrase_words:
-                word_emb = model.encode(word, convert_to_numpy=True)
-                similarities_word = cosine_similarity([word_emb], vocab_embeddings)[0]
-                similar_indices_word = similarities_word.argsort()[::-1]
-                top_similar_word = []
-                count = 0
-                for idx in similar_indices_word:
-                    if vocabulary[idx] == word:
-                        continue
-                    top_similar_word.append((vocabulary[idx], similarities_word[idx]))
-                    count += 1
-                    if count >= 5:
-                        break
-                st.markdown(f"**Similar words for '{word}':**")
-                for sim_word, sim_val in top_similar_word:
-                    st.write(f"- {sim_word} (Similarity: {sim_val:.2f})")
-
 
 
 # ------------------------------------
@@ -2416,8 +2274,7 @@ def main():
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
         "Google Search Console Analyzer",
-        "Site Focus Visualizer",
-        "Content Idea Generator"  # New option
+        "Site Focus Visualizer"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2447,8 +2304,6 @@ def main():
         google_search_console_analysis_page()
     elif tool == "Site Focus Visualizer":
         semantic_clustering_page()
-    elif tool == "Content Idea Generator":
-        content_idea_generator_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
