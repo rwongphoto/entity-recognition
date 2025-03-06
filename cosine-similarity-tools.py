@@ -2317,8 +2317,9 @@ def advanced_content_idea_generator_page():
     top_n_words = st.slider("Number of Top Words per Topic:", min_value=5, max_value=20, value=10)
 
     nlp_model = load_spacy_model()  # Load spaCy model
-    if nlp_model is None:
-        return
+    # No longer needed because load_spacy_model now handles errors
+    # if nlp_model is None:
+    #     return
 
 
     if st.button("Generate Ideas"):
@@ -2368,7 +2369,8 @@ def advanced_content_idea_generator_page():
         for i, topic_words in enumerate(topic_word_distributions):
             st.write(f"**Topic {i + 1} Related Words:**")
             # Create a combined topic vector (average of top word vectors)
-            topic_vector = np.mean([nlp_model.get_vector(word) for word in topic_words if word in nlp_model.vocab], axis=0)
+            # --- Corrected line: Use .vector ---
+            topic_vector = np.mean([nlp_model.vocab[word].vector for word in topic_words if word in nlp_model.vocab], axis=0)
             related_words = get_related_words_from_topic(nlp_model, topic_vector, top_n=10)
 
             for word, score in related_words:
@@ -2394,7 +2396,8 @@ def advanced_content_idea_generator_page():
         word = st.text_input("Enter word to find synonyms for:", "sustainable", key="syn_word").lower()
         if st.button("Find Synonyms"):
             try:
-                word_vector = nlp_model.get_vector(word)
+                # --- Corrected line: Use .vector ---
+                word_vector = nlp_model.vocab[word].vector
                 synonyms = find_similar_words(nlp_model, word_vector)  # Use word vector
                 st.write("Synonyms:")
                 for syn, score in synonyms:
