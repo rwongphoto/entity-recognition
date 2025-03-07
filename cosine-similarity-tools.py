@@ -2317,7 +2317,6 @@ def create_entity_graph(entities, relationships, entity_counts):
 
     return G
 
- ```python
  def visualize_graph(G, website_urls):
      """Visualizes the entity relationship graph using Matplotlib, scaling with graph size."""
 
@@ -2364,7 +2363,6 @@ def create_entity_graph(entities, relationships, entity_counts):
      plt.title(title, fontsize=max(12, min(24, int(24 - num_nodes * 0.05)))) # Scale title font size
      plt.axis("off")
      st.pyplot(plt)
- ```
 
 # --- Main Page Function ---
 def entity_relationship_graph_page():
