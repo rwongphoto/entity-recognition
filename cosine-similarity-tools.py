@@ -2279,7 +2279,7 @@ def entity_relationship_graph_page():
 # --- Helper Functions (OUTSIDE entity_relationship_graph_page) ---
 
 def extract_entities_and_relationships(sentences, nlp):
-    """Extracts entities and relationships from a list of sentences using spaCy."""
+    """Extracts entities and relationships - (Modified from original)."""
     entities = []
     relationships = []
     entity_counts = Counter()
@@ -2302,10 +2302,8 @@ def extract_entities_and_relationships(sentences, nlp):
 
     return entities, relationships, entity_counts
 
-
-
 def create_entity_graph(entities, relationships, entity_counts):
-    """Creates a NetworkX graph from extracted entities and relationships."""
+    """Creates a NetworkX graph (Modified from original)."""
     G = nx.Graph()
 
     # Add nodes with attributes
@@ -2319,53 +2317,72 @@ def create_entity_graph(entities, relationships, entity_counts):
 
     return G
 
+def visualize_graph(G, website_urls):
+    """Visualizes the ERG (Modified from orignal)."""
+    plt.figure(figsize=(16, 12))
+    pos = nx.spring_layout(G, seed=42, k=0.5)
 
- def visualize_graph(G, website_urls):
-     """Visualizes the entity relationship graph using Matplotlib, scaling with graph size."""
-
-     num_nodes = G.number_of_nodes()
-     # Scale figure size with the number of nodes, with a minimum and maximum size
-     figsize = (max(10, min(30, num_nodes * 0.5)), max(8, min(24, num_nodes * 0.4)))  # Example scaling
-     plt.figure(figsize=figsize)
-
-     # Adjust the spring layout parameters based on the graph size
-     k = 3 / (num_nodes**0.5)  # 'k' controls the optimal distance between nodes. Scale inversely with sqrt(nodes)
-     iterations = max(50, min(200, int(num_nodes * 1.5))) # More iterations for larger graphs.
-     pos = nx.spring_layout(G, seed=42, k=k, iterations=iterations)
-
-
-     # Node sizing and coloring
-     node_sizes = [G.nodes[node]['count'] * 300 for node in G.nodes()] # Reduce base size
-     node_colors = []
-     for node in G.nodes():
-       if G.nodes[node]['type'] == 'ORG':
-         node_colors.append('skyblue')
-       elif G.nodes[node]['type'] == 'GPE':
-         node_colors.append('lightgreen')
-       elif G.nodes[node]['type'] == 'LOC':
-         node_colors.append('lightcoral')
-       elif G.nodes[node]['type'] == 'WORK_OF_ART':
-         node_colors.append('plum')
-       elif G.nodes[node]['type'] == 'PRODUCT':
-         node_colors.append('palegoldenrod')
-       else:
-         node_colors.append('lightgray')
+    # Node sizing and coloring
+    node_sizes = [G.nodes[node]['count'] * 500 for node in G.nodes()]
+    node_colors = []
+    for node in G.nodes():
+      if G.nodes[node]['type'] == 'ORG':
+        node_colors.append('skyblue')
+      elif G.nodes[node]['type'] == 'GPE':
+        node_colors.append('lightgreen')
+      elif G.nodes[node]['type'] == 'LOC':
+        node_colors.append('lightcoral')
+      elif G.nodes[node]['type'] == 'WORK_OF_ART':
+        node_colors.append('plum')
+      elif G.nodes[node]['type'] == 'PRODUCT':
+        node_colors.append('palegoldenrod')
+      else:
+        node_colors.append('lightgray')
 
 
-     nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes)
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes)
+    nx.draw_networkx_edges(G, pos, width=[data['weight'] for _, _, data in G.edges(data=True)])
+    nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
 
-     # Scale edge width, but keep it within reasonable bounds
-     edge_widths = [min(5, data['weight'] * 0.5) for _, _, data in G.edges(data=True)] # Limit max width
-     nx.draw_networkx_edges(G, pos, width=edge_widths)
+    title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
+    plt.title(title, fontsize=16)
+    plt.axis("off")
+    st.pyplot(plt)
 
-     # Scale font size, but keep it within readable bounds
-     font_size = max(8, min(14, int(16 - num_nodes * 0.05))) # Example scaling, adjust as needed.
-     nx.draw_networkx_labels(G, pos, font_size=font_size, font_family="sans-serif")
+# --- Main Page Function ---
+def entity_relationship_graph_page():
+    st.header("Entity Relationship Graph Generator")
+    urls_input = st.text_area("Enter website URLs (one per line):", "")
 
-     title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
-     plt.title(title, fontsize=max(12, min(24, int(24 - num_nodes * 0.05)))) # Scale title font size
-     plt.axis("off")
-     st.pyplot(plt)
+    if urls_input:
+        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
+        if urls:
+            all_sentences = []
+            for url in urls:
+                with st.spinner(f"Scraping content from {url}..."):
+                    # Use your existing extract_text_from_url function
+                    text = extract_text_from_url(url)  # Use extract_text_from_url
+                    if text:
+                        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+                        sentences = [s.strip() for s in sentences if s.strip()]
+                        all_sentences.extend(sentences)
+                    else:
+                        st.warning(f"Could not retrieve content from {url}.")
+
+            if all_sentences:
+                with st.spinner("Extracting entities and relationships..."):
+                    # Use the medium spaCy model, loaded from your cached function
+                    nlp_model = load_spacy_model()
+                    entities, relationships, entity_counts = extract_entities_and_relationships(all_sentences, nlp_model)
+                    graph = create_entity_graph(entities, relationships, entity_counts)
+
+                with st.spinner("Visualizing graph..."):
+                    visualize_graph(graph, urls) # Pass list of URLs
+            else:
+                st.warning("No content was retrieved from the URLs.")
+        else:
+            st.warning("Please enter URLs.") # Prevent errors
 
         
 # ------------------------------------
