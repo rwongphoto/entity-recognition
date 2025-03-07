@@ -2274,76 +2274,113 @@ def entity_relationship_graph_page():
          else:
             st.warning("Please enter URLs.") # Prevent errors
 
- # Helper functions (place *inside* entity_relationship_graph_page, or above it)
-    def extract_entities_and_relationships(sentences, nlp):
-     entities = []
-     relationships = []
-     entity_counts = Counter()
+# --- Helper Functions (OUTSIDE entity_relationship_graph_page) ---
 
-     for sentence in sentences:
-         doc = nlp(sentence)
-         for ent in doc.ents:
-           # Filter out unwanted entity types
-           if ent.label_ not in ("DATE", "TIME", "CARDINAL", "ORDINAL", "PERCENT", "MONEY", "QUANTITY"):
-               entities.append((ent.text, ent.label_))
-               entity_counts[ent.text] += 1
+def extract_entities_and_relationships(sentences, nlp):
+    """Extracts entities and relationships - (Modified from original)."""
+    entities = []
+    relationships = []
+    entity_counts = Counter()
 
-     # Co-occurrence within sentences
-     for sentence in sentences:
-         doc = nlp(sentence)
-         sentence_entities = [ent.text for ent in doc.ents if ent.label_ not in ("DATE", "TIME", "CARDINAL", "ORDINAL", "PERCENT", "MONEY", "QUANTITY")]
-         for i in range(len(sentence_entities)):
-             for j in range(i + 1, len(sentence_entities)):
-                 relationships.append((sentence_entities[i], sentence_entities[j]))
+    for sentence in sentences:
+        doc = nlp(sentence)
+        for ent in doc.ents:
+          # Filter out unwanted entity types
+          if ent.label_ not in ("DATE", "TIME", "CARDINAL", "ORDINAL", "PERCENT", "MONEY", "QUANTITY"):
+              entities.append((ent.text, ent.label_))
+              entity_counts[ent.text] += 1
 
-     return entities, relationships, entity_counts
+    # Co-occurrence within sentences
+    for sentence in sentences:
+        doc = nlp(sentence)
+        sentence_entities = [ent.text for ent in doc.ents if ent.label_ not in ("DATE", "TIME", "CARDINAL", "ORDINAL", "PERCENT", "MONEY", "QUANTITY")]
+        for i in range(len(sentence_entities)):
+            for j in range(i + 1, len(sentence_entities)):
+                relationships.append((sentence_entities[i], sentence_entities[j]))
 
- def create_entity_graph(entities, relationships, entity_counts):
-     """Creates a NetworkX graph (Modified from original)."""
-     G = nx.Graph()
+    return entities, relationships, entity_counts
 
-     # Add nodes with attributes
-     for entity, entity_type in entities:
-         G.add_node(entity, type=entity_type, count=entity_counts[entity])
+def create_entity_graph(entities, relationships, entity_counts):
+    """Creates a NetworkX graph (Modified from original)."""
+    G = nx.Graph()
 
-     # Add edges with weights
-     relationship_counts = Counter(relationships)
-     for (entity1, entity2), count in relationship_counts.items():
-         G.add_edge(entity1, entity2, weight=count)
+    # Add nodes with attributes
+    for entity, entity_type in entities:
+        G.add_node(entity, type=entity_type, count=entity_counts[entity])
 
-     return G
+    # Add edges with weights
+    relationship_counts = Counter(relationships)
+    for (entity1, entity2), count in relationship_counts.items():
+        G.add_edge(entity1, entity2, weight=count)
 
- def visualize_graph(G, website_urls):
-     """Visualizes the ERG (Modified from orignal)."""
-     plt.figure(figsize=(16, 12))
-     pos = nx.spring_layout(G, seed=42, k=0.5)
+    return G
 
-     # Node sizing and coloring
-     node_sizes = [G.nodes[node]['count'] * 500 for node in G.nodes()]
-     node_colors = []
-     for node in G.nodes():
-       if G.nodes[node]['type'] == 'ORG':
-         node_colors.append('skyblue')
-       elif G.nodes[node]['type'] == 'GPE':
-         node_colors.append('lightgreen')
-       elif G.nodes[node]['type'] == 'LOC':
-         node_colors.append('lightcoral')
-       elif G.nodes[node]['type'] == 'WORK_OF_ART':
-         node_colors.append('plum')
-       elif G.nodes[node]['type'] == 'PRODUCT':
-         node_colors.append('palegoldenrod')
-       else:
-         node_colors.append('lightgray')
+def visualize_graph(G, website_urls):
+    """Visualizes the ERG (Modified from orignal)."""
+    plt.figure(figsize=(16, 12))
+    pos = nx.spring_layout(G, seed=42, k=0.5)
+
+    # Node sizing and coloring
+    node_sizes = [G.nodes[node]['count'] * 500 for node in G.nodes()]
+    node_colors = []
+    for node in G.nodes():
+      if G.nodes[node]['type'] == 'ORG':
+        node_colors.append('skyblue')
+      elif G.nodes[node]['type'] == 'GPE':
+        node_colors.append('lightgreen')
+      elif G.nodes[node]['type'] == 'LOC':
+        node_colors.append('lightcoral')
+      elif G.nodes[node]['type'] == 'WORK_OF_ART':
+        node_colors.append('plum')
+      elif G.nodes[node]['type'] == 'PRODUCT':
+        node_colors.append('palegoldenrod')
+      else:
+        node_colors.append('lightgray')
 
 
-     nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes)
-     nx.draw_networkx_edges(G, pos, width=[data['weight'] for _, _, data in G.edges(data=True)])
-     nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes)
+    nx.draw_networkx_edges(G, pos, width=[data['weight'] for _, _, data in G.edges(data=True)])
+    nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
 
-     title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
-     plt.title(title, fontsize=16)
-     plt.axis("off")
-     st.pyplot(plt)
+    title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
+    plt.title(title, fontsize=16)
+    plt.axis("off")
+    st.pyplot(plt)
+
+# --- Main Page Function ---
+def entity_relationship_graph_page():
+    st.header("Entity Relationship Graph Generator")
+    urls_input = st.text_area("Enter website URLs (one per line):", "")
+
+    if urls_input:
+        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
+
+        if urls:
+            all_sentences = []
+            for url in urls:
+                with st.spinner(f"Scraping content from {url}..."):
+                    # Use your existing extract_text_from_url function
+                    text = extract_text_from_url(url)  # Use extract_text_from_url
+                    if text:
+                        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+                        sentences = [s.strip() for s in sentences if s.strip()]
+                        all_sentences.extend(sentences)
+                    else:
+                        st.warning(f"Could not retrieve content from {url}.")
+
+            if all_sentences:
+                with st.spinner("Extracting entities and relationships..."):
+                    # Use the medium spaCy model, loaded from your cached function
+                    nlp_model = load_spacy_model()
+                    entities, relationships, entity_counts = extract_entities_and_relationships(all_sentences, nlp_model)
+                    graph = create_entity_graph(entities, relationships, entity_counts)
+
+                with st.spinner("Visualizing graph..."):
+                    visualize_graph(graph, urls) # Pass list of URLs
+            else:
+                st.warning("No content was retrieved from the URLs.")
+        else:
+            st.warning("Please enter URLs.") # Prevent errors
 
         
 # ------------------------------------
