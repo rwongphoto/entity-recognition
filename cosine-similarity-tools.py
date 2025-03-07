@@ -57,6 +57,8 @@ import seaborn as sns
 # NEW IMPORT: Import UMAP for dimension reduction
 import umap
 
+import networkx as nx
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
