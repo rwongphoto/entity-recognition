@@ -1,4 +1,2 @@
 [theme]
 base = "light"
-[server]
-maxUploadSize = 500  # This sets the upload limit to 500 MB; adjust as needed
