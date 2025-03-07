@@ -2277,7 +2277,6 @@ def entity_relationship_graph_page():
  # Helper functions (place *inside* entity_relationship_graph_page, or above it)
 
  def extract_entities_and_relationships(sentences, nlp):
-     """Extracts entities and relationships - (Modified from original)."""
      entities = []
      relationships = []
      entity_counts = Counter()
