@@ -2383,8 +2383,8 @@ def main():
         "People Also Asked",
         "Google Ads Search Term Analyzer",  # New tool
         "Google Search Console Analyzer",
-         "Site Focus Visualizer",
-         "Entity Relationship Graph"  # NEW TOOL OPTION
+        "Site Focus Visualizer",
+        "Entity Relationship Graph"  # NEW TOOL OPTION
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
