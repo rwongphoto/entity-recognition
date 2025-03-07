@@ -2275,8 +2275,7 @@ def entity_relationship_graph_page():
             st.warning("Please enter URLs.") # Prevent errors
 
  # Helper functions (place *inside* entity_relationship_graph_page, or above it)
-
- def extract_entities_and_relationships(sentences, nlp):
+    def extract_entities_and_relationships(sentences, nlp):
      entities = []
      relationships = []
      entity_counts = Counter()
@@ -2346,6 +2345,7 @@ def entity_relationship_graph_page():
      plt.axis("off")
      st.pyplot(plt)
 
+        
 # ------------------------------------
 # Main Streamlit App
 # ------------------------------------
