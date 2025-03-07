@@ -2450,7 +2450,7 @@ def main():
         google_search_console_analysis_page()
     elif tool == "Site Focus Visualizer":
         semantic_clustering_page()
-     elif tool == "Entity Relationship Graph":  # NEW elif BLOCK
+    elif tool == "Entity Relationship Graph":
         entity_relationship_graph_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
