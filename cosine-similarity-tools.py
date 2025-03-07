@@ -2320,51 +2320,84 @@ def create_entity_graph(entities, relationships, entity_counts):
     return G
 
 def visualize_graph(G, website_urls):
-    """Visualizes the entity relationship graph using Matplotlib, scaling with graph size."""
+    """Visualizes the entity relationship graph using Plotly Express."""
 
-    num_nodes = G.number_of_nodes()
-    # Scale figure size with the number of nodes, with a minimum and maximum size
-    figsize = (max(10, min(30, num_nodes * 0.5)), max(8, min(24, num_nodes * 0.4)))  # Example scaling
-    plt.figure(figsize=figsize)
+    pos = nx.spring_layout(G, seed=42)
 
-    # Adjust the spring layout parameters based on the graph size
-    k = 3 / (num_nodes**0.5)  # 'k' controls the optimal distance between nodes. Scale inversely with sqrt(nodes)
-    iterations = max(50, min(200, int(num_nodes * 1.5))) # More iterations for larger graphs.
-    pos = nx.spring_layout(G, seed=42, k=k, iterations=iterations)
-
-
-    # Node sizing and coloring
-    node_sizes = [G.nodes[node]['count'] * 300 for node in G.nodes()] # Reduce base size
+    # Create lists of node x, y coordinates, labels, sizes, and colors
+    node_x = []
+    node_y = []
+    node_text = []
+    node_sizes = []
     node_colors = []
-    for node in G.nodes():
-      if G.nodes[node]['type'] == 'ORG':
-        node_colors.append('skyblue')
-      elif G.nodes[node]['type'] == 'GPE':
-        node_colors.append('lightgreen')
-      elif G.nodes[node]['type'] == 'LOC':
-        node_colors.append('lightcoral')
-      elif G.nodes[node]['type'] == 'WORK_OF_ART':
-        node_colors.append('plum')
-      elif G.nodes[node]['type'] == 'PRODUCT':
-        node_colors.append('palegoldenrod')
-      else:
-        node_colors.append('lightgray')
 
+    for node, (x, y) in pos.items():
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)  # The node label (entity name)
+        node_sizes.append(G.nodes[node]['count'] * 10) #Scalable
+        node_type = G.nodes[node]['type']
+        if node_type == 'ORG':
+            node_colors.append('skyblue')
+        elif node_type == 'GPE':
+            node_colors.append('lightgreen')
+        elif node_type == 'LOC':
+            node_colors.append('lightcoral')
+        elif node_type == 'WORK_OF_ART':
+            node_colors.append('plum')
+        elif node_type == 'PRODUCT':
+            node_colors.append('palegoldenrod')
+        else:
+            node_colors.append('lightgray')
 
-    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes)
+    # Create edge traces (lines connecting nodes)
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])  # None breaks the line between edges
+        edge_y.extend([y0, y1, None])
 
-    # Scale edge width, but keep it within reasonable bounds
-    edge_widths = [min(5, data['weight'] * 0.5) for _, _, data in G.edges(data=True)] # Limit max width
-    nx.draw_networkx_edges(G, pos, width=edge_widths)
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
 
-    # Scale font size, but keep it within readable bounds
-    font_size = max(8, min(14, int(16 - num_nodes * 0.05))) # Example scaling, adjust as needed.
-    nx.draw_networkx_labels(G, pos, font_size=font_size, font_family="sans-serif")
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',  # Show markers and text labels
+        hoverinfo='text',
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            reversescale=True,
+            color=node_colors,  # Use the color list
+            size=node_sizes,
+            colorbar=dict(
+                thickness=15,
+                title='Node Connections',
+                xanchor='left',
+                titleside='right'
+            ),
+            line_width=2
+        ),
+        text=node_text,       # Use the text list for labels
+        textposition="top center" # You can change this (top, bottom, etc.)
+    )
 
-    title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
-    plt.title(title, fontsize=max(12, min(24, int(24 - num_nodes * 0.05)))) # Scale title font size
-    plt.axis("off")
-    st.pyplot(plt)
+    fig = go.Figure(data=[edge_trace, node_trace],
+                 layout=go.Layout(
+                    title=f"Entity Relationship Graph for: {', '.join(website_urls)}",
+                    titlefont_size=16,
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20,l=5,r=5,t=40),
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                    )
+    st.plotly_chart(fig)
 
         
 # ------------------------------------
