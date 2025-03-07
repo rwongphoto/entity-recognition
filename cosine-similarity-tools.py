@@ -2317,7 +2317,7 @@ def create_entity_graph(entities, relationships, entity_counts):
 
     return G
 
-def visualize_graph(G, website_urls):
+def visualize_graph(G, website_url): # Changed to accept single URL string
     """Visualizes the ERG (Modified from orignal)."""
     plt.figure(figsize=(16, 12))
     pos = nx.spring_layout(G, seed=42, k=0.5)
@@ -2344,7 +2344,7 @@ def visualize_graph(G, website_urls):
     nx.draw_networkx_edges(G, pos, width=[data['weight'] for _, _, data in G.edges(data=True)])
     nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
 
-    title = f"Entity Relationship Graph for: {', '.join(website_urls)}"
+    title = f"Entity Relationship Graph for: {website_url}" # Now uses single URL
     plt.title(title, fontsize=16)
     plt.axis("off")
     st.pyplot(plt)
@@ -2352,37 +2352,31 @@ def visualize_graph(G, website_urls):
 # --- Main Page Function ---
 def entity_relationship_graph_page():
     st.header("Entity Relationship Graph Generator")
-    urls_input = st.text_area("Enter website URLs (one per line):", "")
+    # Change back to st.text_input for a single URL
+    url = st.text_input("Enter a website URL:", "")
 
-    if urls_input:
-        urls = [url.strip() for url in urls_input.splitlines() if url.strip()]
-
-        if urls:
-            all_sentences = []
-            for url in urls:
-                with st.spinner(f"Scraping content from {url}..."):
-                    # Use your existing extract_text_from_url function
-                    text = extract_text_from_url(url)  # Use extract_text_from_url
-                    if text:
-                        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-                        sentences = [s.strip() for s in sentences if s.strip()]
-                        all_sentences.extend(sentences)
-                    else:
-                        st.warning(f"Could not retrieve content from {url}.")
-
-            if all_sentences:
-                with st.spinner("Extracting entities and relationships..."):
-                    # Use the medium spaCy model, loaded from your cached function
-                    nlp_model = load_spacy_model()
-                    entities, relationships, entity_counts = extract_entities_and_relationships(all_sentences, nlp_model)
-                    graph = create_entity_graph(entities, relationships, entity_counts)
-
-                with st.spinner("Visualizing graph..."):
-                    visualize_graph(graph, urls) # Pass list of URLs
+    if url: # Simplified URL handling
+        with st.spinner(f"Scraping content from {url}..."):
+            # Use your existing extract_text_from_url function
+            text = extract_text_from_url(url)  # Use extract_text_from_url
+            if text:
+                sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+                sentences = [s.strip() for s in sentences if s.strip()]
             else:
-                st.warning("No content was retrieved from the URLs.")
+                st.warning(f"Could not retrieve content from {url}.")
+                return # Exit if no content
+
+        if sentences: # Check for sentences, not all_sentences
+            with st.spinner("Extracting entities and relationships..."):
+                # Use the medium spaCy model, loaded from your cached function
+                nlp_model = load_spacy_model()
+                entities, relationships, entity_counts = extract_entities_and_relationships(sentences, nlp_model) # Use sentences
+                graph = create_entity_graph(entities, relationships, entity_counts)
+
+            with st.spinner("Visualizing graph..."):
+                visualize_graph(graph, url) # Pass single URL string
         else:
-            st.warning("Please enter URLs.") # Prevent errors
+            st.warning("No content was retrieved from the URL.")
 
         
 # ------------------------------------
