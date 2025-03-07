@@ -2388,15 +2388,18 @@ def visualize_graph(G, website_urls):
     )
 
     fig = go.Figure(data=[edge_trace, node_trace],
-                 layout=go.Layout(
-                    title=f"Entity Relationship Graph for: {', '.join(website_urls)}",
-                    titlefont_size=16,
-                    showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20,l=5,r=5,t=40),
-                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
-                    )
+        layout=go.Layout(
+            title=dict(  # Use a dictionary for title properties
+                text=f"Entity Relationship Graph for: {', '.join(website_urls)}",
+                font=dict(size=16)  # Set font size inside the 'font' dict
+            ),
+            showlegend=False,
+            hovermode='closest',
+            margin=dict(b=20,l=5,r=5,t=40),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+        )
+    )
     st.plotly_chart(fig)
 
         
