@@ -113,7 +113,6 @@ def load_spacy_model():
             return None
     return nlp
 
-@st.cache_resource
 def initialize_sentence_transformer():
     model = SentenceTransformer('all-MiniLM-L6-v2')
     return model
