@@ -2610,7 +2610,7 @@ def main():
         "Site Focus Visualizer",
         "Entity Relationship Graph",  # NEW TOOL OPTION
         "SEMRush Organic Pages by Top Sub-Directory",
-        "SEMRush - Subdirectories (No Leaf Nodes)"
+        "SEMRush - Sub-Directories (No Leaf Nodes)"
         
     ])
     if tool == "URL Analysis Dashboard":
