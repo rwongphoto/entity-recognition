@@ -2469,14 +2469,14 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
     st.header("Hierarchical Subdirectory Aggregation (Keywords & Traffic, No Leaf Nodes)")
     st.markdown("""
     **Goal:**  
-    1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns (plus additional user intent traffic columns, if available).  
-    2. Expand each URL into **all** hierarchical subdirectories and omit any leaf nodes.  
-    3. Aggregate (sum) the Number of Keywords and Traffic values at each non‐leaf level.  
-    4. Optionally filter the Plotly chart by the user intent traffic columns.
+    1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns along with any user intent traffic columns.  
+    2. Expand each URL into **all** hierarchical subdirectories and omit any leaf nodes (subdirectories without deeper levels).  
+    3. Aggregate (sum) the metrics at each non‑leaf hierarchical level.  
+    4. Optionally filter the Plotly chart by user intent traffic columns.
     """)
 
     uploaded_file = st.file_uploader(
-        "Upload Excel file with 'URL', 'Number of Keywords', 'Traffic' and (optionally) user intent traffic columns",
+        "Upload an Excel file with 'URL', 'Number of Keywords', 'Traffic' and (optionally) user intent traffic columns",
         type=["xlsx"]
     )
 
@@ -2494,7 +2494,7 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
             st.error(f"Missing required columns: {missing_cols}")
             return
 
-        # Keep only the required columns plus any intent traffic columns if present
+        # User intent traffic columns (if present)
         user_intent_options = [
             "Traffic with commercial intents in top 20",
             "Traffic with informational intents in top 20",
@@ -2502,12 +2502,11 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
             "Traffic with transactional intents in top 20",
             "Traffic with unknown intents in top 20"
         ]
-        # Determine which intent columns are available in the file
         available_intent_cols = [col for col in user_intent_options if col in df.columns]
         all_cols = required_cols + available_intent_cols
         df = df[all_cols]
 
-        # Convert numeric columns (for our basic metrics and any intent columns)
+        # Convert non-URL columns to numeric
         for col in df.columns:
             if col != "URL":
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -2545,8 +2544,7 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
         st.markdown("### Expanded Data (After Removing Leaf Nodes)")
         st.dataframe(df_filtered.head())
 
-        # Aggregate the metrics by hierarchical subdirectory
-        # We aggregate all numeric columns (including Number of Keywords, Traffic, and user intent columns)
+        # Aggregate all numeric columns by hierarchical subdirectory
         numeric_cols = [col for col in df.columns if col != "URL"]
         df_agg = df_filtered.groupby("Hierarchical_Path")[numeric_cols].sum().reset_index()
 
@@ -2554,9 +2552,8 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
         st.dataframe(df_agg)
 
         # Plotly Chart Options
-        st.markdown("### Plotly Chart Options")
+        st.markdown("### Plotly Chart")
         st.write("By default, a bar chart for overall 'Traffic' is shown. You can also filter by user intent traffic columns.")
-        # Let user select which user intent traffic columns to display (if available)
         if available_intent_cols:
             selected_intents = st.multiselect(
                 "Select User Intent Traffic Columns to plot:",
@@ -2566,14 +2563,16 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
         else:
             selected_intents = []
 
-        # If the user selected any intent columns, melt the dataframe for a grouped bar chart
+        # If user selects any intent columns, melt the DataFrame for a grouped bar chart.
         if selected_intents:
-            df_melt = df_agg.melt(id_vars=["Hierarchical_Path"], value_vars=selected_intents,
-                                  var_name="Intent Type", value_name="Traffic")
+            df_melt = df_agg.melt(id_vars=["Hierarchical_Path"],
+                                  value_vars=selected_intents,
+                                  var_name="Intent Type",
+                                  value_name="Intent Traffic")
             fig = px.bar(
                 df_melt,
                 x="Hierarchical_Path",
-                y="Traffic",
+                y="Intent Traffic",
                 color="Intent Type",
                 barmode="group",
                 title="User Intent Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
@@ -2582,7 +2581,7 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
             fig.update_layout(height=800)
             st.plotly_chart(fig)
         else:
-            # Otherwise, just plot the overall 'Traffic'
+            # Otherwise, plot the overall 'Traffic'
             if "Traffic" in df_agg.columns:
                 fig = px.bar(
                     df_agg,
