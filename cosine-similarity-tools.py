@@ -2472,16 +2472,6 @@ def semrush_hierarchical_subdirectories_no_leaf_page():
     then omits any subdirectory that does **not** lead to deeper levels 
     (i.e., leaf nodes are removed).
 
-    **Example**:  
-    `https://www.jacadatravel.com/africa/botswana/okavango-delta/accommodation/abu-camp/`  
-    yields:  
-    - /africa  
-    - /africa/botswana  
-    - /africa/botswana/okavango-delta  
-    - /africa/botswana/okavango-delta/accommodation  
-    *(We omit `/africa/botswana/okavango-delta/accommodation/abu-camp` if there are no deeper subdirectories.)*
-    """)
-
     uploaded_file = st.file_uploader(
         "Upload Excel file (with a 'URL' column and numeric columns)",
         type=["xlsx"]
