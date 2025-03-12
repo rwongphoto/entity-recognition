@@ -2465,110 +2465,138 @@ def semrush_organic_pages_by_subdirectory_page():
 # SEMRush Organic Pages Hierarchical Sub-Directories
 # ------------------------------------
 
-def semrush_hierarchical_subdirectories_no_leaf_page():
-    st.header("SEMRush Pages - Hierarchical Subdirectories (No Leaf Nodes)")
+def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
+    st.header("Hierarchical Subdirectory Aggregation (Keywords & Traffic, No Leaf Nodes)")
     st.markdown("""
-    This tool breaks each URL into **all** subdirectory levels, 
-    then omits any subdirectory that does **not** lead to deeper levels 
-    (i.e., leaf nodes are removed). Larger files might take awhile so please have patience.
+    **Goal:**  
+    1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns (plus additional user intent traffic columns, if available).  
+    2. Expand each URL into **all** hierarchical subdirectories and omit any leaf nodes.  
+    3. Aggregate (sum) the Number of Keywords and Traffic values at each non‐leaf level.  
+    4. Optionally filter the Plotly chart by the user intent traffic columns.
     """)
 
     uploaded_file = st.file_uploader(
-        "Upload Excel file (with a 'URL' column and numeric columns)",
+        "Upload Excel file with 'URL', 'Number of Keywords', 'Traffic' and (optionally) user intent traffic columns",
         type=["xlsx"]
     )
 
     if uploaded_file is not None:
         try:
-            # Read the Excel file
             df = pd.read_excel(uploaded_file)
         except Exception as e:
             st.error(f"Error reading Excel file: {e}")
             return
-        
-        # Ensure there's a URL column
-        if "URL" not in df.columns:
-            st.error("No 'URL' column found in the file.")
+
+        # Required columns
+        required_cols = ["URL", "Number of Keywords", "Traffic"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            st.error(f"Missing required columns: {missing_cols}")
             return
 
-        # Convert non-URL columns to numeric if possible
-        numeric_cols = []
+        # Keep only the required columns plus any intent traffic columns if present
+        user_intent_options = [
+            "Traffic with commercial intents in top 20",
+            "Traffic with informational intents in top 20",
+            "Traffic with navigational intents in top 20",
+            "Traffic with transactional intents in top 20",
+            "Traffic with unknown intents in top 20"
+        ]
+        # Determine which intent columns are available in the file
+        available_intent_cols = [col for col in user_intent_options if col in df.columns]
+        all_cols = required_cols + available_intent_cols
+        df = df[all_cols]
+
+        # Convert numeric columns (for our basic metrics and any intent columns)
         for col in df.columns:
-            if col == "URL":
-                continue
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-            if df[col].notnull().sum() > 0:
-                numeric_cols.append(col)
+            if col != "URL":
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # Helper function: get **all** partial paths from the URL
-        def get_hierarchical_paths(url):
-            try:
-                parsed = urlparse(url)
-                # Remove leading/trailing slashes, split by slash
-                segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
-                if not segments:
-                    return ["/"]  # "Root" if no path
-                partials = []
-                for i in range(len(segments)):
-                    partial = "/" + "/".join(segments[:i+1])
-                    partials.append(partial)
-                return partials
-            except:
-                return ["/Invalid-URL"]
+        # Function to get all hierarchical subdirectory levels from a URL
+        def get_subdirectory_levels(url):
+            parsed = urlparse(str(url))
+            segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
+            if not segments:
+                return ["/"]
+            paths = []
+            for i in range(len(segments)):
+                path = "/" + "/".join(segments[:i+1])
+                paths.append(path)
+            return paths
 
-        # Expand each URL into multiple rows, one per subdirectory level
+        # Explode each URL into its hierarchical subdirectory levels
         exploded_rows = []
         for _, row in df.iterrows():
-            url = str(row["URL"])
-            sub_paths = get_hierarchical_paths(url)
-            for sp in sub_paths:
+            url_levels = get_subdirectory_levels(row["URL"])
+            for level in url_levels:
                 new_row = row.copy()
-                new_row["Hierarchical_Path"] = sp
+                new_row["Hierarchical_Path"] = level
                 exploded_rows.append(new_row)
         df_exploded = pd.DataFrame(exploded_rows)
 
-        st.markdown("### Expanded Data (One Row per Subdirectory Level)")
-        st.dataframe(df_exploded.head())
-
-        # Identify "leaf" paths
-        # A path is a "leaf" if NO other path in the dataset starts with (path + "/")
+        # Identify leaf nodes: a path is a leaf if no other path in the dataset starts with (path + "/")
         all_paths = set(df_exploded["Hierarchical_Path"].unique())
-
         def is_leaf(path):
             prefix = path.rstrip("/") + "/"
-            # If there's any other path that starts with this prefix, it's not a leaf
             return not any(candidate.startswith(prefix) for candidate in all_paths if candidate != path)
-
-        # Mark leaf nodes
         df_exploded["IsLeaf"] = df_exploded["Hierarchical_Path"].apply(is_leaf)
-        # Filter out leaf nodes
-        df_exploded = df_exploded[~df_exploded["IsLeaf"]]
+        df_filtered = df_exploded[~df_exploded["IsLeaf"]]
 
-        st.markdown("### Data After Removing Leaf Nodes")
-        st.dataframe(df_exploded.head())
+        st.markdown("### Expanded Data (After Removing Leaf Nodes)")
+        st.dataframe(df_filtered.head())
 
-        # Aggregate numeric columns by the new "Hierarchical_Path"
-        agg_dict = {col: "sum" for col in numeric_cols}  # Summation by default
-        df_agg = df_exploded.groupby("Hierarchical_Path").agg(agg_dict).reset_index()
+        # Aggregate the metrics by hierarchical subdirectory
+        # We aggregate all numeric columns (including Number of Keywords, Traffic, and user intent columns)
+        numeric_cols = [col for col in df.columns if col != "URL"]
+        df_agg = df_filtered.groupby("Hierarchical_Path")[numeric_cols].sum().reset_index()
 
-        st.markdown("### Aggregated Data (No Leaf Nodes)")
+        st.markdown("### Aggregated Data by Hierarchical Subdirectory (No Leaf Nodes)")
         st.dataframe(df_agg)
 
-        # Example: plot a bar chart for 'Traffic' if present
-        if "Traffic" in numeric_cols:
+        # Plotly Chart Options
+        st.markdown("### Plotly Chart Options")
+        st.write("By default, a bar chart for overall 'Traffic' is shown. You can also filter by user intent traffic columns.")
+        # Let user select which user intent traffic columns to display (if available)
+        if available_intent_cols:
+            selected_intents = st.multiselect(
+                "Select User Intent Traffic Columns to plot:",
+                options=available_intent_cols,
+                default=[]
+            )
+        else:
+            selected_intents = []
+
+        # If the user selected any intent columns, melt the dataframe for a grouped bar chart
+        if selected_intents:
+            df_melt = df_agg.melt(id_vars=["Hierarchical_Path"], value_vars=selected_intents,
+                                  var_name="Intent Type", value_name="Traffic")
             fig = px.bar(
-                df_agg,
+                df_melt,
                 x="Hierarchical_Path",
                 y="Traffic",
-                title="Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
-                labels={"Hierarchical_Path": "Subdirectory", "Traffic": "Traffic"}
+                color="Intent Type",
+                barmode="group",
+                title="User Intent Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
+                labels={"Hierarchical_Path": "Subdirectory"}
             )
             fig.update_layout(height=800)
             st.plotly_chart(fig)
         else:
-            st.write("No 'Traffic' column found to plot.")
+            # Otherwise, just plot the overall 'Traffic'
+            if "Traffic" in df_agg.columns:
+                fig = px.bar(
+                    df_agg,
+                    x="Hierarchical_Path",
+                    y="Traffic",
+                    title="Overall Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
+                    labels={"Hierarchical_Path": "Subdirectory", "Traffic": "Traffic"}
+                )
+                fig.update_layout(height=800)
+                st.plotly_chart(fig)
+            else:
+                st.write("No 'Traffic' column found for plotting.")
     else:
-        st.info("Please upload an Excel file with a 'URL' column to begin.")
+        st.info("Please upload an Excel file to begin the analysis.")
 
         
 # ------------------------------------
@@ -2646,7 +2674,7 @@ def main():
     elif tool == "SEMRush Organic Pages by Top Sub-Directory":
         semrush_organic_pages_by_subdirectory_page()
     elif tool == "SEMRush - Sub-Directories (No Leaf Nodes)":
-        semrush_hierarchical_subdirectories_no_leaf_page()
+        semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
