@@ -2552,12 +2552,12 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
 # ------------------------------------
 
 def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
-    st.header("URL Parsing & Aggregation (Keywords & Traffic)")
+    st.header("Hierarchical Subdirectory Aggregation (Keywords & Traffic, No Leaf Nodes)")
     st.markdown("""
     **Goal:**  
     1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns along with any user intent traffic columns.  
-    2. Expand each URL either into **all** hierarchical subdirectories (omitting leaf nodes) **or** extract n‑gram segments from the URL path.  
-    3. Aggregate (sum) the metrics at each non‑leaf hierarchical level or for each n‑gram.  
+    2. Expand each URL into **all** hierarchical subdirectories and omit any leaf nodes (subdirectories without deeper levels).  
+    3. Aggregate (sum) the metrics at each non‑leaf hierarchical level.  
     4. Optionally filter the Plotly chart by user intent traffic columns.
     """)
 
@@ -2597,17 +2597,6 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
             if col != "URL":
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # Select URL Parsing Method
-        parsing_method = st.radio(
-            "Select URL Parsing Method",
-            ("Hierarchical Subdirectories", "N‑gram Extraction"),
-            index=0
-        )
-
-        # If N-gram Extraction is selected, ask for the n value
-        if parsing_method == "N‑gram Extraction":
-            n_value = st.number_input("Enter n value for n‑gram extraction", min_value=1, max_value=10, value=2, step=1)
-
         # Function to get all hierarchical subdirectory levels from a URL
         def get_subdirectory_levels(url):
             parsed = urlparse(str(url))
@@ -2620,52 +2609,32 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
                 paths.append(path)
             return paths
 
-        # Function to extract n-gram segments from a URL's path
-        def get_ngram_levels(url, n):
-            parsed = urlparse(str(url))
-            segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
-            # Only return n-grams if there are at least n segments; otherwise, return empty list.
-            if len(segments) < n:
-                return []
-            ngrams = []
-            for i in range(len(segments) - n + 1):
-                ngram = "/" + "/".join(segments[i:i+n])
-                ngrams.append(ngram)
-            return ngrams
-
-        # Explode each URL into its parsed segments (either hierarchical levels or n-grams)
+        # Explode each URL into its hierarchical subdirectory levels
         exploded_rows = []
         for _, row in df.iterrows():
-            if parsing_method == "Hierarchical Subdirectories":
-                url_levels = get_subdirectory_levels(row["URL"])
-            else:  # N-gram Extraction
-                url_levels = get_ngram_levels(row["URL"], n_value)
+            url_levels = get_subdirectory_levels(row["URL"])
             for level in url_levels:
                 new_row = row.copy()
                 new_row["Hierarchical_Path"] = level
                 exploded_rows.append(new_row)
         df_exploded = pd.DataFrame(exploded_rows)
 
-        # For hierarchical subdirectories, remove leaf nodes; for n-grams, skip this step.
-        if parsing_method == "Hierarchical Subdirectories":
-            # Identify leaf nodes: a path is a leaf if no other path in the dataset starts with (path + "/")
-            all_paths = set(df_exploded["Hierarchical_Path"].unique())
-            def is_leaf(path):
-                prefix = path.rstrip("/") + "/"
-                return not any(candidate.startswith(prefix) for candidate in all_paths if candidate != path)
-            df_exploded["IsLeaf"] = df_exploded["Hierarchical_Path"].apply(is_leaf)
-            df_filtered = df_exploded[~df_exploded["IsLeaf"]]
-        else:
-            df_filtered = df_exploded
+        # Identify leaf nodes: a path is a leaf if no other path in the dataset starts with (path + "/")
+        all_paths = set(df_exploded["Hierarchical_Path"].unique())
+        def is_leaf(path):
+            prefix = path.rstrip("/") + "/"
+            return not any(candidate.startswith(prefix) for candidate in all_paths if candidate != path)
+        df_exploded["IsLeaf"] = df_exploded["Hierarchical_Path"].apply(is_leaf)
+        df_filtered = df_exploded[~df_exploded["IsLeaf"]]
 
-        st.markdown("### Expanded Data (After Parsing)")
+        st.markdown("### Expanded Data (After Removing Leaf Nodes)")
         st.dataframe(df_filtered.head())
 
-        # Aggregate all numeric columns by the parsed URL segment (Hierarchical_Path)
+        # Aggregate all numeric columns by hierarchical subdirectory
         numeric_cols = [col for col in df.columns if col != "URL"]
         df_agg = df_filtered.groupby("Hierarchical_Path")[numeric_cols].sum().reset_index()
 
-        st.markdown("### Aggregated Data by URL Segment")
+        st.markdown("### Aggregated Data by Hierarchical Subdirectory (No Leaf Nodes)")
         st.dataframe(df_agg)
 
         # Plotly Chart Options
@@ -2692,8 +2661,8 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
                 y="Intent Traffic",
                 color="Intent Type",
                 barmode="group",
-                title="User Intent Traffic by URL Segment",
-                labels={"Hierarchical_Path": "URL Segment"}
+                title="User Intent Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
+                labels={"Hierarchical_Path": "Subdirectory"}
             )
             fig.update_layout(height=800)
             st.plotly_chart(fig)
@@ -2704,8 +2673,8 @@ def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
                     df_agg,
                     x="Hierarchical_Path",
                     y="Traffic",
-                    title="Overall Traffic by URL Segment",
-                    labels={"Hierarchical_Path": "URL Segment", "Traffic": "Traffic"}
+                    title="Overall Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
+                    labels={"Hierarchical_Path": "Subdirectory", "Traffic": "Traffic"}
                 )
                 fig.update_layout(height=800)
                 st.plotly_chart(fig)
