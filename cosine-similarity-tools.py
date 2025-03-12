@@ -59,6 +59,8 @@ import umap
 
 import networkx as nx
 
+from urllib.parse import urlparse
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -2377,6 +2379,86 @@ def entity_relationship_graph_page():
         else:
             st.warning("No content was retrieved from the URL.")
 
+# ------------------------------------
+# SEMRush Organic Pages Sub-Directories
+# ------------------------------------
+
+def semrush_organic_pages_by_subdirectory_page():
+    st.header("SEMRush Organic Pages by Subdirectory")
+    st.markdown("""
+    Upload your SEMRush Organic Pages report (Excel format) to see data aggregated by sub-directory.  
+    The file should contain a 'URL' column plus any numeric columns (e.g. 'Traffic', 'Number of Keywords', etc.).
+    """)
+
+    uploaded_file = st.file_uploader(
+        "Upload SEMRush Organic Pages Excel file",
+        type=["xlsx"],
+        key="semrush_file"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # Read the Excel file into a DataFrame
+            df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            st.error(f"Error reading the Excel file: {e}")
+            return
+
+        # Ensure we have a URL column
+        if "URL" not in df.columns:
+            st.error("No 'URL' column found in the file.")
+            return
+
+        # Attempt to convert each non-URL column to numeric
+        # If parsing fails, values become NaN
+        numeric_cols = []
+        for col in df.columns:
+            if col == "URL":
+                continue
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            # If the column has at least one numeric value, treat it as numeric
+            if df[col].notnull().sum() > 0:
+                numeric_cols.append(col)
+
+        # Helper function to extract the first subdirectory from a URL
+        def get_subdirectory(url):
+            try:
+                parsed = urlparse(url)
+                path_segments = [seg for seg in parsed.path.split('/') if seg]
+                return path_segments[0] if path_segments else "Root"
+            except:
+                return "Invalid URL"
+
+        # Create a new column for the first subdirectory
+        df["Subdirectory"] = df["URL"].apply(get_subdirectory)
+
+        st.markdown("### Data Preview")
+        st.dataframe(df.head())
+
+        st.markdown("### Aggregated Metrics by Subdirectory")
+        # Build an aggregation dictionary for numeric columns (e.g. sum them)
+        agg_dict = {col: "sum" for col in numeric_cols}
+        
+        # Group by Subdirectory and apply the aggregator
+        subdir_agg = df.groupby("Subdirectory").agg(agg_dict).reset_index()
+
+        # Display the aggregated data
+        st.dataframe(subdir_agg)
+
+        # Example: Show a bar chart for Traffic by Subdirectory if "Traffic" exists
+        if "Traffic" in numeric_cols:
+            fig = px.bar(
+                subdir_agg,
+                x="Subdirectory",
+                y="Traffic",
+                title="Traffic by Subdirectory",
+                labels={"Subdirectory": "Subdirectory", "Traffic": "Traffic"}
+            )
+            st.plotly_chart(fig)
+        else:
+            st.write("No 'Traffic' column found to plot.")
+    else:
+        st.info("Please upload a SEMRush Organic Pages Excel file to begin the analysis.")
         
 # ------------------------------------
 # Main Streamlit App
@@ -2415,7 +2497,8 @@ def main():
         "Google Ads Search Term Analyzer",  # New tool
         "Google Search Console Analyzer",
         "Site Focus Visualizer",
-        "Entity Relationship Graph"  # NEW TOOL OPTION
+        "Entity Relationship Graph",  # NEW TOOL OPTION
+        "SEMRush Organic Pages by Subdirectory"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2447,6 +2530,8 @@ def main():
         semantic_clustering_page()
     elif tool == "Entity Relationship Graph":
         entity_relationship_graph_page()
+    elif tool == "SEMRush Organic Pages by Subdirectory":
+        semrush_organic_pages_by_subdirectory_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
