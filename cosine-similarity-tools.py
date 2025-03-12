@@ -2471,6 +2471,7 @@ def semrush_hierarchical_subdirectories_no_leaf_page():
     This tool breaks each URL into **all** subdirectory levels, 
     then omits any subdirectory that does **not** lead to deeper levels 
     (i.e., leaf nodes are removed).
+    """)
 
     uploaded_file = st.file_uploader(
         "Upload Excel file (with a 'URL' column and numeric columns)",
