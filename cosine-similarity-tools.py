@@ -2459,6 +2459,125 @@ def semrush_organic_pages_by_subdirectory_page():
             st.write("No 'Traffic' column found to plot.")
     else:
         st.info("Please upload a SEMRush Organic Pages Excel file to begin the analysis.")
+
+
+# ------------------------------------
+# SEMRush Organic Pages Hierarchical Sub-Directories
+# ------------------------------------
+
+def semrush_hierarchical_subdirectories_no_leaf_page():
+    st.header("SEMRush Pages - Hierarchical Subdirectories (No Leaf Nodes)")
+    st.markdown("""
+    This tool breaks each URL into **all** subdirectory levels, 
+    then omits any subdirectory that does **not** lead to deeper levels 
+    (i.e., leaf nodes are removed).
+
+    **Example**:  
+    `https://www.jacadatravel.com/africa/botswana/okavango-delta/accommodation/abu-camp/`  
+    yields:  
+    - /africa  
+    - /africa/botswana  
+    - /africa/botswana/okavango-delta  
+    - /africa/botswana/okavango-delta/accommodation  
+    *(We omit `/africa/botswana/okavango-delta/accommodation/abu-camp` if there are no deeper subdirectories.)*
+    """)
+
+    uploaded_file = st.file_uploader(
+        "Upload Excel file (with a 'URL' column and numeric columns)",
+        type=["xlsx"]
+    )
+
+    if uploaded_file is not None:
+        try:
+            # Read the Excel file
+            df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            st.error(f"Error reading Excel file: {e}")
+            return
+        
+        # Ensure there's a URL column
+        if "URL" not in df.columns:
+            st.error("No 'URL' column found in the file.")
+            return
+
+        # Convert non-URL columns to numeric if possible
+        numeric_cols = []
+        for col in df.columns:
+            if col == "URL":
+                continue
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if df[col].notnull().sum() > 0:
+                numeric_cols.append(col)
+
+        # Helper function: get **all** partial paths from the URL
+        def get_hierarchical_paths(url):
+            try:
+                parsed = urlparse(url)
+                # Remove leading/trailing slashes, split by slash
+                segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
+                if not segments:
+                    return ["/"]  # "Root" if no path
+                partials = []
+                for i in range(len(segments)):
+                    partial = "/" + "/".join(segments[:i+1])
+                    partials.append(partial)
+                return partials
+            except:
+                return ["/Invalid-URL"]
+
+        # Expand each URL into multiple rows, one per subdirectory level
+        exploded_rows = []
+        for _, row in df.iterrows():
+            url = str(row["URL"])
+            sub_paths = get_hierarchical_paths(url)
+            for sp in sub_paths:
+                new_row = row.copy()
+                new_row["Hierarchical_Path"] = sp
+                exploded_rows.append(new_row)
+        df_exploded = pd.DataFrame(exploded_rows)
+
+        st.markdown("### Expanded Data (One Row per Subdirectory Level)")
+        st.dataframe(df_exploded.head())
+
+        # Identify "leaf" paths
+        # A path is a "leaf" if NO other path in the dataset starts with (path + "/")
+        all_paths = set(df_exploded["Hierarchical_Path"].unique())
+
+        def is_leaf(path):
+            prefix = path.rstrip("/") + "/"
+            # If there's any other path that starts with this prefix, it's not a leaf
+            return not any(candidate.startswith(prefix) for candidate in all_paths if candidate != path)
+
+        # Mark leaf nodes
+        df_exploded["IsLeaf"] = df_exploded["Hierarchical_Path"].apply(is_leaf)
+        # Filter out leaf nodes
+        df_exploded = df_exploded[~df_exploded["IsLeaf"]]
+
+        st.markdown("### Data After Removing Leaf Nodes")
+        st.dataframe(df_exploded.head())
+
+        # Aggregate numeric columns by the new "Hierarchical_Path"
+        agg_dict = {col: "sum" for col in numeric_cols}  # Summation by default
+        df_agg = df_exploded.groupby("Hierarchical_Path").agg(agg_dict).reset_index()
+
+        st.markdown("### Aggregated Data (No Leaf Nodes)")
+        st.dataframe(df_agg)
+
+        # Example: plot a bar chart for 'Traffic' if present
+        if "Traffic" in numeric_cols:
+            fig = px.bar(
+                df_agg,
+                x="Hierarchical_Path",
+                y="Traffic",
+                title="Traffic by Hierarchical Subdirectory (No Leaf Nodes)",
+                labels={"Hierarchical_Path": "Subdirectory", "Traffic": "Traffic"}
+            )
+            fig.update_layout(height=800)
+            st.plotly_chart(fig)
+        else:
+            st.write("No 'Traffic' column found to plot.")
+    else:
+        st.info("Please upload an Excel file with a 'URL' column to begin.")
         
 # ------------------------------------
 # Main Streamlit App
@@ -2498,7 +2617,8 @@ def main():
         "Google Search Console Analyzer",
         "Site Focus Visualizer",
         "Entity Relationship Graph",  # NEW TOOL OPTION
-        "SEMRush Organic Pages by Top Sub-Directory"
+        "SEMRush Organic Pages by Top Sub-Directory",
+        "SEMRush - Hierarchical Subdirectories (No Leaf Nodes)"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2532,6 +2652,8 @@ def main():
         entity_relationship_graph_page()
     elif tool == "SEMRush Organic Pages by Top Sub-Directory":
         semrush_organic_pages_by_subdirectory_page()
+    elif tool == "SEMRush - Hierarchical Subdirectories (No Leaf Nodes)":
+        semrush_hierarchical_subdirectories_no_leaf_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
 
