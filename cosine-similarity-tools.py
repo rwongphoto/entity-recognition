@@ -2498,7 +2498,7 @@ def main():
         "Google Search Console Analyzer",
         "Site Focus Visualizer",
         "Entity Relationship Graph",  # NEW TOOL OPTION
-        "SEMRush Organic Pages by 1st Sub-Directory"
+        "SEMRush Organic Pages by Top Sub-Directory"
     ])
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
@@ -2530,7 +2530,7 @@ def main():
         semantic_clustering_page()
     elif tool == "Entity Relationship Graph":
         entity_relationship_graph_page()
-    elif tool == "SEMRush Organic Pages by 1st Sub-Directory":
+    elif tool == "SEMRush Organic Pages by Top Sub-Directory":
         semrush_organic_pages_by_subdirectory_page()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
