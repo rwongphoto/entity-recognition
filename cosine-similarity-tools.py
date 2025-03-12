@@ -2383,82 +2383,168 @@ def entity_relationship_graph_page():
 # SEMRush Organic Pages Sub-Directories
 # ------------------------------------
 
-def semrush_organic_pages_by_subdirectory_page():
-    st.header("SEMRush Organic Pages by Top Sub-Directory")
+def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
+    st.header("URL Parsing & Aggregation (Keywords & Traffic)")
     st.markdown("""
-    Upload your SEMRush Organic Pages report (Excel format) to see data aggregated by sub-directory.  
-    The file should contain a 'URL' column plus any numeric columns (e.g. 'Traffic', 'Number of Keywords', etc.).
+    **Goal:**  
+    1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns along with any user intent traffic columns.  
+    2. Expand each URL either into **all** hierarchical subdirectories (omitting leaf nodes) **or** extract n‑gram segments from the URL path.  
+    3. Aggregate (sum) the metrics at each non‑leaf hierarchical level or for each n‑gram.  
+    4. Optionally filter the Plotly chart by user intent traffic columns.
     """)
 
     uploaded_file = st.file_uploader(
-        "Upload SEMRush Organic Pages Excel file",
-        type=["xlsx"],
-        key="semrush_file"
+        "Upload an Excel file with 'URL', 'Number of Keywords', 'Traffic' and (optionally) user intent traffic columns",
+        type=["xlsx"]
     )
-    
+
     if uploaded_file is not None:
         try:
-            # Read the Excel file into a DataFrame
             df = pd.read_excel(uploaded_file)
         except Exception as e:
-            st.error(f"Error reading the Excel file: {e}")
+            st.error(f"Error reading Excel file: {e}")
             return
 
-        # Ensure we have a URL column
-        if "URL" not in df.columns:
-            st.error("No 'URL' column found in the file.")
+        # Required columns
+        required_cols = ["URL", "Number of Keywords", "Traffic"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            st.error(f"Missing required columns: {missing_cols}")
             return
 
-        # Attempt to convert each non-URL column to numeric
-        # If parsing fails, values become NaN
-        numeric_cols = []
+        # User intent traffic columns (if present)
+        user_intent_options = [
+            "Traffic with commercial intents in top 20",
+            "Traffic with informational intents in top 20",
+            "Traffic with navigational intents in top 20",
+            "Traffic with transactional intents in top 20",
+            "Traffic with unknown intents in top 20"
+        ]
+        available_intent_cols = [col for col in user_intent_options if col in df.columns]
+        all_cols = required_cols + available_intent_cols
+        df = df[all_cols]
+
+        # Convert non-URL columns to numeric
         for col in df.columns:
-            if col == "URL":
-                continue
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-            # If the column has at least one numeric value, treat it as numeric
-            if df[col].notnull().sum() > 0:
-                numeric_cols.append(col)
+            if col != "URL":
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # Helper function to extract the first subdirectory from a URL
-        def get_subdirectory(url):
-            try:
-                parsed = urlparse(url)
-                path_segments = [seg for seg in parsed.path.split('/') if seg]
-                return path_segments[0] if path_segments else "Root"
-            except:
-                return "Invalid URL"
+        # Select URL Parsing Method
+        parsing_method = st.radio(
+            "Select URL Parsing Method",
+            ("Hierarchical Subdirectories", "N‑gram Extraction"),
+            index=0
+        )
 
-        # Create a new column for the first subdirectory
-        df["Subdirectory"] = df["URL"].apply(get_subdirectory)
+        # If N-gram Extraction is selected, ask for the n value
+        if parsing_method == "N‑gram Extraction":
+            n_value = st.number_input("Enter n value for n‑gram extraction", min_value=1, max_value=10, value=2, step=1)
 
-        st.markdown("### Data Preview")
-        st.dataframe(df.head())
+        # Function to get all hierarchical subdirectory levels from a URL
+        def get_subdirectory_levels(url):
+            parsed = urlparse(str(url))
+            segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
+            if not segments:
+                return ["/"]
+            paths = []
+            for i in range(len(segments)):
+                path = "/" + "/".join(segments[:i+1])
+                paths.append(path)
+            return paths
 
-        st.markdown("### Aggregated Metrics by Subdirectory")
-        # Build an aggregation dictionary for numeric columns (e.g. sum them)
-        agg_dict = {col: "sum" for col in numeric_cols}
-        
-        # Group by Subdirectory and apply the aggregator
-        subdir_agg = df.groupby("Subdirectory").agg(agg_dict).reset_index()
+        # Function to extract n-gram segments from a URL's path
+        def get_ngram_levels(url, n):
+            parsed = urlparse(str(url))
+            segments = [seg for seg in parsed.path.strip("/").split("/") if seg]
+            # Only return n-grams if there are at least n segments; otherwise, return empty list.
+            if len(segments) < n:
+                return []
+            ngrams = []
+            for i in range(len(segments) - n + 1):
+                ngram = "/" + "/".join(segments[i:i+n])
+                ngrams.append(ngram)
+            return ngrams
 
-        # Display the aggregated data
-        st.dataframe(subdir_agg)
+        # Explode each URL into its parsed segments (either hierarchical levels or n-grams)
+        exploded_rows = []
+        for _, row in df.iterrows():
+            if parsing_method == "Hierarchical Subdirectories":
+                url_levels = get_subdirectory_levels(row["URL"])
+            else:  # N-gram Extraction
+                url_levels = get_ngram_levels(row["URL"], n_value)
+            for level in url_levels:
+                new_row = row.copy()
+                new_row["Hierarchical_Path"] = level
+                exploded_rows.append(new_row)
+        df_exploded = pd.DataFrame(exploded_rows)
 
-        # Example: Show a bar chart for Traffic by Subdirectory if "Traffic" exists
-        if "Traffic" in numeric_cols:
-            fig = px.bar(
-                subdir_agg,
-                x="Subdirectory",
-                y="Traffic",
-                title="Traffic by Subdirectory",
-                labels={"Subdirectory": "Subdirectory", "Traffic": "Traffic"}
+        # For hierarchical subdirectories, remove leaf nodes; for n-grams, skip this step.
+        if parsing_method == "Hierarchical Subdirectories":
+            # Identify leaf nodes: a path is a leaf if no other path in the dataset starts with (path + "/")
+            all_paths = set(df_exploded["Hierarchical_Path"].unique())
+            def is_leaf(path):
+                prefix = path.rstrip("/") + "/"
+                return not any(candidate.startswith(prefix) for candidate in all_paths if candidate != path)
+            df_exploded["IsLeaf"] = df_exploded["Hierarchical_Path"].apply(is_leaf)
+            df_filtered = df_exploded[~df_exploded["IsLeaf"]]
+        else:
+            df_filtered = df_exploded
+
+        st.markdown("### Expanded Data (After Parsing)")
+        st.dataframe(df_filtered.head())
+
+        # Aggregate all numeric columns by the parsed URL segment (Hierarchical_Path)
+        numeric_cols = [col for col in df.columns if col != "URL"]
+        df_agg = df_filtered.groupby("Hierarchical_Path")[numeric_cols].sum().reset_index()
+
+        st.markdown("### Aggregated Data by URL Segment")
+        st.dataframe(df_agg)
+
+        # Plotly Chart Options
+        st.markdown("### Plotly Chart")
+        st.write("By default, a bar chart for overall 'Traffic' is shown. You can also filter by user intent traffic columns.")
+        if available_intent_cols:
+            selected_intents = st.multiselect(
+                "Select User Intent Traffic Columns to plot:",
+                options=available_intent_cols,
+                default=[]
             )
+        else:
+            selected_intents = []
+
+        # If user selects any intent columns, melt the DataFrame for a grouped bar chart.
+        if selected_intents:
+            df_melt = df_agg.melt(id_vars=["Hierarchical_Path"],
+                                  value_vars=selected_intents,
+                                  var_name="Intent Type",
+                                  value_name="Intent Traffic")
+            fig = px.bar(
+                df_melt,
+                x="Hierarchical_Path",
+                y="Intent Traffic",
+                color="Intent Type",
+                barmode="group",
+                title="User Intent Traffic by URL Segment",
+                labels={"Hierarchical_Path": "URL Segment"}
+            )
+            fig.update_layout(height=800)
             st.plotly_chart(fig)
         else:
-            st.write("No 'Traffic' column found to plot.")
+            # Otherwise, plot the overall 'Traffic'
+            if "Traffic" in df_agg.columns:
+                fig = px.bar(
+                    df_agg,
+                    x="Hierarchical_Path",
+                    y="Traffic",
+                    title="Overall Traffic by URL Segment",
+                    labels={"Hierarchical_Path": "URL Segment", "Traffic": "Traffic"}
+                )
+                fig.update_layout(height=800)
+                st.plotly_chart(fig)
+            else:
+                st.write("No 'Traffic' column found for plotting.")
     else:
-        st.info("Please upload a SEMRush Organic Pages Excel file to begin the analysis.")
+        st.info("Please upload an Excel file to begin the analysis.")
 
 
 # ------------------------------------
