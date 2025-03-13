@@ -2467,7 +2467,7 @@ def semrush_organic_pages_by_subdirectory_page():
 # ------------------------------------
 
 def semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter():
-    st.header("Hierarchical Subdirectory Aggregation (Keywords & Traffic, No Leaf Nodes)")
+    st.header("SEMRush Hierarchical Subdirectory Aggregation (Keywords & Traffic, No Leaf Nodes)")
     st.markdown("""
     **Goal:**  
     1. Keep only the **URL**, **Number of Keywords**, and **Traffic** columns along with any user intent traffic columns.  
