@@ -2386,7 +2386,7 @@ def entity_relationship_graph_page():
 def semrush_organic_pages_by_subdirectory_page():
     st.header("SEMRush Organic Pages by Subdirectory")
     st.markdown("""
-    Upload your SEMRush Organic Pages report (Excel format) to see data aggregated by sub-directory.  
+    Upload your SEMRush Organic Pages report (Excel format) to see data aggregated by top-level sub-directory.  
     The file should contain a 'URL' column plus any numeric columns (e.g. 'Traffic', 'Number of Keywords', etc.).
     """)
 
