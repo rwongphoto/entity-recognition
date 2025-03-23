@@ -89,12 +89,12 @@ threadpoolctl==3.5.0
 tinycss2==1.4.0
 tokenizers==0.21.0
 toml==0.10.2
-torch
+torch==2.2.2
 torchaudio==2.2.2
 torchvision==0.17.2
 tornado==6.4.2
 tqdm==4.67.1
-transformers>=4.0.0
+transformers==4.30.0
 trio==0.28.0
 trio-websocket==0.11.1
 typing_extensions==4.12.2
