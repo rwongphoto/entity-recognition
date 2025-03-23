@@ -113,3 +113,4 @@ langchain-community
 qdrant-client
 langchain-openai
 tiktoken
+langchain-qdrant
