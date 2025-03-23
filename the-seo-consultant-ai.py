@@ -1,12 +1,12 @@
 import streamlit as st
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Qdrant
-from langchain.chains import RetrievalQA
+from langchain_qdrant import Qdrant  # Corrected import
 from qdrant_client import QdrantClient
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
-import os  # Import os
+from langchain.chains import create_retrieval_chain  # Corrected import
+import os
 
 
 def setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collection_name):
@@ -14,9 +14,7 @@ def setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collect
     try:
         embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
         client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
-        # Use Qdrant.from_existing_collection to connect to the existing collection
         vectorstore = Qdrant(client=client, collection_name=collection_name, embeddings=embeddings)
-
         retriever = vectorstore.as_retriever()
 
         llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key=openai_api_key)
@@ -35,8 +33,9 @@ def setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collect
             ("user", "{input}"),
         ])
         document_chain = create_stuff_documents_chain(llm, prompt)
-        qa_chain = RetrievalQA(combine_documents_chain=document_chain, retriever=history_aware_retriever,
-                               return_source_documents=True)
+
+        # Use create_retrieval_chain
+        qa_chain = create_retrieval_chain(history_aware_retriever, document_chain)
 
         st.success("RetrievalQA chain created successfully.")
         return qa_chain
@@ -62,9 +61,10 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "qa_chain" not in st.session_state:
-      # Set environment variable.
-      os.environ["OPENAI_API_KEY"] = openai_api_key
-      st.session_state.qa_chain = setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collection_name)
+        # Set environment variable.
+        os.environ["OPENAI_API_KEY"] = openai_api_key
+        st.session_state.qa_chain = setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key,
+                                                              collection_name)
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -105,7 +105,7 @@ def main():
                     full_response = "Sorry, I encountered an error."
             else:
                 full_response = "The RetrievalQA chain could not be initialized.  Please check your Qdrant and OpenAI settings."
-                st.error(full_response) # Show error on screen.
+                st.error(full_response)  # Show error on screen.
 
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
