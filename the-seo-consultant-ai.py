@@ -46,7 +46,7 @@ def setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collect
 
 
 def main():
-    st.title("Chatbot with Existing Qdrant Database")
+    st.title("How can I answer your SEO or marketing questions?")
 
     # --- Load Secrets ---
     openai_api_key = st.secrets["OPENAI_API_KEY"]
