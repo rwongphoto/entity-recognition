@@ -8,6 +8,22 @@ from langchain.chains.history_aware_retriever import create_history_aware_retrie
 from langchain.chains import create_retrieval_chain  # Corrected import
 import os
 
+# Inject custom CSS to reduce spacing between elements
+st.markdown(
+    """
+    <style>
+    /* Reduce bottom margin for h1 titles */
+    h1 {
+        margin-bottom: 10px;
+    }
+    /* Reduce top padding of the main container */
+    .block-container {
+        padding-top: 1rem;
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
+
 def setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collection_name):
     """Sets up and returns the RetrievalQA chain."""
     try:
@@ -54,32 +70,27 @@ def main():
     collection_name = st.secrets["QDRANT_COLLECTION_NAME"]
 
     # --- Chat Interface ---
-    # Initialize chat history and chain outside the input block
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "qa_chain" not in st.session_state:
-        # Set environment variable.
         os.environ["OPENAI_API_KEY"] = openai_api_key
         st.session_state.qa_chain = setup_retrieval_qa_chain(qdrant_url, qdrant_api_key, openai_api_key, collection_name)
 
-    # Display chat messages from history on app rerun
+    # Display chat messages from history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
     # Accept user input
     if prompt := st.chat_input("What is up?"):
-        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
-        # Display user message
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Display assistant response
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
-            if st.session_state.qa_chain:  # Check if qa_chain is initialized
+            if st.session_state.qa_chain:
                 try:
                     result = st.session_state.qa_chain.invoke({
                         "input": prompt, 
@@ -87,11 +98,9 @@ def main():
                     })
                     full_response = result["answer"]
 
-                    # --- Optional: Display Source Documents ---
                     if "source_documents" in result:
                         full_response += "\n\n**Source Documents:**\n"
                         for doc in result["source_documents"]:
-                            # Check if 'source' exists in metadata, default to a placeholder if not.
                             source = doc.metadata.get('source', 'Unknown Source')
                             full_response += f"- *{source}*\n"
 
@@ -102,9 +111,10 @@ def main():
                     full_response = "Sorry, I encountered an error."
             else:
                 full_response = "The RetrievalQA chain could not be initialized. Please check your Qdrant and OpenAI settings."
-                st.error(full_response)  # Show error on screen.
+                st.error(full_response)
 
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 if __name__ == "__main__":
     main()
+
