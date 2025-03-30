@@ -2572,7 +2572,6 @@ def main():
         </style>
         """
     st.markdown(hide_streamlit_elements, unsafe_allow_html=True)
-    create_navigation_menu(logo_url)
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
         "URL Analysis Dashboard",
