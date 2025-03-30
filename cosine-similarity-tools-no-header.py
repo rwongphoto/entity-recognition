@@ -130,14 +130,14 @@ def extract_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        # Use the random user agent function
         user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
-        # Add a unique temporary user data directory
-        import tempfile
-        temp_dir = tempfile.mkdtemp()
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-
+        
+        # Generate a truly unique user data directory using uuid
+        import uuid
+        unique_dir = f"/tmp/chrome_profile_{uuid.uuid4()}"
+        chrome_options.add_argument(f"--user-data-dir={unique_dir}")
+        
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
         wait = WebDriverWait(driver, 20)
@@ -167,6 +167,7 @@ def extract_text_from_url(url):
             st.error(f"Unexpected error fetching {url}: {error_str}")
         return None
 
+
 @st.cache_data(ttl=86400)
 def extract_relevant_text_from_url(url):
     try:
@@ -175,13 +176,13 @@ def extract_relevant_text_from_url(url):
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        # Use the random user agent function
         user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
-        # Add a unique temporary user data directory
-        import tempfile
-        temp_dir = tempfile.mkdtemp()
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+        
+        # Generate a unique user data directory using uuid
+        import uuid
+        unique_dir = f"/tmp/chrome_profile_{uuid.uuid4()}"
+        chrome_options.add_argument(f"--user-data-dir={unique_dir}")
         
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
@@ -208,6 +209,7 @@ def extract_relevant_text_from_url(url):
         else:
             st.error(f"Error extracting relevant content from {url}: {error_str}")
         return None
+
 
 @st.cache_data
 def count_videos(_soup):
