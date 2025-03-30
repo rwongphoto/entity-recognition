@@ -180,6 +180,10 @@ def extract_relevant_text_from_url(url):
         # Use the random user agent function
         user_agent = get_random_user_agent()
         chrome_options.add_argument(f"user-agent={user_agent}")
+        # Add a unique temporary user data directory
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(url)
         wait = WebDriverWait(driver, 20)
