@@ -1,7 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
 import os
-from dotenv import load_dotenv
 import re # Import regex for potentially easier number extraction
 
 # --- Configuration ---
@@ -9,25 +8,31 @@ st.set_page_config(page_title="Grounding Predictor", layout="wide")
 st.title("🔮 Prompt Grounding Likelihood Predictor")
 st.caption("Predict if a prompt is likely to require grounding and estimate the confidence of that prediction.")
 
-# --- Load API Key ---
-load_dotenv()
-api_key_env = os.getenv("GOOGLE_API_KEY")
+# --- Access API Key using Streamlit Secrets ---
+api_key = None
+api_key_configured = False
 
-api_key_input = st.sidebar.text_input(
-    "Enter your Google AI API Key:",
-    type="password",
-    value=api_key_env if api_key_env else "",
-    help="Get your key from https://aistudio.google.com/app/apikey"
-)
+# Check if the secret is defined
+if "google_api_key" in st.secrets:
+    api_key = st.secrets["google_api_key"]
+else:
+    st.sidebar.error("Google AI API key not found in Streamlit secrets!")
+    st.sidebar.caption("Please add your key to `.streamlit/secrets.toml` locally, or in the app's secrets settings on Streamlit Community Cloud.")
+    st.info("API Key is missing. Please configure it in Streamlit secrets to use this tool.", icon="🔑")
+    # Stop execution if the key isn't present
+    # st.stop() # Option 1: Halt completely
+    # Option 2: Allow app to load but disable functionality (handled below by checking api_key_configured)
 
-# --- API Configuration & Model Selection ---
-api_key = api_key_input if api_key_input else api_key_env
+
+# --- API Configuration & Model Selection (only if key exists) ---
 model = None
 selected_model_name = None
 
 if api_key:
     try:
         genai.configure(api_key=api_key)
+        api_key_configured = True # Mark key as successfully configured
+
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         preferred_models = [m for m in available_models if 'gemini' in m and 'vision' not in m and 'embed' not in m]
         if not preferred_models:
@@ -46,17 +51,17 @@ if api_key:
                 index=preferred_models.index(default_model) if default_model in preferred_models else 0
             )
             model = genai.GenerativeModel(selected_model_name)
-            st.sidebar.success(f"API Key configured. Using model: `{selected_model_name}`")
+            st.sidebar.success(f"API Key loaded. Using model: `{selected_model_name}`")
         else:
             st.sidebar.error("No suitable text generation models found for this API key.")
-            api_key = None
+            api_key_configured = False # Mark as not configured if model selection fails
 
     except Exception as e:
         st.sidebar.error(f"Error configuring API key or listing models: {e}")
-        api_key = None
+        api_key_configured = False # Mark as not configured on error
 else:
-    st.sidebar.warning("Please enter your Google AI API Key to proceed.")
-    st.info("Enter your Google AI API Key in the sidebar to begin.")
+     st.sidebar.warning("API Key not found in secrets.")
+
 
 # --- User Input ---
 st.subheader("1. Enter the Prompt, Question, or Query to Analyze")
@@ -68,14 +73,15 @@ user_prompt = st.text_area(
 )
 
 # --- Prediction Logic ---
+# Button is disabled if API key wasn't configured OR model isn't selected OR prompt is empty
 predict_button = st.button(
     "Predict Grounding Likelihood",
-    disabled=not api_key or not user_prompt,
+    disabled=not api_key_configured or not model or not user_prompt,
     key="predict_button"
 )
 
-if predict_button and model:
-    # --- Construct the Meta-Prompt for the Prediction Model (with Confidence Request) ---
+if predict_button and api_key_configured and model: # Double-check conditions
+    # --- Construct the Meta-Prompt (same as before) ---
     prediction_prompt = f"""
     **Task:** Analyze the following "User Prompt". Predict whether an AI attempting to answer this prompt accurately and comprehensively would likely require **grounding**. Grounding means accessing external, specific, or up-to-date information beyond its general knowledge base (e.g., performing a web search, checking recent data feeds).
 
@@ -116,15 +122,14 @@ if predict_button and model:
 
         st.subheader("2. Grounding Likelihood Prediction")
 
-        # --- Updated Parsing Block ---
+        # --- Parsing Block (same as before) ---
         likelihood = "Could not parse"
-        confidence_score = None # Default to None
-        reasoning = prediction_text # Default fallback
+        confidence_score = None
+        reasoning = prediction_text
 
-        # Use regex to find Likelihood, Confidence, and Reasoning lines more robustly
         likelihood_match = re.search(r"^\s*Likelihood:\s*(.*)", prediction_text, re.MULTILINE | re.IGNORECASE)
         confidence_match = re.search(r"^\s*Confidence:\s*(\d{1,3})\s*%", prediction_text, re.MULTILINE | re.IGNORECASE)
-        reasoning_match = re.search(r"^\s*Reasoning:\s*(.*)", prediction_text, re.MULTILINE | re.IGNORECASE | re.DOTALL) # DOTALL allows '.' to match newline
+        reasoning_match = re.search(r"^\s*Reasoning:\s*(.*)", prediction_text, re.MULTILINE | re.IGNORECASE | re.DOTALL)
 
         if likelihood_match:
             potential_likelihood = likelihood_match.group(1).strip().lower()
@@ -137,57 +142,46 @@ if predict_button and model:
 
         if confidence_match:
             try:
-                # Extract the number captured by the regex group 1
                 confidence_score = int(confidence_match.group(1))
-                # Basic validation
-                if not (0 <= confidence_score <= 100):
-                    confidence_score = None # Invalidate if outside range
-            except (ValueError, IndexError):
-                confidence_score = None # Parsing failed
+                if not (0 <= confidence_score <= 100): confidence_score = None
+            except (ValueError, IndexError): confidence_score = None
 
         if reasoning_match:
             reasoning = reasoning_match.group(1).strip()
         else:
-             # Fallback if Reasoning line isn't found explicitly - try to remove likelihood/confidence if they exist
              temp_reasoning = prediction_text
-             if likelihood_match:
-                 temp_reasoning = temp_reasoning.replace(likelihood_match.group(0), "", 1) # Remove the matched likelihood line
-             if confidence_match:
-                 temp_reasoning = temp_reasoning.replace(confidence_match.group(0), "", 1) # Remove the matched confidence line
+             if likelihood_match: temp_reasoning = temp_reasoning.replace(likelihood_match.group(0), "", 1)
+             if confidence_match: temp_reasoning = temp_reasoning.replace(confidence_match.group(0), "", 1)
              reasoning = temp_reasoning.strip()
 
-
-        # --- Display parsed results ---
+        # --- Display parsed results (same as before) ---
         confidence_text = f"(Confidence: {confidence_score}%)" if confidence_score is not None else "(Confidence: Not Provided)"
 
         if likelihood == "Likely Requires Grounding":
             st.warning(f"**Prediction: {likelihood}**  🌐 {confidence_text}")
-            st.markdown("**Reasoning from AI:**")
-            st.markdown(reasoning)
         elif likelihood == "Likely Self-Contained":
             st.success(f"**Prediction: {likelihood}** 🧠 {confidence_text}")
-            st.markdown("**Reasoning from AI:**")
-            st.markdown(reasoning)
         elif likelihood == "Borderline / Ambiguous":
             st.info(f"**Prediction: {likelihood}** 🤔 {confidence_text}")
-            st.markdown("**Reasoning from AI:**")
-            st.markdown(reasoning)
         else: # Could not parse Likelihood
             st.error(f"**Prediction: {likelihood}** ❓")
-            st.markdown("**AI's Raw Prediction Output:**")
-            st.markdown(prediction_text) # Show the full raw text
 
-        # Add a disclaimer about the confidence score's nature
+        # Display reasoning if likelihood was parsed, otherwise show raw output.
+        if likelihood != "Could not parse":
+            st.markdown("**Reasoning from AI:**")
+            st.markdown(reasoning)
+        else:
+             st.markdown("**AI's Raw Prediction Output:**")
+             st.markdown(prediction_text)
+
         if confidence_score is not None or likelihood != "Could not parse":
              st.caption("ℹ️ The confidence score is the AI's own estimation and may not be statistically precise.")
 
-
-        # --- Expanders for Debugging ---
+        # --- Expanders for Debugging (same as before) ---
         with st.expander("Show Raw AI Prediction Response"):
             st.text(prediction_text)
         with st.expander("Show Prompt Sent to Prediction AI"):
             st.text(prediction_prompt)
-
 
     except Exception as e:
         st.error(f"An error occurred during prediction API call: {e}")
@@ -203,7 +197,14 @@ if predict_button and model:
 
 
 elif predict_button:
-    if not api_key:
-        st.error("Prediction failed: API Key is missing.")
+    # Add checks for why the button might be pressed but logic doesn't run
+    if not api_key_configured:
+         st.error("Prediction failed: API Key is not configured correctly via secrets.")
+    elif not model:
+         st.error("Prediction failed: AI Model could not be initialized.")
     elif not user_prompt:
         st.error("Prediction failed: Prompt to analyze is empty.")
+
+# Add a general message if the API key wasn't configured at the start
+if not api_key_configured and not api_key: # Show only if key wasn't even found
+    st.warning("Please configure your Google AI API Key in Streamlit secrets to enable prediction.")
