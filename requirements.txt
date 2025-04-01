@@ -50,6 +50,7 @@ narwhals==1.26.0
 networkx==3.2.1
 nltk
 openpyxl
+os
 outcome==1.3.0.post0
 packaging==24.2
 pandas==2.2.3
