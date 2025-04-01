@@ -6,7 +6,7 @@ import re # Import regex for potentially easier number extraction
 # --- Configuration ---
 st.set_page_config(page_title="Grounding Predictor", layout="wide")
 st.title("🔮 AI Prompt Grounding Predictor")
-st.caption("Predict if a prompt is likely to require grounding and estimate the confidence of that prediction. Grounding refers to AI's need to retrieve data outside of it's current knowledge base.")
+st.caption("Predict if a prompt is likely to require grounding and estimate the confidence of that prediction. Grounding refers to AI's need to retrieve data outside of it's current knowledge base. Grounding is potentially an opportunity to influence the AI results.")
 
 # --- Access API Key using Streamlit Secrets ---
 api_key = None
