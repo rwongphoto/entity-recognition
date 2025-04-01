@@ -30,29 +30,29 @@ if api_key:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         preferred_models = [m for m in available_models if 'gemini' in m and 'vision' not in m and 'embed' not in m]
         if not preferred_models:
-            preferred_models = available_models
+            preferred_models = available_models # Fallback if no 'gemini' text models found
 
         default_model = 'models/gemini-1.5-flash-latest' # Flash is often good enough for analysis
         if default_model not in preferred_models and preferred_models:
-            default_model = preferred_models[0]
+            default_model = preferred_models[0] # Use first preferred if flash isn't available
         elif not preferred_models:
-             default_model = None
+             default_model = None # No suitable models found
 
         if default_model:
             selected_model_name = st.sidebar.selectbox(
                 "Select Google AI Model (for Prediction):",
                 options=preferred_models,
-                index=preferred_models.index(default_model)
+                index=preferred_models.index(default_model) if default_model in preferred_models else 0
             )
             model = genai.GenerativeModel(selected_model_name)
             st.sidebar.success(f"API Key configured. Using model: `{selected_model_name}`")
         else:
             st.sidebar.error("No suitable text generation models found for this API key.")
-            api_key = None
+            api_key = None # Reset API key validity
 
     except Exception as e:
         st.sidebar.error(f"Error configuring API key or listing models: {e}")
-        api_key = None
+        api_key = None # Reset API key validity
 else:
     st.sidebar.warning("Please enter your Google AI API Key to proceed.")
     st.info("Enter your Google AI API Key in the sidebar to begin.")
@@ -112,41 +112,63 @@ if predict_button and model:
             prediction_response = model.generate_content(
                 prediction_prompt,
                 generation_config=generation_config_predict,
-                # safety_settings=safety_settings_predict # Add if needed
+                # safety_settings=safety_settings_predict # Uncomment and configure if needed
             )
             prediction_text = prediction_response.text
 
         st.subheader("2. Grounding Likelihood Prediction")
 
-        # --- Parse the prediction result ---
+        # --- FIXED Parsing Block ---
         likelihood = "Could not parse"
-        reasoning = prediction_text # Default
+        reasoning = prediction_text # Default fallback
 
-        lines = prediction_text.strip().split('\n', 1)
+        lines = prediction_text.strip().split('\n', 1) # Split into max 2 parts
+
+        # Parse Likelihood from the first line (if it exists)
         if len(lines) > 0:
-            first_line = lines[0].lower() # Case-insensitive check
-            if "likelihood:" in first_line:
-                potential_likelihood = first_line.split("likelihood:", 1)[1].strip()
-                # Check for keywords robustly
-                if "likely requires grounding" in potential_likelihood or "requires grounding" in potential_likelihood:
-                    likelihood = "Likely Requires Grounding"
-                elif "likely self-contained" in potential_likelihood or "self-contained" in potential_likelihood:
-                    likelihood = "Likely Self-Contained"
-                elif "borderline" in potential_likelihood or "ambiguous" in potential_likelihood:
-                    likelihood = "Borderline / Ambiguous"
-                # Keep "Could not parse" if none match clearly
+            first_line = lines[0] # Use original case for splitting, lower for checking
+            if "likelihood:" in first_line.lower():
+                parts = first_line.split(":", 1) # Split on the first colon
+                if len(parts) > 1: # Check if split worked
+                    potential_likelihood = parts[1].strip().lower() # Use lower() here for matching
+                    # Check for keywords robustly
+                    if "likely requires grounding" in potential_likelihood or "requires grounding" in potential_likelihood:
+                        likelihood = "Likely Requires Grounding"
+                    elif "likely self-contained" in potential_likelihood or "self-contained" in potential_likelihood:
+                        likelihood = "Likely Self-Contained"
+                    elif "borderline" in potential_likelihood or "ambiguous" in potential_likelihood:
+                        likelihood = "Borderline / Ambiguous"
+                # else: likelihood remains "Could not parse" if ":" was found but split failed unexpectedly
 
-            if len(lines) > 1:
-                 second_part = lines[1].strip()
-                 if second_part.lower().startswith("reasoning:"):
-                     reasoning = second_part.split("reasoning:", 1)[1].strip()
-                 else:
-                     reasoning = second_part # Use as reasoning if format differs
+        # Parse Reasoning ONLY IF a second line exists
+        if len(lines) > 1:
+            second_part = lines[1].strip()
+            if second_part.lower().startswith("reasoning:"):
+                reasoning_parts = second_part.split(":", 1) # Split on the first colon
+                if len(reasoning_parts) > 1: # Check if split worked
+                     # Try to extract just the explanation part
+                     reasoning = reasoning_parts[1].strip()
+                else:
+                     # If "reasoning:" was there but split failed, use the whole line
+                     reasoning = second_part
+            else:
+                # If "Reasoning:" prefix is missing, use the whole second part as reasoning
+                reasoning = second_part
+        # If len(lines) <= 1 and likelihood was parsed, reasoning might still be the full text.
+        # If likelihood wasn't parsed, reasoning remains the full prediction_text.
+        # Refine reasoning if it still contains the likelihood line:
+        if reasoning.strip().lower().startswith("likelihood:") and "\n" in reasoning:
+             reasoning = reasoning.split('\n', 1)[1].strip()
+        # Further refine reasoning if it still contains the reasoning line itself
+        if reasoning.strip().lower().startswith("reasoning:"):
+             reasoning_parts_check = reasoning.split(":", 1)
+             if len(reasoning_parts_check) > 1:
+                 reasoning = reasoning_parts_check[1].strip()
 
 
         # --- Display parsed results ---
         if likelihood == "Likely Requires Grounding":
-            st.warning(f"**Prediction: {likelihood}**  वेब") # Using a web emoji as indicator
+            st.warning(f"**Prediction: {likelihood}**  🌐") # Using a web emoji as indicator
             st.markdown("**Reasoning from AI:**")
             st.markdown(reasoning)
         elif likelihood == "Likely Self-Contained":
@@ -174,9 +196,15 @@ if predict_button and model:
         st.error(f"An error occurred during prediction API call: {e}")
         # Attempt to access candidate information if available for debugging safety blocks etc.
         try:
-            st.error(f"Prediction Candidate info: {prediction_response.candidates}")
-        except:
-            pass
+            # Ensure prediction_response exists before trying to access candidates
+            if 'prediction_response' in locals() and hasattr(prediction_response, 'candidates'):
+                 st.error(f"Prediction Candidate info: {prediction_response.candidates}")
+            elif 'prediction_response' in locals() and hasattr(prediction_response, 'prompt_feedback'):
+                 st.error(f"Prediction Prompt Feedback: {prediction_response.prompt_feedback}")
+            else:
+                 st.error("Could not retrieve detailed error information (e.g., safety blocking).")
+        except Exception as e_detail:
+             st.error(f"Error retrieving details: {e_detail}")
 
 
 elif predict_button: # If button was pressed but failed basic checks
