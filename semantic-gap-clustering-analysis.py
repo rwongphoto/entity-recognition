@@ -22,7 +22,7 @@ def get_embedding(text, model):
     return model.encode(text)
 
 def preprocess_text(text):
-    """A simple text preprocessing function."""
+    """Simple text preprocessing: convert to lowercase."""
     return text.lower()
 
 # --------------------------
@@ -31,7 +31,7 @@ def preprocess_text(text):
 def semantic_gap_analyzer(competitor_texts, target_text, n_value=2, top_n=10, min_df=1, max_df=1.0):
     """
     Process competitor and target texts to compute TF‑IDF scores for n‑grams.
-    Returns a list of gap candidates where competitor n‑gram importance exceeds that of the target.
+    Returns a sorted list of gap candidates where competitor n‑gram importance exceeds that of the target.
     """
     competitor_texts = [preprocess_text(text) for text in competitor_texts]
     target_text = preprocess_text(target_text)
@@ -46,7 +46,6 @@ def semantic_gap_analyzer(competitor_texts, target_text, n_value=2, top_n=10, mi
     
     gap_candidates = []
     model = initialize_sentence_transformer()
-    # Compare each competitor's n-grams with target n-grams
     for idx in range(len(competitor_texts)):
         row = df_tfidf_competitors.iloc[idx]
         sorted_ngrams = row.sort_values(ascending=False).head(top_n)
@@ -56,7 +55,7 @@ def semantic_gap_analyzer(competitor_texts, target_text, n_value=2, top_n=10, mi
                 diff = comp_tfidf - target_tfidf
                 if diff > 0:
                     gap_candidates.append((ngram, diff))
-    # Remove duplicates and sort by gap score
+    # Remove duplicates and sort by gap score (highest first)
     gap_candidates = list(set(gap_candidates))
     gap_candidates.sort(key=lambda x: x[1], reverse=True)
     return gap_candidates
@@ -85,7 +84,7 @@ def keyword_clustering(gap_candidates, n_clusters=5):
 
 def plot_keyword_clusters(embeddings, labels, gap_ngrams):
     """
-    Use PCA to reduce the embedding dimensions to 2 and plot clusters using Plotly.
+    Reduce embedding dimensions to 2 with PCA and generate a scatter plot of the clusters using Plotly.
     """
     pca = PCA(n_components=2)
     embeddings_2d = pca.fit_transform(embeddings)
@@ -109,7 +108,6 @@ def get_recommendations(semantic_gap_results, keyword_clusters, api_key):
     then call the ChatGPT API to obtain SEO recommendations.
     """
     openai.api_key = api_key
-    
     gap_text = "\n".join([f"{ngram}: {score:.3f}" for ngram, score in semantic_gap_results])
     clusters_text = ""
     for cluster, items in keyword_clusters.items():
@@ -125,16 +123,20 @@ def get_recommendations(semantic_gap_results, keyword_clusters, api_key):
         "Recommendations:"
     )
     
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are an SEO expert."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=300
-    )
-    return response.choices[0].message["content"]
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an SEO expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+        return response.choices[0].message["content"]
+    except Exception as e:
+        st.error(f"Error calling ChatGPT API: {e}. Please ensure you're using the latest version of the openai Python package.")
+        return "No recommendations generated due to API error."
 
 # --------------------------
 # Main Streamlit App Interface
@@ -161,7 +163,7 @@ def main():
         
         with st.spinner("Running Semantic Gap Analysis..."):
             gap_candidates = semantic_gap_analyzer(competitor_texts, target_input, n_value=n_value, top_n=top_n)
-        st.session_state["gap_candidates"] = gap_candidates  # Store in session state
+        st.session_state["gap_candidates"] = gap_candidates
         
         if gap_candidates:
             df_gap = pd.DataFrame(gap_candidates, columns=["n‑gram", "Gap Score"])
@@ -172,7 +174,7 @@ def main():
         
         with st.spinner("Running Keyword Clustering..."):
             clusters, embeddings, labels = keyword_clustering(gap_candidates)
-        st.session_state["clusters"] = clusters  # Store clusters in session state
+        st.session_state["clusters"] = clusters
         
         if clusters and embeddings is not None and labels is not None:
             st.subheader("Keyword Clusters")
@@ -183,7 +185,6 @@ def main():
             df_clusters = pd.DataFrame(cluster_data)
             st.dataframe(df_clusters)
             
-            # Plot the keyword clusters using PCA
             gap_ngrams = [ngram for ngram, _ in gap_candidates]
             fig_clusters = plot_keyword_clusters(embeddings, labels, gap_ngrams)
             st.plotly_chart(fig_clusters)
@@ -192,7 +193,7 @@ def main():
     
     st.header("ChatGPT SEO Recommendations")
     
-    # Persist API key in session state to avoid re-entry on each rerun
+    # Persist API key in session state
     if "api_key" not in st.session_state:
         st.session_state["api_key"] = ""
     api_key = st.text_input("Enter your OpenAI API Key:", type="password", value=st.session_state["api_key"])
@@ -221,4 +222,5 @@ if __name__ == "__main__":
     if "clusters" not in st.session_state:
         st.session_state["clusters"] = {}
     main()
+
 
