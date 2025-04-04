@@ -135,7 +135,10 @@ def get_recommendations(semantic_gap_results, keyword_clusters, api_key):
         )
         return response.choices[0].message["content"]
     except Exception as e:
-        st.error(f"Error calling ChatGPT API: {e}. Please ensure you're using the latest version of the openai Python package.")
+        st.error(
+            "Error calling ChatGPT API: " + str(e) +
+            "\n\nPlease run `openai migrate` to update your codebase or downgrade your openai package using `pip install openai==0.28`."
+        )
         return "No recommendations generated due to API error."
 
 # --------------------------
@@ -222,5 +225,6 @@ if __name__ == "__main__":
     if "clusters" not in st.session_state:
         st.session_state["clusters"] = {}
     main()
+
 
 
