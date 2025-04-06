@@ -1738,6 +1738,23 @@ The following table contains metrics comparing several URLs based on various SEO
 ```markdown
 {data_markdown}
 
+User's Analysis Request:
+{user_prompt}
+
+Your Task:
+Provide a concise, insightful analysis based only on the provided data table and the user's request. Focus on actionable insights, comparisons, and potential opportunities or weaknesses revealed by the data. Structure your response clearly. Do not make up information not present in the table.
+"""
+# Make the API call
+response = model.generate_content(full_prompt)
+
+# Display the result
+            st.subheader("✨ Gemini Analysis Results:")
+            st.markdown(response.text)
+
+    except Exception as e:
+        st.error(f"❌ An error occurred while communicating with the Gemini API: {e}")
+        st.error("Please check your API key, network connection, and the Gemini API status.")
+
 # ------------------------------------
 # NEW TOOL: Google Ads Search Term Analyzer (with Classifier)
 # ------------------------------------
@@ -2716,6 +2733,7 @@ def main():
     st.sidebar.header("Semantic Search SEO Analysis Tools")
     tool = st.sidebar.selectbox("Select Tool:", [
         "URL Analysis Dashboard",
+        "Gemini Analysis of Dashboard Results", # <-- NEW TOOL ADDED HERE
         "Cosine Similarity - Competitor Analysis",
         "Cosine Similarity - Every Embedding",
         "Cosine Similarity - Content Heatmap",
@@ -2734,8 +2752,15 @@ def main():
         "SEMRush - Sub-Directories (No Leaf Nodes)"
         
     ])
+
+# --- Initialize session state if it doesn't exist ---
+if 'dashboard_results_df' not in st.session_state:
+    st.session_state.dashboard_results_df = None
+    
     if tool == "URL Analysis Dashboard":
         url_analysis_dashboard_page()
+    elif tool == "Gemini Analysis of Dashboard Results": # <-- NEW ROUTE
+        gemini_dashboard_analyzer_page()
     elif tool == "Cosine Similarity - Competitor Analysis":
         cosine_similarity_competitor_analysis_page()
     elif tool == "Cosine Similarity - Every Embedding":
