@@ -478,6 +478,7 @@ def url_analysis_dashboard_page():
             model = initialize_sentence_transformer()
             data = []
             similarity_results = calculate_overall_similarity(urls, search_term, model)
+            
             # --- Analysis Loop (Keep existing code inside the loop) ---
             for i, url in enumerate(urls):
                 try:
