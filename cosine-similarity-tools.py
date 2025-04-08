@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit import cache_resource # Add this line if it's not there
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -115,8 +116,13 @@ def load_spacy_model():
             return None
     return nlp
 
+@st.cache_resource  # <-- ADD THIS DECORATOR
 def initialize_sentence_transformer():
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    """Loads the Sentence Transformer model using Streamlit's resource caching."""
+    print("Attempting to load Sentence Transformer model...") # Optional: For debugging
+    # It's slightly better practice to use the full repo name:
+    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+    print("Sentence Transformer model loaded successfully.") # Optional: For debugging
     return model
 
 def get_embedding(text, model):
