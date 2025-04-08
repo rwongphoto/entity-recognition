@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from streamlit import cache_resource # Add this line if it's not there
 import torch
@@ -61,6 +62,15 @@ import umap
 import networkx as nx
 
 from urllib.parse import urlparse
+
+# --- Set Hugging Face Token from Streamlit Secrets ---
+# Check if the secret exists before trying to access it
+if "huggingface" in st.secrets and "api_token" in st.secrets["huggingface"]:
+    hf_token = st.secrets["huggingface"]["api_token"]
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
+    print("Hugging Face token set from Streamlit secrets.") # Optional: for confirmation
+else:
+    print("Hugging Face token not found in Streamlit secrets. Proceeding without token.") # Optional
 
 # ------------------------------------
 # Global Variables & Utility Functions
@@ -2683,6 +2693,7 @@ def main():
         semrush_hierarchical_subdirectories_minimal_no_leaf_with_intent_filter()
     st.markdown("---")
     st.markdown("Powered by [The SEO Consultant.ai](https://theseoconsultant.ai)", unsafe_allow_html=True)
+    pass
 
 if __name__ == "__main__":
     nltk.download('punkt')
