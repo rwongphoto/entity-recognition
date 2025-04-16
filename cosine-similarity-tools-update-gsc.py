@@ -3052,29 +3052,89 @@ def google_search_console_analysis_page():
             # Exclude 'Unclustered' from default selection for plotting maybe?
             default_topics = [t for t in aggregated["Topic"].unique() if t != "Unclustered / No Embedding"]
             available_topics = aggregated["Topic"].unique().tolist()
-            selected_topics = st.multiselect("Select topics to display on the chart:", options=available_topics, default=default_topics)
+            # Ensure default is subset of available
+            actual_default_topics = [t for t in default_topics if t in available_topics]
+            if not actual_default_topics and available_topics: # Handle case where only 'Unclustered' exists
+                actual_default_topics = available_topics
+
+            selected_topics = st.multiselect(
+                "Select topics to display on the chart:",
+                options=available_topics,
+                default=actual_default_topics # Use filtered default
+                )
 
             vis_data = []
-            # Use aggregated_sorted to reflect sorting in plot data potentially
-            for idx, row in aggregated_sorted.iterrows(): # Iterate sorted df
-                topic = row["Topic"]
-                if topic not in selected_topics: continue
-                for yoy_pct_col, metric_name in agg_yoy_cols_ordered:
-                     if yoy_pct_col in row and pd.notna(row[yoy_pct_col]) and np.isfinite(row[yoy_pct_col]): # Exclude NaN and Inf
-                         vis_data.append({"Topic": topic, "Metric": metric_name, "YOY % Change": row[yoy_pct_col]})
+            found_metrics_for_plot = set() # Track which metrics have valid data
+
+            # --- Debugging: Inspect aggregated data before plotting ---
+            # with st.expander("Debug: Aggregated Data for Plotting"):
+            #     st.dataframe(aggregated[aggregated['Topic'].isin(selected_topics)])
+            #     st.write("Columns checked for plot:", agg_yoy_cols_ordered)
+            # --- End Debugging ---
+
+            # Ensure agg_yoy_cols_ordered was created correctly
+            if not agg_yoy_cols_ordered:
+                 st.warning("Could not determine which YOY % columns to plot.")
+            else:
+                 for idx, row in aggregated.iterrows():
+                     topic = row["Topic"]
+                     if topic not in selected_topics: continue
+
+                     # Iterate through the tuple list (col_name, metric_display_name)
+                     for yoy_pct_col, metric_name in agg_yoy_cols_ordered:
+                          # Check if the column exists in the row/dataframe first
+                          if yoy_pct_col in row:
+                               yoy_value = row[yoy_pct_col]
+                               # Check if value is valid (not NaN and finite)
+                               if pd.notna(yoy_value) and np.isfinite(yoy_value):
+                                   vis_data.append({"Topic": topic, "Metric": metric_name, "YOY % Change": yoy_value})
+                                   found_metrics_for_plot.add(metric_name)
+                               # --- Debugging Aid ---
+                               # else:
+                               #     if metric_name == "Average Position":
+                               #         print(f"Skipping Avg Pos for Topic '{topic}': Value={yoy_value}")
+                               # --- End Debugging Aid ---
+                          # --- Debugging Aid ---
+                          # elif metric_name == "Average Position":
+                          #      print(f"Column {yoy_pct_col} not found in aggregated row for Topic '{topic}'")
+                          # --- End Debugging Aid ---
+
 
             if vis_data:
                  vis_df = pd.DataFrame(vis_data)
+                 # Report if specific expected metrics are missing from the plot data
+                 expected_metrics = {m_name for _, m_name in agg_yoy_cols_ordered}
+                 missing_metrics = expected_metrics - found_metrics_for_plot
+                 if missing_metrics:
+                      st.info(f"Note: The following metrics had no valid YOY % change data to plot for the selected topics: {', '.join(sorted(list(missing_metrics)))}")
+
                  # Use category orders based on the sorted aggregated data (or selected topics)
-                 topic_order_plot = [t for t in aggregated_sorted['Topic'] if t in selected_topics]
-                 fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric", barmode="group",
+                 topic_order_plot = sorted([t for t in aggregated['Topic'] if t in selected_topics]) # Sort alphabetically
+
+                 # Define specific colors if needed
+                 color_discrete_map = {
+                     "Average Position": px.colors.qualitative.Plotly[0],
+                     "Clicks": px.colors.qualitative.Plotly[1],
+                     "Impressions": px.colors.qualitative.Plotly[2],
+                     "CTR": px.colors.qualitative.Plotly[3],
+                 }
+
+                 fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric",
+                              barmode="group",
                               title="YOY % Change by Topic for Each Metric",
                               labels={"YOY % Change": "YOY % Change (%)", "Topic": "GPT-Generated Topic"},
-                              category_orders={"Topic": topic_order_plot}) # Use sorted order
-                 fig.update_layout(height=600)
+                              category_orders={"Topic": topic_order_plot}, # Use sorted order
+                              color_discrete_map=color_discrete_map # Apply consistent colors
+                              )
+                 # Improve y-axis label if needed (e.g., for large % changes)
+                 fig.update_layout(
+                      height=600,
+                      yaxis_title="YOY Change (%)",
+                      legend_title_text="Metric"
+                      )
                  st.plotly_chart(fig, use_container_width=True)
             else:
-                 st.info("No finite YOY % change data available to plot (might be NaN, Inf or missing).")
+                 st.info("No valid YOY % change data available to plot for the selected topics (values might be missing, NaN, or infinite).")
 
             progress_bar.progress(100)
             status_text.text("Analysis Complete!")
