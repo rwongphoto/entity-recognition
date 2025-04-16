@@ -3940,29 +3940,35 @@ def main():
 if __name__ == "__main__":
     # Download necessary NLTK data
     try:
+        # Check if already downloaded
         nltk.data.find('tokenizers/punkt')
-    except nltk.downloader.DownloadError:
+    except LookupError: # Correct exception type
+        print("Downloading NLTK 'punkt' resource...")
         nltk.download('punkt')
     try:
         nltk.data.find('corpora/stopwords')
-    except nltk.downloader.DownloadError:
+    except LookupError: # Correct exception type
+        print("Downloading NLTK 'stopwords' resource...")
         nltk.download('stopwords')
     try:
         nltk.data.find('corpora/wordnet')
-    except nltk.downloader.DownloadError:
+    except LookupError: # Correct exception type
+        print("Downloading NLTK 'wordnet' resource...")
         nltk.download('wordnet')
     # Punkt_tab seems less common, only download if specifically needed later
     # try:
     #     nltk.data.find('tokenizers/punkt_tab')
-    # except nltk.downloader.DownloadError:
+    # except LookupError:
     #     nltk.download('punkt_tab')
 
-    # Load spaCy model once at startup if possible (handled by @st.cache_resource)
+    print("Pre-loading models...")
+    # Load spaCy model once at startup (handled by @st.cache_resource)
     load_spacy_model()
     # Initialize SentenceTransformer model at startup (handled by @st.cache_resource)
     initialize_sentence_transformer()
     # Load NER pipeline at startup (handled by @st.cache_resource)
     load_bert_ner_pipeline()
+    print("Model pre-loading complete.")
 
     # Run the main Streamlit app function
     main()
