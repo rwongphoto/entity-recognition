@@ -3937,8 +3937,10 @@ def main():
     # st.markdown("<div style='height: 50px;'></div>", unsafe_allow_html=True)
     pass # Keep pass for structure
 
+# <<< REPLACE THE OLD BLOCK BELOW WITH THE NEW ONE >>>
+# The entry point - THIS IS THE PART TO REPLACE
 if __name__ == "__main__":
-    # Download necessary NLTK data
+    # Download necessary NLTK data (This is okay here as it uses print/nltk, not st)
     try:
         # Check if already downloaded
         nltk.data.find('tokenizers/punkt')
@@ -3955,20 +3957,18 @@ if __name__ == "__main__":
     except LookupError: # Correct exception type
         print("Downloading NLTK 'wordnet' resource...")
         nltk.download('wordnet')
-    # Punkt_tab seems less common, only download if specifically needed later
-    # try:
-    #     nltk.data.find('tokenizers/punkt_tab')
-    # except LookupError:
-    #     nltk.download('punkt_tab')
 
-    print("Pre-loading models...")
-    # Load spaCy model once at startup (handled by @st.cache_resource)
-    load_spacy_model()
-    # Initialize SentenceTransformer model at startup (handled by @st.cache_resource)
-    initialize_sentence_transformer()
-    # Load NER pipeline at startup (handled by @st.cache_resource)
-    load_bert_ner_pipeline()
-    print("Model pre-loading complete.")
+    # --- REMOVED MODEL PRE-LOADING CALLS ---
+    # The @st.cache_resource decorator handles loading when needed inside main()
+    # print("Pre-loading models...")
+    # load_spacy_model()                 # REMOVED
+    # initialize_sentence_transformer()  # REMOVED
+    # load_bert_ner_pipeline()           # REMOVED
+    # print("Model pre-loading complete.") # REMOVED
+    print("NLTK checks complete. Starting Streamlit app...")
 
     # Run the main Streamlit app function
+    # st.set_page_config() will be the first st command inside main()
     main()
+
+# <<< NO MORE CODE AFTER THIS BLOCK >>>
