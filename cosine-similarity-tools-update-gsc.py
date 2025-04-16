@@ -2919,9 +2919,11 @@ def google_search_console_analysis_page():
                       if col in merged_df.columns: display_order.append(col)
             merged_df_display = merged_df[[col for col in display_order if col in merged_df.columns]]
 
+            # --- Corrected Formatting ---
             format_dict_merged = {}
             def add_format(col_name, fmt_str):
                  if col_name in merged_df_display.columns: format_dict_merged[col_name] = fmt_str
+
             add_format("Cluster_ID", "{:.0f}") # Format nullable int
             add_format("Average Position_before", "{:.1f}")
             add_format("Average Position_after", "{:.1f}")
@@ -2929,11 +2931,13 @@ def google_search_console_analysis_page():
             add_format("Position_YOY_pct", "{:+.1f}%")
             add_format("Clicks_before", "{:,.0f}")
             add_format("Clicks_after", "{:,.0f}")
-            add_format("Clicks_YOY", "{:+,d}")
+            # --- CORRECTED FORMAT ---
+            add_format("Clicks_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
             add_format("Clicks_YOY_pct", "{:+.1f}%")
             add_format("Impressions_before", "{:,.0f}")
             add_format("Impressions_after", "{:,.0f}")
-            add_format("Impressions_YOY", "{:+,d}")
+            # --- CORRECTED FORMAT ---
+            add_format("Impressions_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
             add_format("Impressions_YOY_pct", "{:+.1f}%")
             add_format("CTR_before", "{:.2f}%")
             add_format("CTR_after", "{:.2f}%")
@@ -3015,27 +3019,27 @@ def google_search_console_analysis_page():
             format_dict_agg = {}
             def add_agg_format(col_name, fmt_str):
                  if col_name in aggregated.columns: format_dict_agg[col_name] = fmt_str
-            # ... (format_dict_agg definition REMAINS THE SAME as previous fix) ...
+
             add_agg_format("Average Position_before", "{:.1f}")
             add_agg_format("Average Position_after", "{:.1f}")
             add_agg_format("Position_YOY", "{:+.1f}")
             add_agg_format("Position_YOY_pct", "{:+.1f}%")
             add_agg_format("Clicks_before", "{:,.0f}")
             add_agg_format("Clicks_after", "{:,.0f}")
-            add_agg_format("Clicks_YOY", "{:+,d}")
+            # --- CORRECTED FORMAT ---
+            add_agg_format("Clicks_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
             add_agg_format("Clicks_YOY_pct", "{:+.1f}%")
             add_agg_format("Impressions_before", "{:,.0f}")
             add_agg_format("Impressions_after", "{:,.0f}")
-            add_agg_format("Impressions_YOY", "{:+,d}")
+            # --- CORRECTED FORMAT ---
+            add_agg_format("Impressions_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
             add_agg_format("Impressions_YOY_pct", "{:+.1f}%")
             add_agg_format("CTR_before", "{:.2f}%")
             add_agg_format("CTR_after", "{:.2f}%")
             add_agg_format("CTR_YOY", "{:+.2f}%")
             add_agg_format("CTR_YOY_pct", "{:+.1f}%")
 
-
             display_count = st.number_input("Number of aggregated topics to display:", min_value=1, value=min(aggregated.shape[0], 50), max_value=aggregated.shape[0])
-            # Exclude 'Unclustered' topic from default sort order if desired, or sort by a metric
             sort_metric_agg = "Impressions_after" if "Impressions_after" in aggregated.columns else "Topic"
             aggregated_sorted = aggregated.sort_values(by=sort_metric_agg, ascending=False, na_position='last')
             st.dataframe(aggregated_sorted.head(display_count).style.format(format_dict_agg, na_rep="N/A"))
