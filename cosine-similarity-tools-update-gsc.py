@@ -2919,12 +2919,12 @@ def google_search_console_analysis_page():
                       if col in merged_df.columns: display_order.append(col)
             merged_df_display = merged_df[[col for col in display_order if col in merged_df.columns]]
 
-            # --- Corrected Formatting ---
+            # --- Corrected Formatting (Again) ---
             format_dict_merged = {}
             def add_format(col_name, fmt_str):
                  if col_name in merged_df_display.columns: format_dict_merged[col_name] = fmt_str
 
-            add_format("Cluster_ID", "{:.0f}") # Format nullable int
+            add_format("Cluster_ID", "{:.0f}")
             add_format("Average Position_before", "{:.1f}")
             add_format("Average Position_after", "{:.1f}")
             add_format("Position_YOY", "{:+.1f}")
@@ -2932,12 +2932,12 @@ def google_search_console_analysis_page():
             add_format("Clicks_before", "{:,.0f}")
             add_format("Clicks_after", "{:,.0f}")
             # --- CORRECTED FORMAT ---
-            add_format("Clicks_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
+            add_format("Clicks_YOY", "{:+,.0f}") # Use comma, 0 decimals, float type, always show sign
             add_format("Clicks_YOY_pct", "{:+.1f}%")
             add_format("Impressions_before", "{:,.0f}")
             add_format("Impressions_after", "{:,.0f}")
             # --- CORRECTED FORMAT ---
-            add_format("Impressions_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
+            add_format("Impressions_YOY", "{:+,.0f}") # Use comma, 0 decimals, float type, always show sign
             add_format("Impressions_YOY_pct", "{:+.1f}%")
             add_format("CTR_before", "{:.2f}%")
             add_format("CTR_after", "{:.2f}%")
@@ -3027,12 +3027,12 @@ def google_search_console_analysis_page():
             add_agg_format("Clicks_before", "{:,.0f}")
             add_agg_format("Clicks_after", "{:,.0f}")
             # --- CORRECTED FORMAT ---
-            add_agg_format("Clicks_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
+            add_agg_format("Clicks_YOY", "{:+,.0f}") # Use comma, 0 decimals, float type, always show sign
             add_agg_format("Clicks_YOY_pct", "{:+.1f}%")
             add_agg_format("Impressions_before", "{:,.0f}")
             add_agg_format("Impressions_after", "{:,.0f}")
             # --- CORRECTED FORMAT ---
-            add_agg_format("Impressions_YOY", "{:+, .0f}") # Use float format with 0 decimals and comma
+            add_agg_format("Impressions_YOY", "{:+,.0f}") # Use comma, 0 decimals, float type, always show sign
             add_agg_format("Impressions_YOY_pct", "{:+.1f}%")
             add_agg_format("CTR_before", "{:.2f}%")
             add_agg_format("CTR_after", "{:.2f}%")
