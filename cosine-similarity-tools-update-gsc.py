@@ -2524,7 +2524,6 @@ def get_gpt_cluster_label(_client, queries_in_cluster: list, cluster_id: int) ->
 # ------------------------------------
 # MODIFIED GSC Analyzer Function
 # ------------------------------------
-# MODIFIED Google Search Console Analysis Page (Fix YOY PCT Calculation Order)
 def google_search_console_analysis_page():
     st.header("Google Search Console Data Analysis")
     st.markdown(
@@ -2686,7 +2685,6 @@ def google_search_console_analysis_page():
 
             # --- Step 6: Calculate YOY changes ---
             status_text.text("Calculating YOY changes...")
-            # Define helper for percentage change
             def calculate_yoy_pct_change(yoy_abs, before):
                 if pd.isna(yoy_abs) or pd.isna(before):
                     return np.nan
@@ -2694,19 +2692,15 @@ def google_search_console_analysis_page():
                     return np.inf if yoy_abs != 0 else 0.0
                 return (yoy_abs / before) * 100
 
-            # For metrics where higher values are better, use (after - before)
             if "Clicks_before" in merged_df.columns and "Clicks_after" in merged_df.columns:
                 merged_df["Clicks_YOY"] = merged_df.apply(lambda row: row["Clicks_after"] - row["Clicks_before"], axis=1)
             if "Impressions_before" in merged_df.columns and "Impressions_after" in merged_df.columns:
                 merged_df["Impressions_YOY"] = merged_df.apply(lambda row: row["Impressions_after"] - row["Impressions_before"], axis=1)
             if "CTR_before" in merged_df.columns and "CTR_after" in merged_df.columns:
                 merged_df["CTR_YOY"] = merged_df.apply(lambda row: row["CTR_after"] - row["CTR_before"], axis=1)
-
-            # For Average Position, a lower number is better, so calculate as (Before - After)
             if "Average Position_before" in merged_df.columns and "Average Position_after" in merged_df.columns:
                 merged_df["Position_YOY"] = merged_df.apply(lambda row: row["Average Position_before"] - row["Average Position_after"], axis=1)
 
-            # Calculate YOY percentage changes
             if "Clicks_YOY" in merged_df.columns:
                 merged_df["Clicks_YOY_pct"] = merged_df.apply(lambda row: calculate_yoy_pct_change(row["Clicks_YOY"], row["Clicks_before"]), axis=1)
             if "Impressions_YOY" in merged_df.columns:
@@ -2813,12 +2807,14 @@ def google_search_console_analysis_page():
             metrics_ordered = ["Average Position", "Clicks", "Impressions", "CTR"]
             for metric in metrics_ordered:
                 for suffix in ["_before", "_after", "_YOY", "_YOY_pct"]:
-                    col = f"{metric}{suffix}" if metric != "Average Position" else (
-                        "Average Position_before" if suffix == "_before" else
-                        "Average Position_after" if suffix == "_after" else
-                        "Position_YOY" if suffix == "_YOY" else
-                        "Position_YOY_pct"
-                    )
+                    if metric == "Average Position":
+                        col = "Average Position_before" if suffix == "_before" else (
+                            "Average Position_after" if suffix == "_after" else
+                            "Position_YOY" if suffix == "_YOY" else
+                            "Position_YOY_pct"
+                        )
+                    else:
+                        col = f"{metric}{suffix}"
                     if col in merged_df.columns:
                         display_order.append(col)
             merged_df_display = merged_df[[col for col in display_order if col in merged_df.columns]]
@@ -2907,9 +2903,12 @@ def google_search_console_analysis_page():
                     before_col, after_col, yoy_col, yoy_pct_col = "Average Position_before", "Average Position_after", "Position_YOY", "Position_YOY_pct"
                 else:
                     before_col, after_col, yoy_col, yoy_pct_col = f"{metric}_before", f"{metric}_after", f"{metric}_YOY", f"{metric}_YOY_pct"
-                if before_col in aggregated.columns: new_order_agg.append(before_col)
-                if after_col in aggregated.columns: new_order_agg.append(after_col)
-                if yoy_col in aggregated.columns: new_order_agg.append(yoy_col)
+                if before_col in aggregated.columns:
+                    new_order_agg.append(before_col)
+                if after_col in aggregated.columns:
+                    new_order_agg.append(after_col)
+                if yoy_col in aggregated.columns:
+                    new_order_agg.append(yoy_col)
                 if yoy_pct_col in aggregated.columns:
                     new_order_agg.append(yoy_pct_col)
                     agg_yoy_cols_ordered.append((yoy_pct_col, metric))
@@ -2966,26 +2965,27 @@ def google_search_console_analysis_page():
                                 found_metrics_for_plot.add(metric_name)
             if vis_data:
                 vis_df = pd.DataFrame(vis_data)
-                expected_metrics = {m_name for _, m_name in agg_yoy_cols_ordered}
-                missing_metrics = expected_metrics - found_metrics_for_plot
-                if missing_metrics:
-                    st.info(f"Note: The following metrics had no valid YOY % change data to plot for the selected topics: {', '.join(sorted(list(missing_metrics)))}")
+                # Reorder the metrics using a categorical order:
+                vis_df['Metric'] = pd.Categorical(vis_df['Metric'],
+                                                  categories=["Clicks", "Impressions", "Average Position", "CTR"],
+                                                  ordered=True)
                 topic_order_plot = sorted([t for t in aggregated_sorted['Topic'] if t in selected_topics])
                 color_discrete_map = {
-                    "Average Position": px.colors.qualitative.Plotly[0],
                     "Clicks": px.colors.qualitative.Plotly[1],
                     "Impressions": px.colors.qualitative.Plotly[2],
+                    "Average Position": px.colors.qualitative.Plotly[0],
                     "CTR": px.colors.qualitative.Plotly[3],
                 }
                 fig = px.bar(vis_df, x="Topic", y="YOY % Change", color="Metric",
                              barmode="group", title="YOY % Change by Topic for Each Metric",
                              labels={"YOY % Change": "YOY Change (%)", "Topic": "GPT-Generated Topic"},
-                             category_orders={"Topic": topic_order_plot},
+                             category_orders={"Topic": topic_order_plot, "Metric": ["Clicks", "Impressions", "Average Position", "CTR"]},
                              color_discrete_map=color_discrete_map)
                 fig.update_layout(height=600, yaxis_title="YOY Change (%)", legend_title_text="Metric")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No valid YOY % change data available to plot for the selected topics.")
+
             progress_bar.progress(100)
             status_text.text("Analysis Complete!")
 
