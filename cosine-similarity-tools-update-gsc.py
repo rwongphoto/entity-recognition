@@ -798,8 +798,7 @@ def google_search_console_analysis_page():
             optimal_k = max(1, optimal_k)
             slider_min = max(1, min_k if num_to_cluster >= min_k else 1)
             slider_max = max(1, max_k)
-            # Set default to 10 if possible; otherwise, use slider_max.
-            slider_default = 10 if slider_max >= 10 else slider_max
+            slider_default = max(slider_min, min(int(optimal_k), slider_max))
             n_clusters_selected = st.slider("Select number of query clusters (K):", min_value=slider_min, max_value=slider_max, value=slider_default, key="kmeans_clusters_gsc")
             kmeans = KMeans(n_clusters=n_clusters_selected, random_state=42, n_init='auto')
             cluster_labels = kmeans.fit_predict(embeddings_matrix)
