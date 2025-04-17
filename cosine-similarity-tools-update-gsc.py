@@ -800,7 +800,7 @@ def google_search_console_analysis_page():
             df_display = merged_df[[c for c in display_cols if c in merged_df.columns]]
             fmt = {}
             def add_fmt(col, fstr):
-                if col in df_display.columns:
+                if col_name in merged_df_display.columns and pd.api.types.is_numeric_dtype(merged_df_display[col_name]):
                     fmt[col] = fstr
             add_fmt("Cluster_ID", "{:.0f}")
             add_fmt("Average Position_before", "{:.1f}")
@@ -886,9 +886,10 @@ def google_search_console_analysis_page():
             aggregated = aggregated[[c for c in cols_order if c in aggregated.columns]]
 
             fmt_agg = {}
-            def add_fmt_agg(col, fstr):
-                if col in aggregated.columns:
-                    fmt_agg[col] = fstr
+            def add_agg_format(col_name, fmt_str):
+                if col_name in aggregated.columns \
+                   and pd.api.types.is_numeric_dtype(aggregated[col_name]):
+                    format_dict_agg[col_name] = fmt_str
             add_fmt_agg("Average Position_before", "{:.1f}")
             add_fmt_agg("Average Position_after", "{:.1f}")
             add_fmt_agg("Position_YOY", "{:+.1f}")
