@@ -87,6 +87,7 @@ if "openai" in st.secrets and "api_key" in st.secrets["openai"]:
 else:
     print("OpenAI API key not found in Streamlit secrets. GSC GPT labeling will be disabled.") # Optional
 
+
 # ------------------------------------
 # Global Variables & Utility Functions
 # ------------------------------------
@@ -292,6 +293,8 @@ def create_navigation_menu(logo_url):
     menu_html += "</div>"
     st.markdown(menu_html, unsafe_allow_html=True)
 
+
+
 # --------------------------------------------------
 # NEW: Load BERT-based NER pipeline (using dslim/bert-base-NER)
 # --------------------------------------------------
@@ -480,6 +483,8 @@ def get_wikidata_link(entity_name: str) -> str:
     except Exception as e:
         st.error(f"Error querying Wikidata for '{entity_name}': {e}")
     return None
+
+pd.set_option("styler.render.max_elements", 1000000)
 
 # ------------------------------------
 # Streamlit UI Functions
