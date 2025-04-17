@@ -719,9 +719,8 @@ def google_search_console_analysis_page():
             def calculate_yoy_pct_change(yoy_abs, before):
                 if pd.isna(yoy_abs) or pd.isna(before):
                     return np.nan
-                if before == 0:
-                    return np.inf if yoy_abs != 0 else 0.0
-                return (yoy_abs / before) * 100
+                denominator = before if before != 0 else 1
+                return (yoy_abs / denominator) * 100
 
             if "Clicks_before" in merged_df.columns and "Clicks_after" in merged_df.columns:
                 merged_df["Clicks_YOY"] = merged_df.apply(lambda row: row["Clicks_after"] - row["Clicks_before"], axis=1)
