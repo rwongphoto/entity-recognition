@@ -484,8 +484,6 @@ def get_wikidata_link(entity_name: str) -> str:
         st.error(f"Error querying Wikidata for '{entity_name}': {e}")
     return None
 
-pd.set_option("styler.render.max_elements", 1000000)
-
 # ------------------------------------
 # Streamlit UI Functions
 # ------------------------------------
@@ -873,7 +871,13 @@ def google_search_console_analysis_page():
             add_format("CTR_after", "{:.2f}%")
             add_format("CTR_YOY", "{:+.2f}%")
             add_format("CTR_YOY_pct", "{:+.1f}%")
-            st.dataframe(merged_df_display.style.format(format_dict_merged, na_rep="N/A"))
+            # show only the first 100 rows, with styling
+            st.dataframe(
+                merged_df_display
+                  .head(100)
+                  .style
+                  .format(format_dict_merged, na_rep="N/A")
+            )
 
             # --- Step 10: Aggregated Metrics by Topic ---
             status_text.text("Aggregating metrics by topic...")
