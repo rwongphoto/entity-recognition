@@ -2,7 +2,6 @@ streamlit
 spacy
 spacy-streamlit
 numpy<2.0.0
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz#egg=en_core_web_sm
 altair==5.5.0
 attrs==25.1.0
 beautifulsoup4==4.13.3
@@ -112,7 +111,6 @@ wordcloud>=1.8
 wsproto==1.2.0
 zipp==3.21.0
 https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl
-https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
 langchain-community
 qdrant-client
 langchain-openai
