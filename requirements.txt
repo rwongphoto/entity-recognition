@@ -1,7 +1,7 @@
 streamlit
 spacy
 spacy-streamlit
-numpy<2.0.0
+numpy
 altair==5.5.0
 attrs==25.1.0
 beautifulsoup4==4.13.3
