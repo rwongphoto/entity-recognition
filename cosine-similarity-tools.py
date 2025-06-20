@@ -2626,8 +2626,8 @@ def main():
     )
     hide_streamlit_elements = """
         <style>
-        #MainMenu {visibility: hidden !important;}
-        header {visibility: hidden !important;}
+        /* #MainMenu {visibility: hidden !important;}  <- COMMENTED OUT OR DELETED */
+        /* header {visibility: hidden !important;}    <- COMMENTED OUT OR DELETED */
         [data-testid="stDecoration"] { display: none !important; }
         a[href*='streamlit.io/cloud'],
         div._profileContainer_gzau3_53 { display: none !important; }
