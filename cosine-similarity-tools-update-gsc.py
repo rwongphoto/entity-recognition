@@ -560,17 +560,14 @@ def google_search_console_analysis_page():
     st.markdown(
         """
         Compare GSC query data from two periods to identify performance changes.
-        This tool now uses **KMeans clustering** on query embeddings (SentenceTransformer) and **GPT-based labeling** to group queries into topics.
         Upload CSV files (one for the 'Before' period and one for the 'After' period), and the tool will:
         - Calculate overall performance changes (based on full input data).
-        - Merge data using an outer join to preserve all queries.
         - Compute embeddings for each query.
         - Cluster queries using KMeans (optimal K suggested via Silhouette Score).
-        - Generate descriptive topic labels for each cluster using OpenAI's GPT.
+        - Generate descriptive topic labels for each cluster
         - Display the original merged data table with GPT topic labels (includes queries unique to one period).
         - Aggregate metrics by topic.
         - Visualize the YOY % change by topic for each metric.
-        **Note:** Requires an OpenAI API key set in Streamlit Secrets for topic labeling.
         """
     )
 
