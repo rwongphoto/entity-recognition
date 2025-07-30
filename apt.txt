@@ -1,6 +1,0 @@
-# For running headless Chrome with Selenium
-google-chrome-stable
-libglib2.0-0
-libnss3
-libgconf-2-4
-libfontconfig1
